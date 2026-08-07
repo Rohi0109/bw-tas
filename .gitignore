@@ -1,0 +1,10 @@
+runtime/
+extracted/
+web/boxedwine/
+BookwormAdventuresModding/
+*.exe
+*.dll
+*.log
+*.png
+__pycache__/
+*.pyc
