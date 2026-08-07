@@ -1,0 +1,64 @@
+name: build
+
+# Matrix jobs only build + upload artifacts. A single release job runs after them and
+# creates the GitHub Release once (avoids the parallel "tag already exists" race).
+# Push a version tag (e.g. `git tag v0.1.0 && git push origin v0.1.0`) to build AND release.
+# Use the "Run workflow" button (workflow_dispatch) to build without releasing.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: windows-latest, asset: BookwormModBuilder-windows.exe, out: dist/BookwormModBuilder.exe }
+          - { os: macos-latest,   asset: BookwormModBuilder-macos,       out: dist/BookwormModBuilder }
+          - { os: ubuntu-latest,  asset: BookwormModBuilder-linux,       out: dist/BookwormModBuilder }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install pyinstaller
+
+      - name: Sanity check (imports + catalog)
+        shell: bash
+        run: python -c "import modkit.webui, bwakit; from bwakit.mods import dict_swap, randomizer, hp_scaling"
+
+      - name: Build (Windows)
+        if: runner.os == 'Windows'
+        shell: cmd
+        run: build.bat
+
+      - name: Build (macOS / Linux)
+        if: runner.os != 'Windows'
+        run: bash build.sh
+
+      - name: Name the artifact
+        shell: bash
+        run: cp "${{ matrix.out }}" "${{ matrix.asset }}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset }}
+          path: ${{ matrix.asset }}
+
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write        # only this job needs write, and it runs once
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true       # all three binaries land flat in dist/
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
