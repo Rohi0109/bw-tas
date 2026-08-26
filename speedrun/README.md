@@ -64,12 +64,17 @@ game window on that screen and run:
 just menu-start
 ```
 
-`just menu-reset` performs the WR sequence from an active battle: open the
-battle menu, quit to the main menu, choose Adventure, and click Enter on the
-current chapter. It is intentionally explicit for now. Automatic use must be
-enabled only for a verified `(book, chapter, defeated enemy)` checkpoint after
-Lua confirms that progress was saved; this prevents a fast reset from silently
-replaying a fight or losing a reward.
+`just menu-reset` performs the same-chapter WR sequence from an active battle:
+open the battle menu, quit to the main menu, and choose Adventure. Deluxe then
+loads the next enemy directly. At a verified chapter boundary, use
+`just menu-reset --enter-chapter`; this also clicks Enter on the chapter map and
+allows Deluxe to pass through any treasure-room transition. `menu-start`
+accepts the same flag when starting from the main menu.
+
+These actions are intentionally explicit for now. Automatic use must be
+selected by a verified `(book, chapter, defeated enemy)` checkpoint after Lua
+confirms that progress was saved; this prevents a fast reset from silently
+replaying a fight, losing a reward, or clicking Attack when no map appeared.
 
 The Deluxe runner now uses live enemy HP, offense, enabled treasures, physical
 gem tiles, and the game's overkill thresholds. Its default strategy is:

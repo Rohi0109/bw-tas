@@ -14,11 +14,19 @@ class RecordingController:
 
 
 class MenuRunnerTests(unittest.TestCase):
-    def test_start_enters_adventure_then_current_chapter(self):
+    def test_start_resumes_same_chapter_without_extra_click(self):
         controller = RecordingController()
         timing = MenuTiming(after_adventure=1.2, after_enter=1.5)
 
         start_from_main_menu(controller, timing)
+
+        self.assertEqual(controller.calls, [("start_adventure", 1.2)])
+
+    def test_chapter_start_clicks_map_enter(self):
+        controller = RecordingController()
+        timing = MenuTiming(after_adventure=1.2, after_enter=1.5)
+
+        start_from_main_menu(controller, timing, enter_chapter=True)
 
         self.assertEqual(controller.calls, [
             ("start_adventure", 1.2),
@@ -34,6 +42,16 @@ class MenuRunnerTests(unittest.TestCase):
         self.assertEqual(controller.calls, [
             ("open_battle_menu", 0.3),
             ("quit_to_main_menu", 1.0),
+            ("start_adventure", 1.2),
+        ])
+
+    def test_chapter_reset_includes_map_enter(self):
+        controller = RecordingController()
+        timing = MenuTiming(0.3, 1.0, 1.2, 1.5)
+
+        reset_from_battle(controller, timing, enter_chapter=True)
+
+        self.assertEqual(controller.calls[-2:], [
             ("start_adventure", 1.2),
             ("enter_chapter", 1.5),
         ])
