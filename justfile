@@ -1,31 +1,27 @@
 set shell := ["bash", "-euo", "pipefail", "-c"]
 
-# Show the available Bookworm launch and automation recipes.
+# Show the short command list below.
 default:
     @just --list
 
-# Build/rebuild the disposable modded Deluxe TAS copy.
-prepare-deluxe *args:
+# Build or rebuild the disposable modded Deluxe TAS game.
+setup *args:
     ./prepare-deluxe-tas.sh {{args}}
 
-# Open Bookworm Adventures Deluxe in its 800x600 Wine desktop.
-deluxe *args:
+# Launch the modded Deluxe game. Keep this terminal open.
+game *args:
     ./run-deluxe-tas.sh {{args}}
 
-# Run the Deluxe solver; pass flags after `--`, e.g. `just deluxe-auto -- --strategy max-damage`.
-deluxe-auto *args:
+# Run the Deluxe TAS in a second terminal, e.g. `just tas --strategy max-damage`.
+tas *args:
     ./run-deluxe-speedrun-auto.sh {{args}}
 
-# Open the source/launcher build through Wine.
-bookworm *args:
+# Launch the experimental source/launcher build.
+source-game *args:
     ./run-native.sh {{args}}
 
-# Run the Deluxe continuous TAS solver (alias with the expected generic name).
-speedrun-auto *args:
-    ./run-deluxe-speedrun-auto.sh {{args}}
-
-# Run the legacy continuous solver for the source/launcher build.
-source-auto *args:
+# Run continuous automation against the experimental source build.
+source-tas *args:
     ./run-speedrun-auto.sh {{args}}
 
 # Solve one board against the source build.

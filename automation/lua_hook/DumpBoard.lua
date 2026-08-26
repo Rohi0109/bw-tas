@@ -8,7 +8,8 @@ function TileEngine:AutomationDumpBoard()
   local gemRows = {}
   local powerRows = {}
   local complete = true
-  local ready = false
+  local anySelectable = false
+  local settled = true
 
   for y = 0, gTilesHigh - 1 do
     local letterRow = ""
@@ -53,8 +54,14 @@ function TileEngine:AutomationDumpBoard()
         powerRow = powerRow .. tilePower
         -- Use a normal table call instead of ':' so the appended method does
         -- not require PopCap's problematic SELF opcode.
-        if not ready and self.CanSelect(self, tileKey, x, y) then
-          ready = true
+        if not anySelectable and self.CanSelect(self, tileKey, x, y) then
+          anySelectable = true
+        end
+        if tile.IsMoving ~= nil and tile.IsMoving(tile) then
+          settled = false
+        end
+        if tile.IsFalling ~= nil and tile.IsFalling(tile) then
+          settled = false
         end
       end
     end
@@ -67,6 +74,24 @@ function TileEngine:AutomationDumpBoard()
     gAutomationLastBoard = snapshot
     print("AUTOMATION_BOARD=" .. snapshot)
   end
+
+  local interrupted = false
+  if gBattleEngine ~= nil and gBattleEngine.mInterruptState then
+    interrupted = true
+  end
+  if complete and settled and not interrupted and
+      gAutomationStableSnapshot == snapshot then
+    if gAutomationStableTicks == nil then gAutomationStableTicks = 0 end
+    gAutomationStableTicks = gAutomationStableTicks + 1
+  else
+    gAutomationStableSnapshot = snapshot
+    gAutomationStableTicks = 0
+  end
+  -- Require a short run of identical, motionless frames. Some enemy/level-up
+  -- transitions briefly expose CanSelect between animation phases, which can
+  -- otherwise publish coordinates for a board that is about to move.
+  local ready = complete and anySelectable and settled and not interrupted and
+    gAutomationStableTicks >= 12
 
   if complete and ready and not gAutomationWasReady then
     local book = -1

@@ -272,6 +272,10 @@ def damage_for(
     state: DeluxeState, word: str, path: tuple[int, ...], metal_words: frozenset[str]
 ) -> float:
     base = DAMAGE_BY_LENGTH[len(word)]
+    # AUTOMATION_POWERS is calculated inside the game from LETTER_BONUSES and
+    # Tile.ApplyBonus. It therefore already includes per-letter treasures such
+    # as Wooden Parrot (R) and Bow/Arch of Xyzzy (X/Y/Z), as well as gems. Do
+    # not add those treasure bonuses again here.
     tile_bonus = ceil_quarter(sum(state.tile_powers[index] for index in path))
     damage = base + tile_bonus + base * state.offense
     if "hand of hercules" in state.treasures:

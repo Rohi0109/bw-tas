@@ -152,6 +152,29 @@ class DeluxeOptimizerTests(unittest.TestCase):
             1.5,
         )
 
+    def test_wooden_parrot_uses_live_r_tile_power_once(self):
+        # The Lua hook runs R through the game's LETTER_BONUSES/ApplyBonus
+        # calculation. Wooden Parrot's extra letter value arrives as tile
+        # power, so the optimizer consumes it once instead of reapplying it.
+        powers = (1.0, 0.0, 1.0) + (0.0,) * 13
+        current = state(
+            tile_powers=powers,
+            treasures=frozenset({"wooden parrot"}),
+        )
+
+        self.assertEqual(
+            damage_for(current, "RAR", (0, 1, 2), frozenset()),
+            2.25,
+        )
+
+    def test_wooden_parrot_does_not_bonus_words_without_r(self):
+        current = state(treasures=frozenset({"wooden parrot"}))
+
+        self.assertEqual(
+            damage_for(current, "AAA", (0, 1, 2), frozenset()),
+            0.25,
+        )
+
     def test_duplicate_letter_uses_stronger_gem_tile(self):
         powers = (0.0,) * 15 + (1.0,)
         current = state(tile_powers=powers, gems=("none",) * 15 + ("diamond",))

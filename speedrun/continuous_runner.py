@@ -30,6 +30,23 @@ CHAPTER_RE = re.compile(
 DIALOG_RE = re.compile(
     r"AUTOMATION_DIALOG=(?P<kind>[a-z]+)\|(?P<sequence>\d+)\|E"
 )
+SPHINX_ANSWERS = {
+    "Sphinx (Riddle 1 of 5)": "SKY",
+    "Sphinx (Riddle 2 of 5)": "WALL",
+    "Sphinx (Riddle 3 of 5)": "FIST",
+    "Sphinx (Riddle 4 of 5)": "TRUTH",
+    "Sphinx (Last Riddle)": "WATER",
+}
+
+
+def sphinx_candidate(
+    enemy: str, ranked: list[Candidate]
+) -> tuple[Candidate | None, str | None]:
+    """Return the fixed correct riddle answer when it is playable."""
+    answer = SPHINX_ANSWERS.get(enemy)
+    if answer is None:
+        return None, None
+    return next((candidate for candidate in ranked if candidate.word == answer), None), answer
 
 
 def read_seed(log_path: Path) -> tuple[str | None, bool, bool, int | None]:
@@ -56,6 +73,25 @@ def read_seed(log_path: Path) -> tuple[str | None, bool, bool, int | None]:
         if DONE_MARKER in line:
             done = True
     return board, ready, done, chapter
+
+
+def read_latest_dialog(log_path: Path) -> str | None:
+    """Recover the most recently reported dialogue or non-combat screen."""
+    latest = None
+    if not log_path.exists():
+        return latest
+    for match in DIALOG_RE.finditer(
+        log_path.read_text(encoding="utf-8", errors="replace")
+    ):
+        kind = match.group("kind")
+        latest = None if kind == "none" else kind
+    return latest
+
+
+def read_screen_blocker(log_path: Path) -> str | None:
+    """Recover a non-combat screen that must suppress fallback clicks."""
+    latest = read_latest_dialog(log_path)
+    return latest if latest == "treasure" else None
 
 
 def main() -> None:
@@ -114,6 +150,11 @@ def main() -> None:
 
     log_path = args.log.resolve()
     board, ready, done, chapter = read_seed(log_path)
+    latest_dialog = read_latest_dialog(log_path)
+    blocked_screen = latest_dialog if latest_dialog == "treasure" else None
+    active_dialog = (
+        latest_dialog if latest_dialog in {"conversation", "levelup"} else None
+    )
     deluxe_state = None
     if args.layout == "deluxe" and log_path.exists():
         deluxe_state = parse_state(
@@ -138,7 +179,8 @@ def main() -> None:
     handled_dialogs: set[int] = set()
     dialog_probe_at = (
         time.monotonic() + args.dialog_stall_delay
-        if args.layout == "deluxe" and not ready else float("inf")
+        if args.layout == "deluxe" and not ready and blocked_screen is None
+        else float("inf")
     )
     dialog_probe_count = 0
     deluxe_words: list[str] = []
@@ -173,6 +215,7 @@ def main() -> None:
             )
             if (
                 ready and board and token_is_new
+                and active_dialog is None and blocked_screen is None
                 and time.monotonic() >= ready_at
             ):
                 path = None
@@ -217,6 +260,21 @@ def main() -> None:
                         deadline = time.monotonic() + args.timeout
                         continue
                     selected, alternatives = choose(ranked, args.strategy)
+                    riddle_candidate, riddle_answer = sphinx_candidate(
+                        deluxe_state.enemy, ranked
+                    )
+                    if riddle_candidate is not None:
+                        selected = riddle_candidate
+                        print(
+                            f"  Sphinx override: using fixed answer {riddle_answer}.",
+                            flush=True,
+                        )
+                    elif riddle_answer is not None:
+                        print(
+                            f"  Sphinx warning: expected answer {riddle_answer} is "
+                            "not playable; falling back to normal ranking.",
+                            flush=True,
+                        )
                     word, damage, path = selected.word, selected.damage, selected.path
                     shortest = alternatives.get("shortest_lethal")
                     maximum = alternatives["max_damage"]
@@ -264,17 +322,24 @@ def main() -> None:
             if not line:
                 if (
                     args.layout == "deluxe" and args.auto_dialog and not ready
+                    and blocked_screen is None
                     and time.monotonic() >= dialog_probe_at
                 ):
                     dialog_probe_count += 1
+                    probe_kind = active_dialog or "conversation"
                     print(
-                        f"BOARD still blocked without READY; dialogue probe "
+                        f"BOARD still blocked without READY; {probe_kind} probe "
                         f"{dialog_probe_count}.",
                         flush=True,
                     )
-                    controller.advance_dialog("conversation", args.delay)
+                    controller.advance_dialog(probe_kind, args.delay)
                     dialog_probe_at = time.monotonic() + args.dialog_probe_interval
-                if not input_confirmed and time.monotonic() >= input_confirm_at:
+                if (
+                    not input_confirmed
+                    and active_dialog is None
+                    and blocked_screen is None
+                    and time.monotonic() >= input_confirm_at
+                ):
                     if input_attempts >= args.max_input_attempts:
                         raise RuntimeError(
                             f"Game did not acknowledge {submitted_word.upper()} after "
@@ -320,17 +385,65 @@ def main() -> None:
 
             line = line.rstrip("\r\n")
             dialog = DIALOG_RE.search(line)
-            if dialog and args.auto_dialog and dialog.group("kind") != "none":
+            if dialog and dialog.group("kind") == "none":
+                was_blocked = blocked_screen is not None
+                blocked_screen = None
+                active_dialog = None
+                if not input_confirmed:
+                    # A dialogue can appear after selection but before Attack
+                    # becomes clickable. Its blocked time is not a failed input
+                    # attempt; restart the full retry budget after it exits.
+                    input_attempts = 1
+                    input_confirm_at = (
+                        time.monotonic() + args.input_confirm_timeout
+                    )
+                    print(
+                        "Input retry rearmed after dialogue exit.",
+                        flush=True,
+                    )
+                if was_blocked and not ready:
+                    dialog_probe_at = time.monotonic() + args.dialog_stall_delay
+                    dialog_probe_count = 0
+                    print(
+                        "Treasure screen exited; dialogue fallback rearmed.",
+                        flush=True,
+                    )
+            elif dialog and dialog.group("kind") == "treasure":
+                blocked_screen = "treasure"
+                active_dialog = None
+                ready = False
+                # Reaching treasure selection proves the preceding combat is
+                # over even if Wine mangled its ATTACK acknowledgement. Never
+                # replay that combat word on this non-combat screen or later.
+                input_confirmed = True
+                input_confirm_at = float("inf")
+                dialog_probe_at = float("inf")
+                print(
+                    "Treasure screen detected; automatic dialogue clicks paused.",
+                    flush=True,
+                )
+            elif dialog:
                 dialog_sequence = int(dialog.group("sequence"))
+                kind = dialog.group("kind")
+                active_dialog = kind
+                # READY immediately before a level-up/conversation can
+                # describe the board that is about to transition. Require Lua
+                # to publish a fresh stable READY after the overlay.
+                ready = False
+                input_confirm_at = float("inf")
+                if not args.auto_dialog:
+                    continue
                 if dialog_sequence not in handled_dialogs:
                     handled_dialogs.add(dialog_sequence)
-                    kind = dialog.group("kind")
                     print(
                         f"Advancing Lua-confirmed {kind} dialogue "
                         f"{dialog_sequence}.",
                         flush=True,
                     )
                     controller.advance_dialog(kind, args.delay)
+                    dialog_probe_at = (
+                        time.monotonic() + args.dialog_probe_interval
+                    )
             if "User clicked ATTACK" in line:
                 input_confirmed = True
                 input_confirm_at = float("inf")
