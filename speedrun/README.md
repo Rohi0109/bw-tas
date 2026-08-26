@@ -57,6 +57,20 @@ just tas
 just tas --strategy max-damage
 ```
 
+To enter the current chapter from Deluxe's main menu, leave the unobstructed
+game window on that screen and run:
+
+```bash
+just menu-start
+```
+
+`just menu-reset` performs the WR sequence from an active battle: open the
+battle menu, quit to the main menu, choose Adventure, and click Enter on the
+current chapter. It is intentionally explicit for now. Automatic use must be
+enabled only for a verified `(book, chapter, defeated enemy)` checkpoint after
+Lua confirms that progress was saved; this prevents a fast reset from silently
+replaying a fight or losing a reward.
+
 The Deluxe runner now uses live enemy HP, offense, enabled treasures, physical
 gem tiles, and the game's overkill thresholds. Its default strategy is:
 

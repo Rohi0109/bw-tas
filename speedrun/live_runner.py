@@ -246,6 +246,38 @@ class X11Keyboard:
         self.focus()
         self.click(int(width * x), int(height * y), delay)
 
+    def open_battle_menu(self, delay: float) -> None:
+        """Open Deluxe's in-battle menu from the bottom action strip."""
+        if self.layout != "deluxe":
+            raise RuntimeError("Battle-menu automation is calibrated only for Deluxe")
+        width, height = self._size(self.window)
+        self.focus()
+        self.click(int(width * 0.875), int(height * 0.963), delay)
+
+    def quit_to_main_menu(self, delay: float) -> None:
+        """Click Quit To Main Menu on an already-open Deluxe battle menu."""
+        if self.layout != "deluxe":
+            raise RuntimeError("Main-menu automation is calibrated only for Deluxe")
+        width, height = self._size(self.window)
+        self.focus()
+        self.click(int(width * 0.500), int(height * 0.530), delay)
+
+    def start_adventure(self, delay: float) -> None:
+        """Choose Adventure from Deluxe's main menu."""
+        if self.layout != "deluxe":
+            raise RuntimeError("Adventure automation is calibrated only for Deluxe")
+        width, height = self._size(self.window)
+        self.focus()
+        self.click(int(width * 0.375), int(height * 0.650), delay)
+
+    def enter_chapter(self, delay: float) -> None:
+        """Click Enter on Deluxe's chapter map."""
+        if self.layout != "deluxe":
+            raise RuntimeError("Chapter-map automation is calibrated only for Deluxe")
+        width, height = self._size(self.window)
+        self.focus()
+        self.click(int(width * 0.500), int(height * 0.963), delay)
+
     def play_word(
         self,
         board_text: str,

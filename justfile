@@ -16,6 +16,14 @@ game *args:
 tas *args:
     ./run-deluxe-speedrun-auto.sh {{args}}
 
+# From the Deluxe main menu, enter Adventure and the current chapter.
+menu-start *args:
+    PYTHONPATH=speedrun python3 speedrun/menu_runner.py start {{args}}
+
+# Explicitly run the WR battle-menu reset sequence (not yet route-triggered).
+menu-reset *args:
+    PYTHONPATH=speedrun python3 speedrun/menu_runner.py reset {{args}}
+
 # Launch the experimental source/launcher build.
 source-game *args:
     ./run-native.sh {{args}}
