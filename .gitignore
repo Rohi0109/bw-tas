@@ -1,0 +1,14 @@
+__pycache__/
+*.py[cod]
+*.log
+*.exe
+
+# Local game installations, extracted assets, Wine prefixes, and generated PAKs.
+/runtime/
+/extracted/
+/BookwormAdventuresModding/
+
+# Local captures and archived browser-emulator binaries.
+/image.png
+/web/boxedwine/*.wasm
+/web/boxedwine/*.zip
