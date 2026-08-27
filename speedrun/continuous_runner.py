@@ -43,8 +43,8 @@ TUTORIAL_PLAY_BOARD = "SFAE/PFUN/RJDY/TLIS"
 TREASURE_LOADOUT_AFTER_BOSS = {
     "Circe (Boss)": (0, 2, 3),       # Bow, Golden Fleece, Icarus Sandals
     "Cerberus (Boss)": (0, 3, 6),    # Bow, Icarus Sandals, Heph's Hammer
-    "Minotaur (Boss)": (0, 6, 7),    # Bow, Heph's Hammer, Boots of Theseus
-    "Hydra (Boss)": (5, 6, 7),       # Boots, Arch of Xyzzy, Wooden Parrot
+    "Minotaur (Boss)": (0, 3, 6),    # Bow, Boots of Theseus, Heph's Hammer
+    "Hydra (Boss)": (0, 3, 6),       # Arch, Boots, Wooden Parrot upgrades
 }
 
 
