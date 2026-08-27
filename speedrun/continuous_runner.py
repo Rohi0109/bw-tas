@@ -485,7 +485,9 @@ def main() -> None:
                 if (
                     args.layout == "deluxe"
                     and submitted_state is not None
+                    and submitted_candidate is not None
                     and "(Boss)" in submitted_state.enemy
+                    and submitted_candidate.damage + 0.5 >= submitted_state.hp
                     and not ready
                 ):
                     # Boss epilogues finish at the chapter map.  A transient
