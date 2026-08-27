@@ -289,6 +289,14 @@ class X11Keyboard:
         self.focus()
         self.click(int(width * 0.500), int(height * 0.963), delay)
 
+    def confirm_skip_minigame(self, delay: float) -> None:
+        """Choose Yes when chapter entry offers to skip a mini-game."""
+        if self.layout != "deluxe":
+            raise RuntimeError("Mini-game skip is calibrated only for Deluxe")
+        width, height = self._size(self.window)
+        self.focus()
+        self.click(int(width * 0.415), int(height * 0.683), delay)
+
     def change_user(self, delay: float) -> None:
         """Open Select a User from the Deluxe main-menu welcome panel."""
         if self.layout != "deluxe":

@@ -398,6 +398,7 @@ def main() -> None:
                 if chapter_enter_pending and time.monotonic() >= chapter_enter_at:
                     print("Entering the next chapter from the chapter map.", flush=True)
                     controller.enter_chapter(args.delay)
+                    controller.confirm_skip_minigame(args.delay)
                     chapter_enter_at = time.monotonic() + 2.0
                     dialog_probe_at = time.monotonic() + args.dialog_stall_delay
                     deadline = time.monotonic() + args.timeout
