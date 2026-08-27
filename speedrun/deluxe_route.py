@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from deluxe_optimizer import DeluxeState
+from deluxe_optimizer import DISPLAY_NAME_ALIASES, DeluxeState
 
 
 def normalize_enemy(name: str) -> str:
-    return "".join(character for character in name.casefold() if character.isalnum())
+    normalized = "".join(character for character in name.casefold() if character.isalnum())
+    return DISPLAY_NAME_ALIASES.get(normalized, normalized)
 
 
 # The final combat encounter in each ordinary chapter. SphinxPuzzle is omitted:

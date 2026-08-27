@@ -49,6 +49,12 @@ TREASURE_LOADOUT_AFTER_BOSS = {
 }
 
 
+def treasure_slots_after(enemy: str) -> tuple[int, ...] | None:
+    """Resolve multi-phase boss display names to their treasure route."""
+    route_enemy = "Hydra (Boss)" if enemy.startswith("Hydra (Head ") else enemy
+    return TREASURE_LOADOUT_AFTER_BOSS.get(route_enemy)
+
+
 def sphinx_candidate(
     enemy: str, ranked: list[Candidate]
 ) -> tuple[Candidate | None, str | None]:
@@ -539,7 +545,7 @@ def main() -> None:
                     flush=True,
                 )
                 if args.auto_dialog and submitted_state is not None:
-                    slots = TREASURE_LOADOUT_AFTER_BOSS.get(submitted_state.enemy)
+                    slots = treasure_slots_after(submitted_state.enemy)
                     if slots is not None:
                         print(
                             f"Selecting route treasure slots {slots} after "

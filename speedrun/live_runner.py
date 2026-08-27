@@ -276,10 +276,9 @@ class X11Keyboard:
             raise RuntimeError("Adventure automation is calibrated only for Deluxe")
         width, height = self._size(self.window)
         self.focus()
-        # The Adventure hotspot is the Greek building left of Lex.  The old
-        # (0.375, 0.650) point landed on Lex/the locked book at 800x600 and
-        # could invoke the wrong Lua action after a menu reset.
-        self.click(int(width * 0.300), int(height * 0.550), delay)
+        # The Adventure hotspot is the upper half of the Greek building left
+        # of Lex. Lower points can land on the path and do nothing at 800x600.
+        self.click(int(width * 0.300), int(height * 0.480), delay)
 
     def enter_chapter(self, delay: float) -> None:
         """Click Enter on Deluxe's chapter map."""

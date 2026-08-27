@@ -19,6 +19,13 @@ def state(**overrides):
 
 
 class DeluxeRouteTests(unittest.TestCase):
+    def test_display_name_alias_matches_penultimate_roster_entry(self):
+        enemy_state = state(enemy="Steel Stymphalian")
+        self.assertEqual(
+            post_victory_reset_reason(enemy_state, set()),
+            "after Steel Stymphalian, before boss entrance",
+        )
+
     def test_all_chapter_bosses_use_generic_rule(self):
         self.assertTrue(is_boss_encounter(state(enemy="Polyphemus (Boss)")))
         self.assertTrue(is_boss_encounter(state(enemy="Circe", chapter=4)))

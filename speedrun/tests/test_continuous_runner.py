@@ -5,11 +5,15 @@ from pathlib import Path
 from continuous_runner import (
     DEFEATED_RE, is_initial_play_tutorial, is_unchanged_combat_snapshot,
     read_latest_dialog, read_screen_blocker, read_seed, sphinx_candidate,
+    treasure_slots_after,
 )
 from deluxe_optimizer import Candidate, DeluxeState
 
 
 class ContinuousRunnerTests(unittest.TestCase):
+    def test_hydra_head_uses_hydra_treasure_route(self):
+        self.assertEqual(treasure_slots_after("Hydra (Head 3)"), (0, 3, 6))
+
     def test_lua_enemy_transition_event_captures_defeated_name(self):
         match = DEFEATED_RE.search(
             "AUTOMATION_DEFEATED=Cyclops Warrior|E"
