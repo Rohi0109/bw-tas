@@ -3,12 +3,21 @@ import unittest
 from pathlib import Path
 
 from continuous_runner import (
-    read_latest_dialog, read_screen_blocker, read_seed, sphinx_candidate,
+    is_initial_play_tutorial, read_latest_dialog, read_screen_blocker,
+    read_seed, sphinx_candidate,
 )
 from deluxe_optimizer import Candidate
 
 
 class ContinuousRunnerTests(unittest.TestCase):
+    def test_only_fresh_profile_play_board_triggers_tutorial_override(self):
+        board = "SFAE/PFUN/RJDY/TLIS"
+
+        self.assertTrue(is_initial_play_tutorial(board, "levelup", None, 0))
+        self.assertFalse(is_initial_play_tutorial(board, "conversation", None, 0))
+        self.assertFalse(is_initial_play_tutorial(board, "levelup", None, 1))
+        self.assertFalse(is_initial_play_tutorial("PLAY/AAAA/AAAA/AAAA", "levelup", None, 0))
+
     def test_treasure_screen_is_recovered_as_click_blocker(self):
         with tempfile.TemporaryDirectory() as directory:
             log = Path(directory) / "lua.log"

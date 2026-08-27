@@ -39,6 +39,7 @@ SPHINX_ANSWERS = {
     "Sphinx (Riddle 4 of 5)": "TRUTH",
     "Sphinx (Last Riddle)": "WATER",
 }
+TUTORIAL_PLAY_BOARD = "SFAE/PFUN/RJDY/TLIS"
 
 
 def sphinx_candidate(
@@ -49,6 +50,19 @@ def sphinx_candidate(
     if answer is None:
         return None, None
     return next((candidate for candidate in ranked if candidate.word == answer), None), answer
+
+
+def is_initial_play_tutorial(
+    board: str | None, active_dialog: str | None, state: DeluxeState | None,
+    attacks: int,
+) -> bool:
+    """Recognize only Deluxe's fixed fresh-profile PLAY tutorial board."""
+    return (
+        board == TUTORIAL_PLAY_BOARD
+        and active_dialog == "levelup"
+        and state is None
+        and attacks == 0
+    )
 
 
 def read_seed(log_path: Path) -> tuple[str | None, bool, bool, int | None]:
@@ -185,6 +199,7 @@ def main() -> None:
     input_attempts = 0
     input_confirm_at = float("inf")
     handled_dialogs: set[int] = set()
+    tutorial_play_submitted = False
     reset_encounters: set[tuple[int, int, int, str]] = set()
     dialog_probe_at = (
         time.monotonic() + args.dialog_stall_delay
@@ -354,6 +369,21 @@ def main() -> None:
 
             line = log.readline()
             if not line:
+                if (
+                    not tutorial_play_submitted
+                    and is_initial_play_tutorial(
+                        board, active_dialog, deluxe_state, attacks
+                    )
+                ):
+                    tutorial_play_submitted = True
+                    print("Completing fixed fresh-profile PLAY tutorial.", flush=True)
+                    controller.play_word(
+                        TUTORIAL_PLAY_BOARD, "PLAY", args.delay, args.settle,
+                        (4, 13, 2, 11),
+                    )
+                    deadline = time.monotonic() + args.timeout
+                    time.sleep(args.poll)
+                    continue
                 if (
                     args.layout == "deluxe" and args.auto_dialog and not ready
                     and blocked_screen is None
