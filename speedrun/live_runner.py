@@ -229,7 +229,7 @@ class X11Keyboard:
             return
         self.focus()
         width, height = self._size(self.window)
-        self.click(width // 2, int(height * 0.527), delay)
+        self.click(width // 2, int(height * 0.470), delay)
 
     def advance_dialog(self, kind: str, delay: float) -> None:
         """Click a Lua-confirmed Deluxe dialogue's primary continuation area."""

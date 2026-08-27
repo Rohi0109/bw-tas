@@ -212,6 +212,7 @@ def main() -> None:
     handled_dialogs: set[int] = set()
     tutorial_play_submitted = False
     reset_encounters: set[tuple[int, int, int, str]] = set()
+    rejected_words: set[str] = set()
     dialog_probe_at = (
         time.monotonic() + args.dialog_stall_delay
         if args.layout == "deluxe" and not ready and blocked_screen is None
@@ -306,9 +307,12 @@ def main() -> None:
                         ready = False
                         deadline = time.monotonic() + args.timeout
                         continue
-                    ranked = candidates(
-                        deluxe_state, deluxe_words, metal_words, args.delay
-                    )
+                    ranked = [
+                        candidate for candidate in candidates(
+                            deluxe_state, deluxe_words, metal_words, args.delay
+                        )
+                        if candidate.word not in rejected_words
+                    ]
                     if not ranked:
                         if scrambles >= args.max_scrambles:
                             raise RuntimeError(
@@ -394,8 +398,7 @@ def main() -> None:
                 if chapter_enter_pending and time.monotonic() >= chapter_enter_at:
                     print("Entering the next chapter from the chapter map.", flush=True)
                     controller.enter_chapter(args.delay)
-                    chapter_enter_pending = False
-                    chapter_enter_at = float("inf")
+                    chapter_enter_at = time.monotonic() + 2.0
                     dialog_probe_at = time.monotonic() + args.dialog_stall_delay
                     deadline = time.monotonic() + args.timeout
                 if (
@@ -434,10 +437,25 @@ def main() -> None:
                     and time.monotonic() >= input_confirm_at
                 ):
                     if input_attempts >= args.max_input_attempts:
-                        raise RuntimeError(
-                            f"Game did not acknowledge {submitted_word.upper()} after "
-                            f"{input_attempts} selection attempts"
+                        assert submitted_word is not None
+                        rejected_words.add(submitted_word)
+                        print(
+                            f"Blacklisting unacknowledged word "
+                            f"{submitted_word.upper()} after {input_attempts} attempts; "
+                            "trying the next candidate.",
+                            flush=True,
                         )
+                        controller.dismiss_invalid_word_dialog(args.delay)
+                        submitted_sequence = None
+                        submitted_state = None
+                        submitted_candidate = None
+                        submitted_word = None
+                        submitted_path = None
+                        input_confirmed = True
+                        input_confirm_at = float("inf")
+                        ready = True
+                        ready_at = time.monotonic() + args.ready_delay
+                        continue
                     assert submitted_word is not None and submitted_board is not None
                     input_attempts += 1
                     print(
@@ -576,11 +594,15 @@ def main() -> None:
             match = CHAPTER_RE.search(line)
             if match:
                 chapter = int(match.group("chapter"))
+                chapter_enter_pending = False
+                chapter_enter_at = float("inf")
                 submitted_board = None
                 ready = False
                 print(f"Entered Chapter {chapter}.", flush=True)
             for event in BOARD_EVENT_RE.finditer(line):
                 board = event.group("board")
+                chapter_enter_pending = False
+                chapter_enter_at = float("inf")
                 # A transition also proves that Attack was accepted if Wine
                 # happened to mangle the acknowledgement line in the console.
                 if event.group("kind") == "BOARD" and not input_confirmed:
