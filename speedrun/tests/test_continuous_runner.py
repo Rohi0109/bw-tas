@@ -3,13 +3,21 @@ import unittest
 from pathlib import Path
 
 from continuous_runner import (
-    is_initial_play_tutorial, is_unchanged_combat_snapshot,
+    DEFEATED_RE, is_initial_play_tutorial, is_unchanged_combat_snapshot,
     read_latest_dialog, read_screen_blocker, read_seed, sphinx_candidate,
 )
 from deluxe_optimizer import Candidate, DeluxeState
 
 
 class ContinuousRunnerTests(unittest.TestCase):
+    def test_lua_enemy_transition_event_captures_defeated_name(self):
+        match = DEFEATED_RE.search(
+            "AUTOMATION_DEFEATED=Cyclops Warrior|E"
+        )
+
+        self.assertIsNotNone(match)
+        self.assertEqual(match.group("enemy"), "Cyclops Warrior")
+
     @staticmethod
     def state(sequence, board="ABCD/EFGH/IJKL/MNOP", hp=3):
         return DeluxeState(

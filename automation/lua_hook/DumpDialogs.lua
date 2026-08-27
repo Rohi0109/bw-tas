@@ -1,4 +1,15 @@
 function BattleEngine:AutomationDumpDialogs()
+  local enemy = self.mEnemyPtr
+  if enemy ~= nil and enemy.mName ~= nil then
+    local currentEnemyName = enemy.mName
+    if gAutomationTrackedEnemyName == nil then
+      gAutomationTrackedEnemyName = currentEnemyName
+    elseif currentEnemyName ~= gAutomationTrackedEnemyName then
+      print("AUTOMATION_DEFEATED=" .. gAutomationTrackedEnemyName .. "|E")
+      gAutomationTrackedEnemyName = currentEnemyName
+    end
+  end
+
   local dialogType = "none"
   if self.mInterruptState then
     if self.mNeedsLevelUp or self.mLevelUpData ~= nil then

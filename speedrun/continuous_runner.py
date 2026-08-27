@@ -15,7 +15,7 @@ from deluxe_optimizer import (
     Candidate, DeluxeState, candidates, choose, load_chapter1_hp_map,
     load_metal_words, parse_state, strategy_for_state, validate_chapter1_state,
 )
-from deluxe_route import encounter_key, menu_reset_reason
+from deluxe_route import encounter_key, post_victory_reset_reason
 from menu_runner import MenuTiming, reset_from_battle
 
 
@@ -32,6 +32,7 @@ CHAPTER_RE = re.compile(
 DIALOG_RE = re.compile(
     r"AUTOMATION_DIALOG=(?P<kind>[a-z]+)\|(?P<sequence>\d+)\|E"
 )
+DEFEATED_RE = re.compile(r"AUTOMATION_DEFEATED=(?P<enemy>[^|]+)\|E")
 SPHINX_ANSWERS = {
     "Sphinx (Riddle 1 of 5)": "SKY",
     "Sphinx (Riddle 2 of 5)": "WALL",
@@ -291,27 +292,6 @@ def main() -> None:
                         )
                         submitted_sequence = deluxe_state.sequence
                         ready = False
-                        continue
-                    reset_reason = (
-                        menu_reset_reason(
-                            deluxe_state, submitted_state, reset_encounters
-                        )
-                        if args.auto_menu_reset else None
-                    )
-                    if reset_reason is not None:
-                        reset_encounters.add(encounter_key(deluxe_state))
-                        print(
-                            f"State {deluxe_state.sequence}: menu reset "
-                            f"{reset_reason}.",
-                            flush=True,
-                        )
-                        reset_from_battle(controller, MenuTiming())
-                        submitted_board = board
-                        submitted_sequence = deluxe_state.sequence
-                        input_confirmed = True
-                        input_confirm_at = float("inf")
-                        ready = False
-                        deadline = time.monotonic() + args.timeout
                         continue
                     ranked = [
                         candidate for candidate in candidates(
@@ -603,6 +583,27 @@ def main() -> None:
                     raise RuntimeError(
                         f"Stopped after the safety limit of {args.max_attacks} attacks"
                     )
+            defeated_event = DEFEATED_RE.search(line)
+            if defeated_event and args.auto_menu_reset:
+                reset_reason = post_victory_reset_reason(
+                    submitted_state, reset_encounters
+                )
+                if reset_reason is not None:
+                    assert submitted_state is not None
+                    reset_encounters.add(encounter_key(submitted_state))
+                    print(
+                        f"Lua confirmed {defeated_event.group('enemy')} defeated; "
+                        f"menu reset {reset_reason}.",
+                        flush=True,
+                    )
+                    reset_from_battle(controller, MenuTiming())
+                    submitted_sequence = (
+                        deluxe_state.sequence if deluxe_state is not None else None
+                    )
+                    input_confirmed = True
+                    input_confirm_at = float("inf")
+                    ready = False
+                    deadline = time.monotonic() + args.timeout
             if args.layout == "deluxe":
                 state_buffer = (state_buffer + "\n" + line)[-32768:]
             new_state = parse_state(state_buffer) if args.layout == "deluxe" else None

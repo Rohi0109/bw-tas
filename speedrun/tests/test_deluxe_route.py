@@ -1,7 +1,10 @@
 import unittest
 
 from deluxe_optimizer import DeluxeState
-from deluxe_route import encounter_key, is_boss_encounter, menu_reset_reason
+from deluxe_route import (
+    encounter_key, is_boss_encounter, menu_reset_reason,
+    post_victory_reset_reason,
+)
 
 
 def state(**overrides):
@@ -26,18 +29,32 @@ class DeluxeRouteTests(unittest.TestCase):
             state(book=2, chapter=4, enemy="Sphinx (Riddle 1 of 5)")
         ))
 
-    def test_midchapter_note_triggers_on_next_enemy(self):
-        previous = state(enemy="Cyclops Herder", stage=3)
-        current = state(enemy="Angry Ram", stage=4)
+    def test_midchapter_note_triggers_immediately_after_defeat(self):
+        defeated = state(enemy="Cyclops Herder", stage=3)
 
-        self.assertEqual(menu_reset_reason(current, previous, set()),
-                         "after Cyclops Herder")
+        self.assertEqual(
+            post_victory_reset_reason(defeated, set()),
+            "after route checkpoint Cyclops Herder",
+        )
+
+    def test_predecessor_triggers_before_boss_ready(self):
+        defeated = state(enemy="Cyclops Warrior", stage=5)
+
+        self.assertEqual(
+            post_victory_reset_reason(defeated, set()),
+            "after Cyclops Warrior, before boss entrance",
+        )
+
+    def test_boss_ready_no_longer_triggers_reset(self):
+        boss = state(enemy="Polyphemus (Boss)", stage=6)
+
+        self.assertIsNone(menu_reset_reason(boss, None, set()))
 
     def test_encounter_resets_only_once(self):
-        boss = state(enemy="Polyphemus (Boss)", stage=6)
-        completed = {encounter_key(boss)}
+        defeated = state(enemy="Cyclops Warrior", stage=5)
+        completed = {encounter_key(defeated)}
 
-        self.assertIsNone(menu_reset_reason(boss, None, completed))
+        self.assertIsNone(post_victory_reset_reason(defeated, completed))
 
 
 if __name__ == "__main__":

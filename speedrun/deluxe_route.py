@@ -21,6 +21,19 @@ FINAL_ENCOUNTERS = frozenset({
     "fallenwizardhero", "themummy", "dracula", "codex",
 })
 
+# Penultimate roster entries from bwakit/game/data/enemy_rosters.txt.  Reset
+# after these enemies are confirmed defeated, before the boss entrance begins.
+# Hydra and Codex chapters contain no ordinary predecessor encounter.
+PRE_BOSS_ENCOUNTERS = frozenset({
+    "alexander", "cyclopswarrior", "scylla", "enchantedserpent", "orthrus",
+    "harpywitch", "stymphalianbirdsteel", "naiad", "greaterbasilisk",
+    "firebreather", "thief91011", "embalmedguardian", "swashbuckler",
+    "bullelephant", "miragegoat", "flyingarmor", "airspirit", "necromancer",
+    "hatefulhousemaid", "plaguedpork", "arnoldstein", "werehawk", "mrblobs",
+    "disturbedskeleton", "fallenhuntresshero", "unlivingpyromancer",
+    "vampirecultist",
+})
+
 
 # Exceptional resets from the WR notes. These happen after the named enemy;
 # the normal boss-entry rule below covers every repeated "exit before boss"
@@ -62,14 +75,20 @@ def menu_reset_reason(
     key = encounter_key(state)
     if key in already_reset:
         return None
-    if previous_enemy is not None and previous_enemy.enemy != state.enemy:
-        previous_key = (
-            previous_enemy.book,
-            previous_enemy.chapter,
-            normalize_enemy(previous_enemy.enemy),
-        )
-        if previous_key in RESET_AFTER:
-            return f"after {previous_enemy.enemy}"
-    if is_boss_encounter(state):
-        return f"before boss {state.enemy}"
+    return None
+
+
+def post_victory_reset_reason(
+    defeated: DeluxeState | None,
+    already_reset: set[tuple[int, int, int, str]],
+) -> str | None:
+    """Return a reset reason immediately after a defeated encounter."""
+    if defeated is None or encounter_key(defeated) in already_reset:
+        return None
+    enemy = normalize_enemy(defeated.enemy)
+    special_key = (defeated.book, defeated.chapter, enemy)
+    if special_key in RESET_AFTER:
+        return f"after route checkpoint {defeated.enemy}"
+    if enemy in PRE_BOSS_ENCOUNTERS:
+        return f"after {defeated.enemy}, before boss entrance"
     return None
