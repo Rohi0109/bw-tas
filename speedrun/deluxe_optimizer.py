@@ -55,6 +55,16 @@ SUPPORTED_DAMAGE_TREASURES = {
     "hand of hercules", "wooden parrot",
 }
 
+BOOK1_MIN_KILL_ENEMIES = frozenset({
+    "trojanspearman", "trojanwarrior", "warhound", "trojancaptain",
+    "alexander", "polydamas", "mountaingoat", "ewe", "cyclopsherder",
+    "angryram", "cyclopswarrior", "polyphemus", "seaserpent", "siren",
+    "seawitch", "seaelemental", "kraken", "scylla", "charybdis",
+    "enchantedhound", "enchantedeagle", "enchantedlion", "enchantedram",
+    "enchantedscorpion", "enchantedserpent", "circe", "shade", "specter",
+    "banshee", "phantom", "manes", "orthrus", "cerberus",
+})
+
 # Shipped roster identifiers and localized/live display text are not always
 # the same name. Keep exceptional mappings explicit and auditable; structural
 # decorations such as "(Boss)" and Hydra phases are handled below.
@@ -359,8 +369,16 @@ def choose(cands: list[Candidate], strategy: str) -> tuple[Candidate, dict[str, 
     return selected, alternatives
 
 
-def strategy_for_state(state: DeluxeState, requested: str) -> str:
+def strategy_for_state(
+    state: DeluxeState, requested: str, chapter_override: int | None = None
+) -> str:
     """Resolve the route strategy from the current chapter's live mechanics."""
     if requested != "chapter-aware":
         return requested
+    chapter = state.chapter if state.chapter >= 1 else chapter_override
+    if state.book == 1:
+        if chapter is not None and 1 <= chapter <= 5:
+            return "shortest-lethal"
+        if chapter is None and _roster_name(state.enemy) in BOOK1_MIN_KILL_ENEMIES:
+            return "shortest-lethal"
     return "overkill-tier" if state.overkill_thresholds else "max-damage"

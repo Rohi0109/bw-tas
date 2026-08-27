@@ -189,13 +189,38 @@ class DeluxeOptimizerTests(unittest.TestCase):
         self.assertEqual(selected.word, "AAAAAAAAAAAA")
         self.assertEqual(alternatives["shortest_lethal"].word, "AAA")
 
-    def test_chapter_aware_uses_max_damage_before_gems(self):
-        current = state(overkill_thresholds=())
+    def test_chapter_aware_uses_shortest_lethal_for_book1_chapters1_to5(self):
+        for chapter in range(1, 6):
+            current = state(book=1, chapter=chapter, overkill_thresholds=())
+
+            self.assertEqual(
+                strategy_for_state(current, "chapter-aware"), "shortest-lethal"
+            )
+
+    def test_chapter_aware_uses_max_damage_for_other_gem_locked_state(self):
+        current = state(book=2, chapter=1, overkill_thresholds=())
 
         self.assertEqual(strategy_for_state(current, "chapter-aware"), "max-damage")
 
+    def test_chapter_event_fills_missing_snapshot_chapter(self):
+        current = state(book=1, chapter=-1, overkill_thresholds=())
+
+        self.assertEqual(
+            strategy_for_state(current, "chapter-aware", 1), "shortest-lethal"
+        )
+
+    def test_early_book1_roster_fills_completely_missing_chapter(self):
+        current = state(
+            book=1, chapter=-1, enemy="Polydamas (Boss)",
+            overkill_thresholds=(),
+        )
+
+        self.assertEqual(
+            strategy_for_state(current, "chapter-aware"), "shortest-lethal"
+        )
+
     def test_chapter_aware_uses_overkill_tiers_after_gems_unlock(self):
-        current = state(overkill_thresholds=(1.95, 3.0, 5.0))
+        current = state(book=1, chapter=6, overkill_thresholds=(1.95, 3.0, 5.0))
 
         self.assertEqual(
             strategy_for_state(current, "chapter-aware"), "overkill-tier"

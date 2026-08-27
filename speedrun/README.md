@@ -68,8 +68,11 @@ and does not duplicate the bonus in Python. Hand of Hercules and Heph's Hammer
 are applied separately because they modify the completed attack rather than an
 individual tile.
 
-- Before gems unlock: choose the maximum-damage word.
-- After gems unlock: reach the best available overkill gem tier, then choose
+- Book 1, Chapters 1–5: choose the fastest lethal word to avoid unnecessary
+  long-word animation time.
+- In other gem-locked states: choose the maximum-damage word.
+- From Book 1, Chapter 6 onward when gems are enabled: reach the best available
+  overkill gem tier, then choose
   the fastest word within that tier.
 - If no word is lethal: choose the best predicted damage per second.
 

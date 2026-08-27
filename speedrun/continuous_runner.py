@@ -262,7 +262,7 @@ def main() -> None:
                         deadline = time.monotonic() + args.timeout
                         continue
                     effective_strategy = strategy_for_state(
-                        deluxe_state, args.strategy
+                        deluxe_state, args.strategy, chapter
                     )
                     selected, alternatives = choose(ranked, effective_strategy)
                     riddle_candidate, riddle_answer = sphinx_candidate(
