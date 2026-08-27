@@ -42,8 +42,8 @@ SPHINX_ANSWERS = {
 TUTORIAL_PLAY_BOARD = "SFAE/PFUN/RJDY/TLIS"
 TREASURE_LOADOUT_AFTER_BOSS = {
     "Circe (Boss)": (0, 2, 3),       # Bow, Golden Fleece, Icarus Sandals
-    "Cerberus (Boss)": (0, 2, 3),    # Base route: Bow, Fleece, Icarus Sandals
-    "Minotaur (Boss)": (0, 4, 5),    # Bow, Heph's Hammer, Boots of Theseus
+    "Cerberus (Boss)": (0, 3, 6),    # Bow, Icarus Sandals, Heph's Hammer
+    "Minotaur (Boss)": (0, 6, 7),    # Bow, Heph's Hammer, Boots of Theseus
     "Hydra (Boss)": (5, 6, 7),       # Boots, Arch of Xyzzy, Wooden Parrot
 }
 
@@ -404,6 +404,7 @@ def main() -> None:
                 if chapter_enter_pending and time.monotonic() >= chapter_enter_at:
                     print("Entering the next chapter from the chapter map.", flush=True)
                     controller.enter_chapter(args.delay)
+                    controller.confirm_skip_minigame(args.delay)
                     chapter_enter_at = time.monotonic() + 2.0
                     dialog_probe_at = time.monotonic() + args.dialog_stall_delay
                     deadline = time.monotonic() + args.timeout
@@ -542,6 +543,10 @@ def main() -> None:
             elif dialog and dialog.group("kind") == "treasure":
                 blocked_screen = "treasure"
                 active_dialog = None
+                # Treasure Continue transitions directly into the next chapter.
+                # A boss-epilogue map click must never race treasure selection.
+                chapter_enter_pending = False
+                chapter_enter_at = float("inf")
                 ready = False
                 # Reaching treasure selection proves the preceding combat is
                 # over even if Wine mangled its ATTACK acknowledgement. Never
