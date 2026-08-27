@@ -3,13 +3,33 @@ import unittest
 from pathlib import Path
 
 from continuous_runner import (
-    is_initial_play_tutorial, read_latest_dialog, read_screen_blocker,
-    read_seed, sphinx_candidate,
+    is_initial_play_tutorial, is_unchanged_combat_snapshot,
+    read_latest_dialog, read_screen_blocker, read_seed, sphinx_candidate,
 )
-from deluxe_optimizer import Candidate
+from deluxe_optimizer import Candidate, DeluxeState
 
 
 class ContinuousRunnerTests(unittest.TestCase):
+    @staticmethod
+    def state(sequence, board="ABCD/EFGH/IJKL/MNOP", hp=3):
+        return DeluxeState(
+            sequence, board, ("none",) * 16, (0.0,) * 16,
+            1, 2, 3, "Cyclops", hp, 5, 0, frozenset(), (),
+        )
+
+    def test_sequence_churn_does_not_replay_unchanged_combat(self):
+        submitted = self.state(10)
+
+        self.assertTrue(is_unchanged_combat_snapshot(self.state(11), submitted))
+        self.assertFalse(
+            is_unchanged_combat_snapshot(self.state(11, hp=2.5), submitted)
+        )
+        self.assertFalse(
+            is_unchanged_combat_snapshot(
+                self.state(11, board="BCDE/FGHI/JKLM/NOPQ"), submitted
+            )
+        )
+
     def test_only_fresh_profile_play_board_triggers_tutorial_override(self):
         board = "SFAE/PFUN/RJDY/TLIS"
 

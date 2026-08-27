@@ -64,6 +64,18 @@ def is_initial_play_tutorial(
     )
 
 
+def is_unchanged_combat_snapshot(
+    current: DeluxeState, submitted: DeluxeState | None
+) -> bool:
+    """Reject READY sequence churn that does not represent a new turn."""
+    return (
+        submitted is not None
+        and current.enemy == submitted.enemy
+        and current.hp == submitted.hp
+        and current.board == submitted.board
+    )
+
+
 def read_seed(log_path: Path) -> tuple[str | None, bool, bool, int | None]:
     """Recover only the latest board/combat state, never replay every old turn."""
     board = None
@@ -264,6 +276,15 @@ def main() -> None:
                                 flush=True,
                             )
                             continue
+                    if is_unchanged_combat_snapshot(deluxe_state, submitted_state):
+                        print(
+                            f"Ignoring unchanged READY snapshot "
+                            f"{deluxe_state.sequence} for {deluxe_state.enemy}.",
+                            flush=True,
+                        )
+                        submitted_sequence = deluxe_state.sequence
+                        ready = False
+                        continue
                     reset_reason = (
                         menu_reset_reason(
                             deluxe_state, submitted_state, reset_encounters
