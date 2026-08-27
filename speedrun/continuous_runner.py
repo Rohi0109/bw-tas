@@ -40,6 +40,12 @@ SPHINX_ANSWERS = {
     "Sphinx (Last Riddle)": "WATER",
 }
 TUTORIAL_PLAY_BOARD = "SFAE/PFUN/RJDY/TLIS"
+TREASURE_LOADOUT_AFTER_BOSS = {
+    "Circe (Boss)": (0, 2, 3),       # Bow, Golden Fleece, Icarus Sandals
+    "Cerberus (Boss)": (0, 3, 4),    # Bow, Icarus Sandals, Heph's Hammer
+    "Minotaur (Boss)": (0, 4, 5),    # Bow, Heph's Hammer, Boots of Theseus
+    "Hydra (Boss)": (5, 6, 7),       # Boots, Arch of Xyzzy, Wooden Parrot
+}
 
 
 def sphinx_candidate(
@@ -548,6 +554,15 @@ def main() -> None:
                     "Treasure screen detected; automatic dialogue clicks paused.",
                     flush=True,
                 )
+                if args.auto_dialog and submitted_state is not None:
+                    slots = TREASURE_LOADOUT_AFTER_BOSS.get(submitted_state.enemy)
+                    if slots is not None:
+                        print(
+                            f"Selecting route treasure slots {slots} after "
+                            f"{submitted_state.enemy}.",
+                            flush=True,
+                        )
+                        controller.select_treasures(slots, args.delay)
             elif dialog:
                 dialog_sequence = int(dialog.group("sequence"))
                 kind = dialog.group("kind")

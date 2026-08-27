@@ -297,6 +297,23 @@ class X11Keyboard:
         self.focus()
         self.click(int(width * 0.415), int(height * 0.683), delay)
 
+    def select_treasures(self, slots: tuple[int, ...], delay: float) -> None:
+        """Select zero-based Deluxe treasure-grid slots and continue."""
+        if self.layout != "deluxe":
+            raise RuntimeError("Treasure selection is calibrated only for Deluxe")
+        width, height = self._size(self.window)
+        columns = (0.243, 0.330, 0.414, 0.499, 0.583, 0.668, 0.751)
+        rows = (0.172, 0.342, 0.512, 0.682)
+        self.focus()
+        for slot in slots:
+            column, row = divmod(slot, 4)
+            if column >= len(columns):
+                raise RuntimeError(f"Treasure slot {slot} is outside the calibrated grid")
+            self.click(
+                int(width * columns[column]), int(height * rows[row]), delay
+            )
+        self.click(int(width * 0.500), int(height * 0.963), delay)
+
     def change_user(self, delay: float) -> None:
         """Open Select a User from the Deluxe main-menu welcome panel."""
         if self.layout != "deluxe":
