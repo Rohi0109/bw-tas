@@ -76,6 +76,12 @@ selected by a verified `(book, chapter, defeated enemy)` checkpoint after Lua
 confirms that progress was saved; this prevents a fast reset from silently
 replaying a fight, losing a reward, or clicking Attack when no map appeared.
 
+The continuous Deluxe TAS now applies the direct reset automatically once per
+encounter. Every detected boss is reset on its first READY state; exceptional
+mid-chapter resets from the WR notes are keyed by `(book, chapter, defeated
+enemy)`. Re-entering the same encounter is recorded so it cannot create a reset
+loop. Disable route resets for comparison with `--no-auto-menu-reset`.
+
 The Deluxe runner now uses live enemy HP, offense, enabled treasures, physical
 gem tiles, and the game's overkill thresholds. Its default strategy is:
 

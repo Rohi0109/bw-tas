@@ -15,6 +15,8 @@ from deluxe_optimizer import (
     Candidate, DeluxeState, candidates, choose, load_chapter1_hp_map,
     load_metal_words, parse_state, validate_chapter1_state,
 )
+from deluxe_route import encounter_key, menu_reset_reason
+from menu_runner import MenuTiming, reset_from_battle
 
 
 BOARD_PREFIX = "AUTOMATION_BOARD="
@@ -129,6 +131,10 @@ def main() -> None:
         help="advance supported Lua-confirmed dialogues (default: enabled)",
     )
     parser.add_argument(
+        "--auto-menu-reset", action=argparse.BooleanOptionalAction, default=True,
+        help="perform verified boss and route-note menu resets (default: enabled)",
+    )
+    parser.add_argument(
         "--dialog-stall-delay", type=float, default=2.5,
         help="probe a dialogue after BOARD remains non-ready for this many seconds",
     )
@@ -177,6 +183,7 @@ def main() -> None:
     input_attempts = 0
     input_confirm_at = float("inf")
     handled_dialogs: set[int] = set()
+    reset_encounters: set[tuple[int, int, int, str]] = set()
     dialog_probe_at = (
         time.monotonic() + args.dialog_stall_delay
         if args.layout == "deluxe" and not ready and blocked_screen is None
@@ -239,6 +246,27 @@ def main() -> None:
                                 flush=True,
                             )
                             continue
+                    reset_reason = (
+                        menu_reset_reason(
+                            deluxe_state, submitted_state, reset_encounters
+                        )
+                        if args.auto_menu_reset else None
+                    )
+                    if reset_reason is not None:
+                        reset_encounters.add(encounter_key(deluxe_state))
+                        print(
+                            f"State {deluxe_state.sequence}: menu reset "
+                            f"{reset_reason}.",
+                            flush=True,
+                        )
+                        reset_from_battle(controller, MenuTiming())
+                        submitted_board = board
+                        submitted_sequence = deluxe_state.sequence
+                        input_confirmed = True
+                        input_confirm_at = float("inf")
+                        ready = False
+                        deadline = time.monotonic() + args.timeout
+                        continue
                     ranked = candidates(
                         deluxe_state, deluxe_words, metal_words, args.delay
                     )
