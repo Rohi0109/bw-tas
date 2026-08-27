@@ -2,7 +2,8 @@ import unittest
 
 from deluxe_optimizer import (
     DeluxeState, candidates, ceil_quarter, choose, damage_for,
-    load_chapter1_hp_map, parse_state, validate_chapter1_state,
+    load_chapter1_hp_map, parse_state, strategy_for_state,
+    validate_chapter1_state,
 )
 
 
@@ -187,6 +188,48 @@ class DeluxeOptimizerTests(unittest.TestCase):
         selected, alternatives = choose(ranked, "overkill-tier")
         self.assertEqual(selected.word, "AAAAAAAAAAAA")
         self.assertEqual(alternatives["shortest_lethal"].word, "AAA")
+
+    def test_chapter_aware_uses_shortest_lethal_for_book1_chapters1_to5(self):
+        for chapter in range(1, 6):
+            current = state(book=1, chapter=chapter, overkill_thresholds=())
+
+            self.assertEqual(
+                strategy_for_state(current, "chapter-aware"), "shortest-lethal"
+            )
+
+    def test_chapter_aware_uses_max_damage_for_other_gem_locked_state(self):
+        current = state(book=2, chapter=1, overkill_thresholds=())
+
+        self.assertEqual(strategy_for_state(current, "chapter-aware"), "max-damage")
+
+    def test_chapter_event_fills_missing_snapshot_chapter(self):
+        current = state(book=1, chapter=-1, overkill_thresholds=())
+
+        self.assertEqual(
+            strategy_for_state(current, "chapter-aware", 1), "shortest-lethal"
+        )
+
+    def test_early_book1_roster_fills_completely_missing_chapter(self):
+        current = state(
+            book=1, chapter=-1, enemy="Polydamas (Boss)",
+            overkill_thresholds=(),
+        )
+
+        self.assertEqual(
+            strategy_for_state(current, "chapter-aware"), "shortest-lethal"
+        )
+
+    def test_chapter_aware_uses_overkill_tiers_after_gems_unlock(self):
+        current = state(book=1, chapter=6, overkill_thresholds=(1.95, 3.0, 5.0))
+
+        self.assertEqual(
+            strategy_for_state(current, "chapter-aware"), "overkill-tier"
+        )
+
+    def test_explicit_strategy_is_not_overridden(self):
+        current = state(overkill_thresholds=(1.95, 3.0, 5.0))
+
+        self.assertEqual(strategy_for_state(current, "max-damage"), "max-damage")
 
     def test_chapter1_hp_map_does_not_shift_after_hydra(self):
         hp = load_chapter1_hp_map()

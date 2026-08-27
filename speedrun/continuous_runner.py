@@ -13,7 +13,7 @@ from pathlib import Path
 from live_runner import X11Keyboard, best_word
 from deluxe_optimizer import (
     Candidate, DeluxeState, candidates, choose, load_chapter1_hp_map,
-    load_metal_words, parse_state, validate_chapter1_state,
+    load_metal_words, parse_state, strategy_for_state, validate_chapter1_state,
 )
 from deluxe_route import encounter_key, menu_reset_reason
 from menu_runner import MenuTiming, reset_from_battle
@@ -105,8 +105,10 @@ def main() -> None:
     parser.add_argument("--layout", choices=("web", "deluxe"), default="web")
     parser.add_argument(
         "--strategy",
-        choices=("overkill-tier", "shortest-lethal", "max-damage"),
-        default="overkill-tier",
+        choices=(
+            "chapter-aware", "overkill-tier", "shortest-lethal", "max-damage",
+        ),
+        default="chapter-aware",
     )
     parser.add_argument(
         "--telemetry", type=Path,
@@ -287,7 +289,10 @@ def main() -> None:
                         ready = False
                         deadline = time.monotonic() + args.timeout
                         continue
-                    selected, alternatives = choose(ranked, args.strategy)
+                    effective_strategy = strategy_for_state(
+                        deluxe_state, args.strategy, chapter
+                    )
+                    selected, alternatives = choose(ranked, effective_strategy)
                     riddle_candidate, riddle_answer = sphinx_candidate(
                         deluxe_state.enemy, ranked
                     )
@@ -318,6 +323,7 @@ def main() -> None:
                     print(
                         f"  chose {word} damage={damage:.2f} "
                         f"overkill={selected.overkill:.2f} tier={selected.tier} "
+                        f"strategy={effective_strategy} "
                         f"time={selected.predicted_time:.2f}s; "
                         f"shortest={shortest.word if shortest else 'none'}; "
                         f"max={maximum.word}",
