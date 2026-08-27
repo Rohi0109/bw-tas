@@ -220,6 +220,15 @@ class X11Keyboard:
         width, height = self._size(self.window)
         self.click(int(width * 0.19), int(height * 0.963), delay)
 
+    def use_powerup_potion(self, delay: float) -> None:
+        """Click Deluxe's green Power-Up Potion bottle."""
+        if self.layout != "deluxe":
+            raise RuntimeError("Power-Up Potion automation is calibrated only for Deluxe")
+        self.focus()
+        time.sleep(0.2)
+        width, height = self._size(self.window)
+        self.click(int(width * 0.18), int(height * 0.57), delay)
+
     def dismiss_invalid_word_dialog(self, delay: float) -> None:
         """Dismiss Deluxe's centered invalid-word dialog, if it is present.
 

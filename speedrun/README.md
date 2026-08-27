@@ -84,13 +84,15 @@ attack limit.
 
 #### Power-Up Potion optimization plan (highest priority)
 
-1. Emit the live power-up potion inventory and active
-   `DamageMultiplierEffect` state. Deluxe's `AttackItem` applies a next-attack
-   multiplier (described by the shipped game as x2); do not infer availability
-   merely from `AllowItems`.
-2. Add potion activation to the controller and wait for Lua-confirmed item
-   activation and board readiness before selecting the word.
-3. Compare attack-now against potion-then-attack using enemy HP, predicted word
+1. **Implemented:** emit live Power-Up Potion inventory and active
+   `DamageMultiplierEffect` state. Shipped `AttackItem` bytecode creates a
+   `1.25x` offensive multiplier; availability comes from the live attack-item
+   slot rather than `AllowItems`.
+2. **Implemented:** click the green potion only when a normal attack is
+   nonlethal but its `1.25x` result is lethal, then wait for a new Lua-confirmed
+   READY snapshot before selecting the word. Disable with `--no-auto-powerup`.
+3. Expand the comparison beyond the safe one-turn breakpoint using enemy HP,
+   predicted word
    damage, and the potion's click/effect animation cost. Prefer potion use when
    it crosses a breakpoint that removes an attack or another long animation.
 4. Treat potions as a finite route-wide resource. Use run telemetry to assign

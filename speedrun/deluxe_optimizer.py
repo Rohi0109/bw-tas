@@ -29,6 +29,10 @@ POWERS_RE = re.compile(
     r"(?P<value>-?\d+(?:\.\d+)?(?:,-?\d+(?:\.\d+)?){3})\|E"
 )
 MODS_RE = re.compile(r"AUTOMATION_MODS=(?P<seq>\d+)\|(?P<value>[^|]+)\|E")
+ITEMS_RE = re.compile(
+    r"AUTOMATION_ITEMS=(?P<seq>\d+)\|(?P<powerups>\d+)\|"
+    r"(?P<multiplier>-?\d+(?:\.\d+)?)\|E"
+)
 OVERKILL_RE = re.compile(
     r"AUTOMATION_OVERKILL=(?P<seq>\d+)\|"
     r"(?P<value>none|-?\d+(?:\.\d+)?(?:,-?\d+(?:\.\d+)?)*)\|E"
@@ -49,6 +53,7 @@ DAMAGE_BY_LENGTH = {
 GEM_TIER_NAMES = (
     "amethyst", "sapphire", "emerald", "garnet", "ruby", "crystal", "diamond"
 )
+POWERUP_MULTIPLIER = 1.25
 
 SUPPORTED_DAMAGE_TREASURES = {
     "artemis bow", "arch of xyzzy", "heph's hammer",
@@ -158,6 +163,8 @@ class DeluxeState:
     offense: float
     treasures: frozenset[str]
     overkill_thresholds: tuple[float, ...]
+    powerup_potions: int = 0
+    attack_multiplier: float = 1.0
 
 
 @dataclass(frozen=True)
@@ -186,6 +193,7 @@ def parse_state(text: str) -> DeluxeState | None:
         powers = {int(m.group("row")): m for m in POWERS_RE.finditer(text) if int(m.group("seq")) == sequence}
         mods = [m for m in MODS_RE.finditer(text) if int(m.group("seq")) == sequence]
         overkills = [m for m in OVERKILL_RE.finditer(text) if int(m.group("seq")) == sequence]
+        items = [m for m in ITEMS_RE.finditer(text) if int(m.group("seq")) == sequence]
         if contexts and enemies and healths and len(letters) == len(gems) == len(powers) == 4 and mods and overkills:
             break
     else:
@@ -219,6 +227,8 @@ def parse_state(text: str) -> DeluxeState | None:
         overkill_thresholds=tuple(sorted(
             float(value) for value in overkills[-1].group("value").split(",")
         )) if overkills[-1].group("value") != "none" else (),
+        powerup_potions=int(items[-1].group("powerups")) if items else 0,
+        attack_multiplier=float(items[-1].group("multiplier")) if items else 1.0,
     )
 
 
@@ -284,7 +294,30 @@ def damage_for(
         damage += 1.0
     elif "heph's hammer" in state.treasures:
         damage += 0.5
+    damage *= state.attack_multiplier
     return ceil_quarter(damage)
+
+
+def powerup_lethal_candidate(cands: list[Candidate]) -> Candidate | None:
+    """Return the fastest candidate made lethal by one normal attack potion."""
+    if any(candidate.lethal for candidate in cands):
+        return None
+    powered = []
+    for candidate in cands:
+        hp = candidate.damage - candidate.overkill
+        damage = ceil_quarter(candidate.damage * POWERUP_MULTIPLIER)
+        if damage + 1e-9 < hp:
+            continue
+        powered.append(Candidate(
+            candidate.word, candidate.path, damage, damage - hp,
+            overkill_tier(damage - hp, ()), True,
+            candidate.predicted_time, candidate.gem_count,
+        ))
+    return min(
+        powered,
+        key=lambda c: (c.predicted_time, len(c.word), -c.damage, c.word),
+        default=None,
+    )
 
 
 def overkill_tier(overkill: float, thresholds: tuple[float, ...]) -> str | None:

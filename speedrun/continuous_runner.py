@@ -13,7 +13,8 @@ from pathlib import Path
 from live_runner import X11Keyboard, best_word
 from deluxe_optimizer import (
     Candidate, DeluxeState, candidates, choose, load_chapter1_hp_map,
-    load_metal_words, parse_state, validate_chapter1_state,
+    load_metal_words, parse_state, powerup_lethal_candidate,
+    validate_chapter1_state,
 )
 
 
@@ -127,6 +128,10 @@ def main() -> None:
     parser.add_argument(
         "--auto-dialog", action=argparse.BooleanOptionalAction, default=True,
         help="advance supported Lua-confirmed dialogues (default: enabled)",
+    )
+    parser.add_argument(
+        "--auto-powerup", action=argparse.BooleanOptionalAction, default=True,
+        help="use a Power-Up Potion when it makes a nonlethal attack lethal",
     )
     parser.add_argument(
         "--dialog-stall-delay", type=float, default=2.5,
@@ -259,6 +264,28 @@ def main() -> None:
                         ready = False
                         deadline = time.monotonic() + args.timeout
                         continue
+                    powered = (
+                        powerup_lethal_candidate(ranked)
+                        if args.auto_powerup
+                        and deluxe_state.powerup_potions > 0
+                        and deluxe_state.attack_multiplier <= 1.0
+                        else None
+                    )
+                    if powered is not None:
+                        print(
+                            f"State {deluxe_state.sequence}: using Power-Up Potion "
+                            f"to make {powered.word} lethal "
+                            f"({powered.damage:.2f} projected damage vs "
+                            f"{deluxe_state.hp:g} HP; "
+                            f"{deluxe_state.powerup_potions} available).",
+                            flush=True,
+                        )
+                        controller.use_powerup_potion(args.delay)
+                        submitted_board = board
+                        submitted_sequence = deluxe_state.sequence
+                        ready = False
+                        deadline = time.monotonic() + args.timeout
+                        continue
                     selected, alternatives = choose(ranked, args.strategy)
                     riddle_candidate, riddle_answer = sphinx_candidate(
                         deluxe_state.enemy, ranked
@@ -281,7 +308,9 @@ def main() -> None:
                     print(
                         f"State {deluxe_state.sequence}: {deluxe_state.enemy} "
                         f"HP {deluxe_state.hp:g}/{deluxe_state.max_hp:g}; "
-                        f"treasures={','.join(sorted(deluxe_state.treasures)) or 'none'}",
+                        f"treasures={','.join(sorted(deluxe_state.treasures)) or 'none'}; "
+                        f"powerups={deluxe_state.powerup_potions}; "
+                        f"attack_multiplier={deluxe_state.attack_multiplier:g}",
                         flush=True,
                     )
                     warning = validate_chapter1_state(deluxe_state, chapter1_hp)

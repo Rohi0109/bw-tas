@@ -2,7 +2,8 @@ import unittest
 
 from deluxe_optimizer import (
     DeluxeState, candidates, ceil_quarter, choose, damage_for,
-    load_chapter1_hp_map, parse_state, validate_chapter1_state,
+    load_chapter1_hp_map, parse_state, powerup_lethal_candidate,
+    validate_chapter1_state,
 )
 
 
@@ -131,6 +132,7 @@ class DeluxeOptimizerTests(unittest.TestCase):
             line += f"AUTOMATION_GEMS=7|{row}|n,n,n,n|E\n"
             line += f"AUTOMATION_POWERS=7|{row}|0,0,0,0|E\n"
         line += "AUTOMATION_MODS=7|Artemis Bow|E\n"
+        line += "AUTOMATION_ITEMS=7|3|1.25|E\n"
         line += "AUTOMATION_OVERKILL=7|1.95,3,5,8,11,15,20|E\n"
         line += "AUTOMATION_READY_SEQ=7|E\n"
         parsed = parse_state(line)
@@ -138,6 +140,8 @@ class DeluxeOptimizerTests(unittest.TestCase):
         self.assertEqual(parsed.sequence, 7)
         self.assertEqual(parsed.enemy, "Trojan Warrior")
         self.assertEqual(parsed.treasures, frozenset({"artemis bow"}))
+        self.assertEqual(parsed.powerup_potions, 3)
+        self.assertEqual(parsed.attack_multiplier, 1.25)
 
     def test_quarter_rounding(self):
         self.assertEqual(ceil_quarter(0.01), 0.25)
@@ -151,6 +155,30 @@ class DeluxeOptimizerTests(unittest.TestCase):
             damage_for(current, "AAA", (0, 1, 2), frozenset({"AAA"})),
             1.5,
         )
+
+    def test_active_powerup_multiplier_is_applied(self):
+        current = state(attack_multiplier=1.25)
+
+        self.assertEqual(
+            damage_for(current, "AAAAAAAA", tuple(range(8)), frozenset()),
+            2.5,
+        )
+
+    def test_powerup_is_suggested_only_when_it_makes_attack_lethal(self):
+        current = state(hp=0.5, powerup_potions=1)
+        ranked = candidates(current, ["AAA"], frozenset(), 0.1)
+
+        powered = powerup_lethal_candidate(ranked)
+
+        self.assertIsNotNone(powered)
+        self.assertEqual(powered.word, "AAA")
+        self.assertEqual(powered.damage, 0.5)
+
+    def test_powerup_is_not_suggested_when_normal_attack_is_lethal(self):
+        current = state(hp=0.25, powerup_potions=1)
+        ranked = candidates(current, ["AAA"], frozenset(), 0.1)
+
+        self.assertIsNone(powerup_lethal_candidate(ranked))
 
     def test_wooden_parrot_uses_live_r_tile_power_once(self):
         # The Lua hook runs R through the game's LETTER_BONUSES/ApplyBonus

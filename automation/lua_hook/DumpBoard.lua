@@ -102,6 +102,8 @@ function TileEngine:AutomationDumpBoard()
     local maxHealth = -1
     local offense = 0
     local treasures = "none"
+    local powerupPotions = 0
+    local attackMultiplier = 1
     local overkillThresholds = "none"
     if gBattleEngine ~= nil then
       if gBattleEngine.mBookNum ~= nil then book = gBattleEngine.mBookNum end
@@ -130,6 +132,19 @@ function TileEngine:AutomationDumpBoard()
             end
           end
           if treasures == "" then treasures = "none" end
+        end
+        if player.mItemSlots ~= nil and player.mItemSlots[1] ~= nil and
+            player.mItemSlots[1].mNumActive ~= nil then
+          powerupPotions = player.mItemSlots[1].mNumActive
+        end
+        if player.mStatusEffects ~= nil then
+          for _, statusEffect in pairs(player.mStatusEffects) do
+            if type(statusEffect) == "table" and
+                statusEffect.mClassName == "DamageMultiplierEffect" and
+                statusEffect.mOffensive and statusEffect.mMultiple ~= nil then
+              attackMultiplier = statusEffect.mMultiple
+            end
+          end
         end
       end
     end
@@ -174,6 +189,8 @@ function TileEngine:AutomationDumpBoard()
         powerRows[row] .. "|E")
     end
     print("AUTOMATION_MODS=" .. gAutomationSequence .. "|" .. treasures .. "|E")
+    print("AUTOMATION_ITEMS=" .. gAutomationSequence .. "|" ..
+      powerupPotions .. "|" .. attackMultiplier .. "|E")
     print("AUTOMATION_OVERKILL=" .. gAutomationSequence .. "|" ..
       overkillThresholds .. "|E")
     -- Emit combat fields after the row batch. PopCap's interactive console
