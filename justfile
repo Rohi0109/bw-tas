@@ -24,6 +24,10 @@ menu-start *args:
 menu-reset *args:
     PYTHONPATH=speedrun python3 speedrun/menu_runner.py reset {{args}}
 
+# Delete and recreate only the current Lex10 TAS profile, then skip its intro.
+new-run *args:
+    PYTHONPATH=speedrun python3 speedrun/new_run.py --profile Lex10 {{args}}
+
 # Launch the experimental source/launcher build.
 source-game *args:
     ./run-native.sh {{args}}

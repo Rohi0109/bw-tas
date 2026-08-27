@@ -278,6 +278,53 @@ class X11Keyboard:
         self.focus()
         self.click(int(width * 0.500), int(height * 0.963), delay)
 
+    def change_user(self, delay: float) -> None:
+        """Open Select a User from the Deluxe main-menu welcome panel."""
+        if self.layout != "deluxe":
+            raise RuntimeError("Profile automation is calibrated only for Deluxe")
+        width, height = self._size(self.window)
+        self.focus()
+        self.click(int(width * 0.500), int(height * 0.340), delay)
+
+    def delete_selected_user(self, delay: float) -> None:
+        """Click Delete for the currently selected user."""
+        width, height = self._size(self.window)
+        self.focus()
+        self.click(int(width * 0.605), int(height * 0.700), delay)
+
+    def confirm_delete_user(self, delay: float) -> None:
+        """Click Yes in the irreversible profile-deletion confirmation."""
+        width, height = self._size(self.window)
+        self.focus()
+        self.click(int(width * 0.415), int(height * 0.670), delay)
+
+    def create_new_user(self, delay: float) -> None:
+        """Open the New User name dialog."""
+        width, height = self._size(self.window)
+        self.focus()
+        self.click(int(width * 0.415), int(height * 0.700), delay)
+
+    def replace_user_name(self, old_name: str, new_name: str, delay: float) -> None:
+        """Replace the prefilled deleted name and submit the New User dialog."""
+        self.focus()
+        for _ in old_name:
+            self.key("BackSpace")
+            self.x11.XFlush(self.display)
+            time.sleep(delay)
+        for character in new_name.casefold():
+            self.key(character)
+            self.x11.XFlush(self.display)
+            time.sleep(delay)
+        self.key("Return")
+        self.x11.XFlush(self.display)
+        time.sleep(delay)
+
+    def skip_intro(self, delay: float) -> None:
+        """Click the explicit 'Click anywhere to skip' introduction screen."""
+        width, height = self._size(self.window)
+        self.focus()
+        self.click(width // 2, int(height * 0.500), delay)
+
     def play_word(
         self,
         board_text: str,

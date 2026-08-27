@@ -82,6 +82,23 @@ mid-chapter resets from the WR notes are keyed by `(book, chapter, defeated
 enemy)`. Re-entering the same encounter is recorded so it cannot create a reset
 loop. Disable route resets for comparison with `--no-auto-menu-reset`.
 
+#### Starting a fresh independent run
+
+From the Deluxe main menu, recreate the dedicated `Lex10` TAS profile and skip
+the comic introduction with:
+
+```bash
+just new-run
+```
+
+This is intentionally destructive for `Lex10`: it opens Change User, deletes
+the currently selected profile, creates the same name again, and starts a new
+game. Before clicking Delete it requires both an exact `Lex10.bwa` save and
+Wine's `LastUser=Lex10`; it refuses to operate on another active profile. It
+also verifies that every other `.bwa` profile remains byte-for-byte unchanged.
+The new game opens directly into Chapter 1 dialogue after the intro skip, where
+the continuous TAS can take over with `just tas`.
+
 The Deluxe runner now uses live enemy HP, offense, enabled treasures, physical
 gem tiles, and the game's overkill thresholds. Its default strategy is:
 
