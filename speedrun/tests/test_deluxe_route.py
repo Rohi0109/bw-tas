@@ -44,6 +44,14 @@ class DeluxeRouteTests(unittest.TestCase):
             "after route checkpoint Cyclops Herder",
         )
 
+    def test_midchapter_note_uses_inferred_chapter_when_lua_omits_it(self):
+        defeated = state(chapter=-1, enemy="Calydonian Boar", stage=3)
+
+        self.assertEqual(
+            post_victory_reset_reason(defeated, set(), chapter_override=8),
+            "after route checkpoint Calydonian Boar",
+        )
+
     def test_predecessor_triggers_before_boss_ready(self):
         defeated = state(enemy="Cyclops Warrior", stage=5)
 

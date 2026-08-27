@@ -603,7 +603,7 @@ def main() -> None:
             defeated_event = DEFEATED_RE.search(line)
             if defeated_event and args.auto_menu_reset:
                 reset_reason = post_victory_reset_reason(
-                    submitted_state, reset_encounters
+                    submitted_state, reset_encounters, chapter
                 )
                 if reset_reason is not None:
                     assert submitted_state is not None

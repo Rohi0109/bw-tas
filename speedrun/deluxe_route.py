@@ -41,7 +41,7 @@ PRE_BOSS_ENCOUNTERS = frozenset({
 # note without duplicating it chapter by chapter.
 RESET_AFTER = frozenset({
     (1, 2, "cyclopsherder"),
-    (1, 8, "calydonianboar"),
+    (1, 8, "caledonianboar"),
     (1, 10, "enyo"),
     (2, 5, "bilgedog"),
     (2, 6, "elephant"),
@@ -82,12 +82,16 @@ def menu_reset_reason(
 def post_victory_reset_reason(
     defeated: DeluxeState | None,
     already_reset: set[tuple[int, int, int, str]],
+    chapter_override: int | None = None,
 ) -> str | None:
     """Return a reset reason immediately after a defeated encounter."""
     if defeated is None or encounter_key(defeated) in already_reset:
         return None
     enemy = normalize_enemy(defeated.enemy)
-    special_key = (defeated.book, defeated.chapter, enemy)
+    live_chapter = (
+        defeated.chapter if defeated.chapter >= 1 else chapter_override
+    )
+    special_key = (defeated.book, live_chapter, enemy)
     if special_key in RESET_AFTER:
         return f"after route checkpoint {defeated.enemy}"
     if enemy in PRE_BOSS_ENCOUNTERS:
