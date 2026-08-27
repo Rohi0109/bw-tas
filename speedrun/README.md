@@ -58,7 +58,8 @@ just tas --strategy max-damage
 ```
 
 The Deluxe runner now uses live enemy HP, offense, enabled treasures, physical
-gem tiles, and the game's overkill thresholds. Its default strategy is:
+gem tiles, and the game's overkill thresholds. Its default `chapter-aware`
+strategy is:
 
 Per-letter treasure effects are read from the game's live tile-power result.
 This includes Wooden Parrot's bonus for every selected `R` tile and Bow/Arch of
@@ -67,13 +68,15 @@ and does not duplicate the bonus in Python. Hand of Hercules and Heph's Hammer
 are applied separately because they modify the completed attack rather than an
 individual tile.
 
-- Before gems unlock: choose the fastest lethal word.
+- Before gems unlock: choose the maximum-damage word.
 - After gems unlock: reach the best available overkill gem tier, then choose
   the fastest word within that tier.
 - If no word is lethal: choose the best predicted damage per second.
 
-Compare policies with `--strategy shortest-lethal` or
-`--strategy max-damage`. Every choice prints its damage, overkill tier, and
+The switch uses live gem/overkill availability emitted by Lua, so modified
+saves and chapters still select the correct policy. Override it with
+`--strategy shortest-lethal`, `--strategy max-damage`, or
+`--strategy overkill-tier`. Every choice prints its strategy, damage, tier, and
 alternatives. Completed attacks append timing samples to
 `runtime/deluxe-modded/tas-timing.jsonl`.
 

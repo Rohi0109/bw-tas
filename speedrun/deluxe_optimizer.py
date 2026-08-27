@@ -357,3 +357,10 @@ def choose(cands: list[Candidate], strategy: str) -> tuple[Candidate, dict[str, 
     if shortest is not None:
         alternatives["shortest_lethal"] = shortest
     return selected, alternatives
+
+
+def strategy_for_state(state: DeluxeState, requested: str) -> str:
+    """Resolve the route strategy from the current chapter's live mechanics."""
+    if requested != "chapter-aware":
+        return requested
+    return "overkill-tier" if state.overkill_thresholds else "max-damage"
