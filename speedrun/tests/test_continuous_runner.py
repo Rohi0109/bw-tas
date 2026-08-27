@@ -14,6 +14,7 @@ class ContinuousRunnerTests(unittest.TestCase):
         board = "SFAE/PFUN/RJDY/TLIS"
 
         self.assertTrue(is_initial_play_tutorial(board, "levelup", None, 0))
+        self.assertTrue(is_initial_play_tutorial(board, "levelup", object(), 0))
         self.assertFalse(is_initial_play_tutorial(board, "conversation", None, 0))
         self.assertFalse(is_initial_play_tutorial(board, "levelup", None, 1))
         self.assertFalse(is_initial_play_tutorial("PLAY/AAAA/AAAA/AAAA", "levelup", None, 0))

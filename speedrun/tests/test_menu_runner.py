@@ -35,19 +35,20 @@ class MenuRunnerTests(unittest.TestCase):
 
     def test_reset_matches_wr_sequence(self):
         controller = RecordingController()
-        timing = MenuTiming(0.3, 1.0, 1.2, 1.5)
+        timing = MenuTiming(0.3, 0.4, 1.0, 1.2, 1.5)
 
         reset_from_battle(controller, timing)
 
         self.assertEqual(controller.calls, [
             ("open_battle_menu", 0.3),
-            ("quit_to_main_menu", 1.0),
+            ("quit_to_main_menu", 0.4),
+            ("confirm_quit_to_main_menu", 1.0),
             ("start_adventure", 1.2),
         ])
 
     def test_chapter_reset_includes_map_enter(self):
         controller = RecordingController()
-        timing = MenuTiming(0.3, 1.0, 1.2, 1.5)
+        timing = MenuTiming(0.3, 0.4, 1.0, 1.2, 1.5)
 
         reset_from_battle(controller, timing, enter_chapter=True)
 

@@ -13,6 +13,7 @@ from live_runner import X11Keyboard
 @dataclass(frozen=True)
 class MenuTiming:
     after_battle_menu: float = 0.35
+    after_quit_prompt: float = 0.40
     after_quit: float = 1.10
     after_adventure: float = 1.25
     after_enter: float = 1.50
@@ -38,7 +39,8 @@ def reset_from_battle(
 ) -> None:
     """Perform the WR menu-exit/re-entry sequence from an active battle."""
     controller.open_battle_menu(timing.after_battle_menu)
-    controller.quit_to_main_menu(timing.after_quit)
+    controller.quit_to_main_menu(timing.after_quit_prompt)
+    controller.confirm_quit_to_main_menu(timing.after_quit)
     start_from_main_menu(controller, timing, enter_chapter=enter_chapter)
 
 

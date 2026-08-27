@@ -60,7 +60,6 @@ def is_initial_play_tutorial(
     return (
         board == TUTORIAL_PLAY_BOARD
         and active_dialog == "levelup"
-        and state is None
         and attacks == 0
     )
 
@@ -207,6 +206,8 @@ def main() -> None:
         else float("inf")
     )
     dialog_probe_count = 0
+    chapter_enter_at = float("inf")
+    chapter_enter_pending = False
     deluxe_words: list[str] = []
     metal_words = frozenset()
     chapter1_hp = {}
@@ -369,6 +370,13 @@ def main() -> None:
 
             line = log.readline()
             if not line:
+                if chapter_enter_pending and time.monotonic() >= chapter_enter_at:
+                    print("Entering the next chapter from the chapter map.", flush=True)
+                    controller.enter_chapter(args.delay)
+                    chapter_enter_pending = False
+                    chapter_enter_at = float("inf")
+                    dialog_probe_at = time.monotonic() + args.dialog_stall_delay
+                    deadline = time.monotonic() + args.timeout
                 if (
                     not tutorial_play_submitted
                     and is_initial_play_tutorial(
@@ -453,6 +461,18 @@ def main() -> None:
                 was_blocked = blocked_screen is not None
                 blocked_screen = None
                 active_dialog = None
+                if (
+                    args.layout == "deluxe"
+                    and submitted_state is not None
+                    and "(Boss)" in submitted_state.enemy
+                    and not ready
+                ):
+                    # Boss epilogues finish at the chapter map.  A transient
+                    # `none` can occur between consecutive dialogue panels,
+                    # so arm the Enter click with a grace period and cancel it
+                    # if another panel appears.
+                    chapter_enter_pending = True
+                    chapter_enter_at = time.monotonic() + 1.5
                 if not input_confirmed:
                     # A dialogue can appear after selection but before Attack
                     # becomes clickable. Its blocked time is not a failed input
@@ -490,6 +510,8 @@ def main() -> None:
                 dialog_sequence = int(dialog.group("sequence"))
                 kind = dialog.group("kind")
                 active_dialog = kind
+                chapter_enter_pending = False
+                chapter_enter_at = float("inf")
                 # READY immediately before a level-up/conversation can
                 # describe the board that is about to transition. Require Lua
                 # to publish a fresh stable READY after the overlay.
