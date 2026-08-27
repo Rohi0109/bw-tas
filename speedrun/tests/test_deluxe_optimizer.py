@@ -28,6 +28,19 @@ def state(**overrides):
 
 
 class DeluxeOptimizerTests(unittest.TestCase):
+    def test_candidates_exclude_locked_tiles(self):
+        selectable = (True,) * 7 + (False,) + (True,) * 8
+        current = state(
+            board="TUDA/MIER/INEI/NYGN",
+            selectable=selectable,
+        )
+
+        ranked = candidates(
+            current, ["UNDERMINING", "INGENUITY"], frozenset(), 0.1
+        )
+
+        self.assertEqual([candidate.word for candidate in ranked], ["INGENUITY"])
+
     def test_decorated_enemy_names_match_roster(self):
         hp_map = {
             "mountaingoat": 3,
@@ -127,10 +140,12 @@ class DeluxeOptimizerTests(unittest.TestCase):
         line = "noise AUTOMATION_CONTEXT=7|1|2|3|E\n"
         line += "AUTOMATION_ENEMY=7|Trojan Warrior|E\n"
         line += "AUTOMATION_HEALTH=7|2|2|0.125|E\n"
+        line += "AUTOMATION_PLAYER_HEALTH=7|3|5|E\n"
         for row, letters in enumerate(("ABCD", "EFGH", "IJKL", "MNOP")):
             line += f"AUTOMATION_LETTERS=7|{row}|{letters}|E\n"
             line += f"AUTOMATION_GEMS=7|{row}|n,n,n,n|E\n"
             line += f"AUTOMATION_POWERS=7|{row}|0,0,0,0|E\n"
+            line += f"AUTOMATION_SELECTABLE=7|{row}|{'1110' if row == 1 else '1111'}|E\n"
         line += "AUTOMATION_MODS=7|Artemis Bow|E\n"
         line += "AUTOMATION_OVERKILL=7|1.95,3,5,8,11,15,20|E\n"
         line += "AUTOMATION_READY_SEQ=7|E\n"
@@ -139,6 +154,8 @@ class DeluxeOptimizerTests(unittest.TestCase):
         self.assertEqual(parsed.sequence, 7)
         self.assertEqual(parsed.enemy, "Trojan Warrior")
         self.assertEqual(parsed.treasures, frozenset({"artemis bow"}))
+        self.assertEqual((parsed.player_hp, parsed.player_max_hp), (3, 5))
+        self.assertFalse(parsed.selectable[7])
 
     def test_quarter_rounding(self):
         self.assertEqual(ceil_quarter(0.01), 0.25)

@@ -220,6 +220,14 @@ class X11Keyboard:
         width, height = self._size(self.window)
         self.click(int(width * 0.19), int(height * 0.963), delay)
 
+    def use_health_potion(self, delay: float) -> None:
+        """Use Deluxe's red health potion when it is currently enabled."""
+        if self.layout != "deluxe":
+            raise RuntimeError("Potion automation is calibrated only for Deluxe")
+        self.focus()
+        width, height = self._size(self.window)
+        self.click(int(width * 0.084), int(height * 0.570), delay)
+
     def dismiss_invalid_word_dialog(self, delay: float) -> None:
         """Dismiss Deluxe's centered invalid-word dialog, if it is present.
 
@@ -311,6 +319,9 @@ class X11Keyboard:
             self.click(
                 int(width * columns[column]), int(height * rows[row]), delay
             )
+        # The third selection first swaps the panel to "Treasures Selected";
+        # its Continue button does not accept a click during that transition.
+        time.sleep(max(1.0, delay))
         self.click(int(width * 0.500), int(height * 0.963), delay)
 
     def change_user(self, delay: float) -> None:

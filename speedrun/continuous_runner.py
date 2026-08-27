@@ -370,6 +370,17 @@ def main() -> None:
                     f"({damage:.2f} estimated damage)",
                     flush=True,
                 )
+                if (
+                    args.layout == "deluxe" and deluxe_state is not None
+                    and deluxe_state.enemy.startswith("Hydra (")
+                    and deluxe_state.player_hp >= 0
+                    and deluxe_state.player_max_hp >= 0
+                    and deluxe_state.player_hp < deluxe_state.player_max_hp
+                ):
+                    # Hydra is a continuous gauntlet. Healing whenever the
+                    # potion is enabled prevents a late-head death from
+                    # discarding all progress.
+                    controller.use_health_potion(max(0.8, args.delay))
                 controller.play_word(board, word, args.delay, args.settle, path)
                 submitted_board = board
                 submitted_word = word

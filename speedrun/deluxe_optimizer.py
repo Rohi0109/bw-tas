@@ -18,6 +18,10 @@ HEALTH_RE = re.compile(
     r"AUTOMATION_HEALTH=(?P<seq>\d+)\|(?P<hp>-?\d+(?:\.\d+)?)\|"
     r"(?P<max_hp>-?\d+(?:\.\d+)?)\|(?P<offense>-?\d+(?:\.\d+)?)\|E"
 )
+PLAYER_HEALTH_RE = re.compile(
+    r"AUTOMATION_PLAYER_HEALTH=(?P<seq>\d+)\|"
+    r"(?P<hp>-?\d+(?:\.\d+)?)\|(?P<max_hp>-?\d+(?:\.\d+)?)\|E"
+)
 LETTERS_RE = re.compile(
     r"AUTOMATION_LETTERS=(?P<seq>\d+)\|(?P<row>[0-3])\|(?P<value>[A-Z]{4})\|E"
 )
@@ -27,6 +31,10 @@ GEMS_RE = re.compile(
 POWERS_RE = re.compile(
     r"AUTOMATION_POWERS=(?P<seq>\d+)\|(?P<row>[0-3])\|"
     r"(?P<value>-?\d+(?:\.\d+)?(?:,-?\d+(?:\.\d+)?){3})\|E"
+)
+SELECTABLE_RE = re.compile(
+    r"AUTOMATION_SELECTABLE=(?P<seq>\d+)\|(?P<row>[0-3])\|"
+    r"(?P<value>[01]{4})\|E"
 )
 MODS_RE = re.compile(r"AUTOMATION_MODS=(?P<seq>\d+)\|(?P<value>[^|]+)\|E")
 OVERKILL_RE = re.compile(
@@ -168,6 +176,9 @@ class DeluxeState:
     offense: float
     treasures: frozenset[str]
     overkill_thresholds: tuple[float, ...]
+    selectable: tuple[bool, ...] = (True,) * 16
+    player_hp: float = -1
+    player_max_hp: float = -1
 
 
 @dataclass(frozen=True)
@@ -188,12 +199,20 @@ def parse_state(text: str) -> DeluxeState | None:
         contexts = [m for m in CONTEXT_RE.finditer(text) if int(m.group("seq")) == sequence]
         enemies = [m for m in ENEMY_RE.finditer(text) if int(m.group("seq")) == sequence]
         healths = [m for m in HEALTH_RE.finditer(text) if int(m.group("seq")) == sequence]
+        player_healths = [
+            m for m in PLAYER_HEALTH_RE.finditer(text)
+            if int(m.group("seq")) == sequence
+        ]
         letters = {
             int(m.group("row")): m for m in LETTERS_RE.finditer(text)
             if int(m.group("seq")) == sequence
         }
         gems = {int(m.group("row")): m for m in GEMS_RE.finditer(text) if int(m.group("seq")) == sequence}
         powers = {int(m.group("row")): m for m in POWERS_RE.finditer(text) if int(m.group("seq")) == sequence}
+        selectables = {
+            int(m.group("row")): m for m in SELECTABLE_RE.finditer(text)
+            if int(m.group("seq")) == sequence
+        }
         mods = [m for m in MODS_RE.finditer(text) if int(m.group("seq")) == sequence]
         overkills = [m for m in OVERKILL_RE.finditer(text) if int(m.group("seq")) == sequence]
         if contexts and enemies and healths and len(letters) == len(gems) == len(powers) == 4 and mods and overkills:
@@ -217,6 +236,16 @@ def parse_state(text: str) -> DeluxeState | None:
         tile_powers=tuple(
             float(value) for row in range(4)
             for value in powers[row].group("value").split(",")
+        ),
+        selectable=tuple(
+            value == "1" for row in range(4)
+            for value in (
+                selectables[row].group("value") if row in selectables else "1111"
+            )
+        ),
+        player_hp=(float(player_healths[-1].group("hp")) if player_healths else -1),
+        player_max_hp=(
+            float(player_healths[-1].group("max_hp")) if player_healths else -1
         ),
         book=int(match.group("book")),
         chapter=int(match.group("chapter")),
@@ -256,7 +285,8 @@ def _path_for_word(state: DeluxeState, word: str) -> tuple[int, ...] | None:
     needed = Counter(word)
     positions: dict[str, list[int]] = {}
     for index, letter in enumerate(letters):
-        positions.setdefault(letter, []).append(index)
+        if state.selectable[index]:
+            positions.setdefault(letter, []).append(index)
     chosen: dict[str, list[int]] = {}
     for letter, count in needed.items():
         available = positions.get(letter, [])

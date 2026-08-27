@@ -7,6 +7,7 @@ function TileEngine:AutomationDumpBoard()
   local letterRows = {}
   local gemRows = {}
   local powerRows = {}
+  local selectableRows = {}
   local complete = true
   local anySelectable = false
   local settled = true
@@ -15,6 +16,7 @@ function TileEngine:AutomationDumpBoard()
     local letterRow = ""
     local gemRow = ""
     local powerRow = ""
+    local selectableRow = ""
     if y > 0 then
       snapshot = snapshot .. "/"
     end
@@ -54,7 +56,13 @@ function TileEngine:AutomationDumpBoard()
         powerRow = powerRow .. tilePower
         -- Use a normal table call instead of ':' so the appended method does
         -- not require PopCap's problematic SELF opcode.
-        if not anySelectable and self.CanSelect(self, tileKey, x, y) then
+        local canSelect = self.CanSelect(self, tileKey, x, y)
+        if canSelect then
+          selectableRow = selectableRow .. "1"
+        else
+          selectableRow = selectableRow .. "0"
+        end
+        if not anySelectable and canSelect then
           anySelectable = true
         end
         if tile.IsMoving ~= nil and tile.IsMoving(tile) then
@@ -68,6 +76,7 @@ function TileEngine:AutomationDumpBoard()
     letterRows[y] = letterRow
     gemRows[y] = gemRow
     powerRows[y] = powerRow
+    selectableRows[y] = selectableRow
   end
 
   if complete and snapshot ~= gAutomationLastBoard then
@@ -100,6 +109,8 @@ function TileEngine:AutomationDumpBoard()
     local enemyName = "unknown"
     local health = -1
     local maxHealth = -1
+    local playerHealth = -1
+    local playerMaxHealth = -1
     local offense = 0
     local treasures = "none"
     local overkillThresholds = "none"
@@ -114,6 +125,8 @@ function TileEngine:AutomationDumpBoard()
       end
       if gBattleEngine.mPlayerPtr ~= nil then
         local player = gBattleEngine.mPlayerPtr
+        if player.mHealth ~= nil then playerHealth = player.mHealth end
+        if player.mMaxHealth ~= nil then playerMaxHealth = player.mMaxHealth end
         if player.mOffenseBonusPct ~= nil then offense = player.mOffenseBonusPct end
         if player.mTreasures ~= nil then
           treasures = ""
@@ -172,6 +185,8 @@ function TileEngine:AutomationDumpBoard()
         gemRows[row] .. "|E")
       print("AUTOMATION_POWERS=" .. gAutomationSequence .. "|" .. row .. "|" ..
         powerRows[row] .. "|E")
+      print("AUTOMATION_SELECTABLE=" .. gAutomationSequence .. "|" .. row .. "|" ..
+        selectableRows[row] .. "|E")
     end
     print("AUTOMATION_MODS=" .. gAutomationSequence .. "|" .. treasures .. "|E")
     print("AUTOMATION_OVERKILL=" .. gAutomationSequence .. "|" ..
@@ -184,6 +199,8 @@ function TileEngine:AutomationDumpBoard()
     print("AUTOMATION_ENEMY=" .. gAutomationSequence .. "|" .. enemyName .. "|E")
     print("AUTOMATION_HEALTH=" .. gAutomationSequence .. "|" .. health .. "|" ..
       maxHealth .. "|" .. offense .. "|E")
+    print("AUTOMATION_PLAYER_HEALTH=" .. gAutomationSequence .. "|" ..
+      playerHealth .. "|" .. playerMaxHealth .. "|E")
     print("AUTOMATION_READY_SEQ=" .. gAutomationSequence .. "|E")
     print("AUTOMATION_READY=" .. snapshot)
   end
