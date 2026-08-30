@@ -9,6 +9,9 @@ import time
 from pathlib import Path
 
 from live_runner import X11Keyboard
+from run_timer import (
+    DEFAULT_STATE as DEFAULT_TIMER_STATE, record_chapter, save_state, start_timer,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -54,6 +57,7 @@ def recreate_profile(
     *,
     from_select_user: bool = False,
     skip_intro: bool = True,
+    timer_path: Path | None = None,
 ) -> None:
     active = last_user()
     if active.casefold() != name.casefold():
@@ -82,9 +86,21 @@ def recreate_profile(
     controller.replace_user_name(name, name, 0.08)
     created = wait_for_profile(name, present=True)
     print(f"Created fresh TAS profile: {created}", flush=True)
+    if timer_path is not None:
+        timer = start_timer(timer_path)
+        # Deluxe labels the opening tutorial as chapter -1 in Lua.  A profile
+        # created here always begins at Book 1 Chapter 1, so seed that split
+        # at the same character-selection timestamp.
+        record_chapter(timer, 1, 1, timer["started_at"])
+        save_state(timer_path, timer)
+        print(f"Run timer started: {timer['started_at_iso']}", flush=True)
     if skip_intro:
-        time.sleep(0.8)
-        controller.skip_intro(0.8)
+        time.sleep(2.5)
+        # The comic and its confirmation are native UI; Lua telemetry does not
+        # begin until BookManager starts the chapter.  Give the confirmation
+        # animation a conservative settle instead of racing it.
+        controller.skip_intro(1.0)
+        controller.confirm_skip_intro(0.8)
 
 
 def main() -> None:
@@ -97,6 +113,7 @@ def main() -> None:
     parser.add_argument(
         "--skip-intro", action=argparse.BooleanOptionalAction, default=True,
     )
+    parser.add_argument("--timer", type=Path, default=DEFAULT_TIMER_STATE)
     args = parser.parse_args()
 
     controller = X11Keyboard("Bookworm Adventures Deluxe", "deluxe")
@@ -105,6 +122,7 @@ def main() -> None:
         args.profile,
         from_select_user=args.from_select_user,
         skip_intro=args.skip_intro,
+        timer_path=args.timer,
     )
 
 

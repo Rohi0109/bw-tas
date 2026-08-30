@@ -27,8 +27,9 @@ FINAL_ENCOUNTERS = frozenset({
 # Hydra and Codex chapters contain no ordinary predecessor encounter.
 PRE_BOSS_ENCOUNTERS = frozenset({
     "alexander", "cyclopswarrior", "scylla", "enchantedserpent", "orthrus",
+    "alibaba",
     "harpywitch", "stymphalianbirdsteel", "naiad", "greaterbasilisk",
-    "firebreather", "thief91011", "embalmedguardian", "swashbuckler",
+    "firebreather", "thief789", "thief91011", "embalmedguardian", "swashbuckler",
     "bullelephant", "miragegoat", "flyingarmor", "airspirit", "necromancer",
     "hatefulhousemaid", "plaguedpork", "arnoldstein", "werehawk", "mrblobs",
     "disturbedskeleton", "fallenhuntresshero", "unlivingpyromancer",
@@ -51,7 +52,7 @@ RESET_AFTER = frozenset({
     (3, 6, "graverobber"),
     (3, 8, "unlivingarcher"),
 })
-
+RESET_AFTER_ENEMY = frozenset((book, enemy) for book, _, enemy in RESET_AFTER)
 
 def encounter_key(state: DeluxeState) -> tuple[int, int, int, str]:
     return (state.book, state.chapter, state.stage, normalize_enemy(state.enemy))
@@ -64,6 +65,21 @@ def is_boss_encounter(state: DeluxeState) -> bool:
         or normalized in FINAL_ENCOUNTERS
         or normalized.startswith("hydrahead")
         or normalized == "hydramainhead"
+    )
+
+
+def is_chapter_boss_defeat(state: DeluxeState) -> bool:
+    """Return whether this defeat finishes a chapter's boss encounter."""
+    normalized_name = "".join(
+        character for character in state.enemy.casefold() if character.isalnum()
+    )
+    if normalized_name.startswith("hydrahead"):
+        return False
+    if normalized_name == "hydramainhead":
+        return True
+    return (
+        "(boss)" in state.enemy.casefold()
+        or normalize_enemy(state.enemy) in FINAL_ENCOUNTERS
     )
 
 
@@ -92,8 +108,12 @@ def post_victory_reset_reason(
         defeated.chapter if defeated.chapter >= 1 else chapter_override
     )
     special_key = (defeated.book, live_chapter, enemy)
-    if special_key in RESET_AFTER:
+    if special_key in RESET_AFTER or (defeated.book, enemy) in RESET_AFTER_ENEMY:
         return f"after route checkpoint {defeated.enemy}"
     if enemy in PRE_BOSS_ENCOUNTERS:
         return f"after {defeated.enemy}, before boss entrance"
+    # The current defeat hook reaches Python after the next treasure/map
+    # transition. Resetting chapter bosses here can therefore restart the
+    # chapter that just unlocked. Post-boss animation skips need an earlier
+    # lethal-transition hook; keep this late event for route checkpoints only.
     return None

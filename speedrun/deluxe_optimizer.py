@@ -22,6 +22,10 @@ PLAYER_HEALTH_RE = re.compile(
     r"AUTOMATION_PLAYER_HEALTH=(?P<seq>\d+)\|"
     r"(?P<hp>-?\d+(?:\.\d+)?)\|(?P<max_hp>-?\d+(?:\.\d+)?)\|E"
 )
+PLAYER_STATUS_RE = re.compile(
+    r"AUTOMATION_PLAYER_STATUS=(?P<seq>\d+)\|(?P<stunned>[01])\|"
+    r"(?P<health_potion>[01])\|E"
+)
 LETTERS_RE = re.compile(
     r"AUTOMATION_LETTERS=(?P<seq>\d+)\|(?P<row>[0-3])\|(?P<value>[A-Z]{4})\|E"
 )
@@ -34,6 +38,10 @@ POWERS_RE = re.compile(
 )
 SELECTABLE_RE = re.compile(
     r"AUTOMATION_SELECTABLE=(?P<seq>\d+)\|(?P<row>[0-3])\|"
+    r"(?P<value>[01]{4})\|E"
+)
+ZERO_DAMAGE_RE = re.compile(
+    r"AUTOMATION_ZERO_DAMAGE=(?P<seq>\d+)\|(?P<row>[0-3])\|"
     r"(?P<value>[01]{4})\|E"
 )
 MODS_RE = re.compile(r"AUTOMATION_MODS=(?P<seq>\d+)\|(?P<value>[^|]+)\|E")
@@ -179,6 +187,9 @@ class DeluxeState:
     selectable: tuple[bool, ...] = (True,) * 16
     player_hp: float = -1
     player_max_hp: float = -1
+    player_stunned: bool = False
+    health_potion_available: bool = False
+    zero_damage: tuple[bool, ...] = (False,) * 16
 
 
 @dataclass(frozen=True)
@@ -203,6 +214,10 @@ def parse_state(text: str) -> DeluxeState | None:
             m for m in PLAYER_HEALTH_RE.finditer(text)
             if int(m.group("seq")) == sequence
         ]
+        player_statuses = [
+            m for m in PLAYER_STATUS_RE.finditer(text)
+            if int(m.group("seq")) == sequence
+        ]
         letters = {
             int(m.group("row")): m for m in LETTERS_RE.finditer(text)
             if int(m.group("seq")) == sequence
@@ -211,6 +226,10 @@ def parse_state(text: str) -> DeluxeState | None:
         powers = {int(m.group("row")): m for m in POWERS_RE.finditer(text) if int(m.group("seq")) == sequence}
         selectables = {
             int(m.group("row")): m for m in SELECTABLE_RE.finditer(text)
+            if int(m.group("seq")) == sequence
+        }
+        zero_damage = {
+            int(m.group("row")): m for m in ZERO_DAMAGE_RE.finditer(text)
             if int(m.group("seq")) == sequence
         }
         mods = [m for m in MODS_RE.finditer(text) if int(m.group("seq")) == sequence]
@@ -243,9 +262,23 @@ def parse_state(text: str) -> DeluxeState | None:
                 selectables[row].group("value") if row in selectables else "1111"
             )
         ),
+        zero_damage=tuple(
+            value == "1" for row in range(4)
+            for value in (
+                zero_damage[row].group("value") if row in zero_damage else "0000"
+            )
+        ),
         player_hp=(float(player_healths[-1].group("hp")) if player_healths else -1),
         player_max_hp=(
             float(player_healths[-1].group("max_hp")) if player_healths else -1
+        ),
+        player_stunned=(
+            player_statuses[-1].group("stunned") == "1"
+            if player_statuses else False
+        ),
+        health_potion_available=(
+            player_statuses[-1].group("health_potion") == "1"
+            if player_statuses else False
         ),
         book=int(match.group("book")),
         chapter=int(match.group("chapter")),
@@ -316,8 +349,17 @@ def damage_for(
     # Tile.ApplyBonus. It therefore already includes per-letter treasures such
     # as Wooden Parrot (R) and Bow/Arch of Xyzzy (X/Y/Z), as well as gems. Do
     # not add those treasure bonuses again here.
-    tile_bonus = ceil_quarter(sum(state.tile_powers[index] for index in path))
-    damage = base + tile_bonus + base * state.offense
+    tile_contributions = []
+    for index in path:
+        contribution = state.tile_powers[index]
+        # Smashed/plagued tiles contribute no letter damage. ApplyBonus usually
+        # exposes that as -1; the explicit mask is a safe fallback and makes
+        # the behavior visible in captured telemetry.
+        if state.zero_damage[index] and contribution > -1.0:
+            contribution -= 1.0
+        tile_contributions.append(contribution)
+    tile_bonus = ceil_quarter(sum(tile_contributions))
+    damage = max(0.0, base + tile_bonus + base * state.offense)
     if "hand of hercules" in state.treasures:
         if word in metal_words:
             damage *= 1.5

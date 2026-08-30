@@ -28,6 +28,16 @@ def state(**overrides):
 
 
 class DeluxeOptimizerTests(unittest.TestCase):
+    def test_zero_damage_tile_reduces_word_damage(self):
+        normal = state(board="TEST/AAAA/AAAA/AAAA")
+        smashed = state(
+            board="TEST/AAAA/AAAA/AAAA",
+            zero_damage=(True, False, False, False) + (False,) * 12,
+        )
+
+        self.assertEqual(damage_for(normal, "TEST", (0, 1, 2, 3), frozenset()), 0.5)
+        self.assertEqual(damage_for(smashed, "TEST", (0, 1, 2, 3), frozenset()), 0.0)
+
     def test_candidates_exclude_locked_tiles(self):
         selectable = (True,) * 7 + (False,) + (True,) * 8
         current = state(

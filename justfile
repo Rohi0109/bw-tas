@@ -28,6 +28,18 @@ menu-reset *args:
 new-run *args:
     PYTHONPATH=speedrun python3 speedrun/new_run.py --profile Lex10 {{args}}
 
+# Optional standalone watcher; `just tas` records the timer automatically.
+timer *args:
+    PYTHONPATH=speedrun python3 speedrun/run_timer.py watch {{args}}
+
+# Print current per-chapter, per-book, and total run times.
+timer-report:
+    PYTHONPATH=speedrun python3 speedrun/run_timer.py report
+
+# Stop the timer and print its final split report.
+timer-finish:
+    PYTHONPATH=speedrun python3 speedrun/run_timer.py finish
+
 # Launch the experimental source/launcher build.
 source-game *args:
     ./run-native.sh {{args}}

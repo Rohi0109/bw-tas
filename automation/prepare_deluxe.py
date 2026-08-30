@@ -80,9 +80,12 @@ def main() -> None:
         patched_battle = temp / "modified" / "scripts" / "BattleEngine.luc"
         original_treasure = temp / "original" / "scripts" / "TreasureScreen.luc"
         patched_treasure = temp / "modified" / "scripts" / "TreasureScreen.luc"
+        original_book_manager = temp / "original" / "scripts" / "BookManager.luc"
+        patched_book_manager = temp / "modified" / "scripts" / "BookManager.luc"
         extract_entry(pristine, "scripts\\TileEngine.luc", original_tile)
         extract_entry(pristine, "scripts\\BattleEngine.luc", original_battle)
         extract_entry(pristine, "scripts\\TreasureScreen.luc", original_treasure)
+        extract_entry(pristine, "scripts\\BookManager.luc", original_book_manager)
         subprocess.run(
             [
                 sys.executable,
@@ -91,6 +94,15 @@ def main() -> None:
                 str(original_tile),
                 "--output",
                 str(patched_tile),
+            ],
+            check=True,
+        )
+        subprocess.run(
+            [
+                sys.executable,
+                str(ROOT / "automation/build_bookmanager_hook.py"),
+                "--input", str(original_book_manager),
+                "--output", str(patched_book_manager),
             ],
             check=True,
         )
@@ -116,9 +128,9 @@ def main() -> None:
         files, substituted, resized = popcap_pak_repack.repack(
             str(pristine), str(temp / "modified"), str(new_pak)
         )
-        if substituted != 3:
+        if substituted != 4:
             raise RuntimeError(
-                f"Expected exactly three replaced PAK files, got {substituted}"
+                f"Expected exactly four replaced PAK files, got {substituted}"
             )
         new_pak.replace(output_pak)
 

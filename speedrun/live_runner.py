@@ -22,6 +22,7 @@ from calculate_damage.set_modifiers import Modifiers
 class X11Keyboard:
     def __init__(self, title: str, layout: str = "web") -> None:
         self.layout = layout
+        self.wanted_title = title.casefold()
         self.x11 = ctypes.CDLL(ctypes.util.find_library("X11") or "libX11.so.6")
         self.xtst = ctypes.CDLL(ctypes.util.find_library("Xtst") or "libXtst.so.6")
         self.x11.XOpenDisplay.restype = ctypes.c_void_p
@@ -73,7 +74,7 @@ class X11Keyboard:
         self.display = self.x11.XOpenDisplay(None)
         if not self.display:
             raise RuntimeError("Could not open the X11 display")
-        self.window = self._find_window(title.casefold())
+        self.window = self._find_window(self.wanted_title)
         if not self.window:
             raise RuntimeError(f"No visible window title contains {title!r}")
         self.frame = self._top_level(self.window)
@@ -133,7 +134,7 @@ class X11Keyboard:
         while pending:
             window = pending.pop()
             if wanted in self._name(window).casefold():
-                width, height = self._size(window)
+                width, height = self._raw_size(window)
                 # Wine may expose a tiny titled helper/control window alongside
                 # the actual game client, especially inside a virtual desktop.
                 if width >= 320 and height >= 240:
@@ -142,7 +143,7 @@ class X11Keyboard:
         # Mutter's decorative frame has the same title as the Wine client.
         return min(matches)[1] if matches else 0
 
-    def _size(self, window: int) -> tuple[int, int]:
+    def _raw_size(self, window: int) -> tuple[int, int]:
         root = ctypes.c_ulong()
         x = ctypes.c_int()
         y = ctypes.c_int()
@@ -157,7 +158,24 @@ class X11Keyboard:
         )
         return width.value, height.value
 
+    def _refresh_window(self) -> None:
+        window = self._find_window(self.wanted_title)
+        if not window:
+            raise RuntimeError(
+                f"No visible window title contains {self.wanted_title!r}"
+            )
+        if window != self.window:
+            self.window = window
+            self.frame = self._top_level(window)
+
+    def _size(self, window: int) -> tuple[int, int]:
+        if window == self.window:
+            self._refresh_window()
+            window = self.window
+        return self._raw_size(window)
+
     def _root_point(self, x: int, y: int) -> tuple[int, int]:
+        self._refresh_window()
         root = self.x11.XDefaultRootWindow(self.display)
         root_x = ctypes.c_int()
         root_y = ctypes.c_int()
@@ -171,6 +189,7 @@ class X11Keyboard:
     def focus(self) -> None:
         # Reparenting window managers may give the title to the outer frame, but
         # XSetInputFocus still delivers synthetic keys to its active child.
+        self._refresh_window()
         self.x11.XMapRaised(self.display, self.frame)
         self.x11.XSetInputFocus(self.display, self.window, 1, 0)
         self.x11.XFlush(self.display)
@@ -228,6 +247,33 @@ class X11Keyboard:
         width, height = self._size(self.window)
         self.click(int(width * 0.084), int(height * 0.570), delay)
 
+    def click_tile(self, index: int, delay: float) -> None:
+        """Click one Deluxe rack tile without submitting a word."""
+        if self.layout != "deluxe" or not 0 <= index < 16:
+            raise RuntimeError("Tile click requires a Deluxe rack index from 0 to 15")
+        width, height = self._size(self.window)
+        tile_x = (0.4050, 0.4710, 0.5340, 0.5960)
+        tile_y = (0.5617, 0.6483, 0.7333, 0.8183)
+        row, column = divmod(index, 4)
+        self.focus()
+        self.click(int(width * tile_x[column]), int(height * tile_y[row]), delay)
+
+    def use_purification_potion(self, delay: float) -> None:
+        """Use Deluxe's green purification potion."""
+        if self.layout != "deluxe":
+            raise RuntimeError("Potion automation is calibrated only for Deluxe")
+        self.focus()
+        width, height = self._size(self.window)
+        self.click(int(width * 0.180), int(height * 0.570), delay)
+
+    def use_powerup_potion(self, delay: float) -> None:
+        """Use Deluxe's blue power-up potion."""
+        if self.layout != "deluxe":
+            raise RuntimeError("Potion automation is calibrated only for Deluxe")
+        self.focus()
+        width, height = self._size(self.window)
+        self.click(int(width * 0.276), int(height * 0.570), delay)
+
     def dismiss_invalid_word_dialog(self, delay: float) -> None:
         """Dismiss Deluxe's centered invalid-word dialog, if it is present.
 
@@ -237,7 +283,7 @@ class X11Keyboard:
             return
         self.focus()
         width, height = self._size(self.window)
-        self.click(width // 2, int(height * 0.470), delay)
+        self.click(width // 2, int(height * 0.435), delay)
 
     def advance_dialog(self, kind: str, delay: float) -> None:
         """Click a Lua-confirmed Deluxe dialogue's primary continuation area."""
@@ -371,6 +417,14 @@ class X11Keyboard:
         self.focus()
         self.click(width // 2, int(height * 0.500), delay)
 
+    def confirm_skip_intro(self, delay: float) -> None:
+        """Choose Yes in the introduction movie's skip confirmation."""
+        if self.layout != "deluxe":
+            raise RuntimeError("Intro-skip automation is calibrated only for Deluxe")
+        width, height = self._size(self.window)
+        self.focus()
+        self.click(int(width * 0.415), int(height * 0.650), delay)
+
     def play_word(
         self,
         board_text: str,
@@ -395,7 +449,10 @@ class X11Keyboard:
             # Measured from the native Deluxe client inside Wine's 800x600
             # virtual desktop. Deluxe positions its rack higher and slightly
             # farther right than the source/web build.
-            tile_x = (0.3815, 0.4610, 0.5430, 0.6220)
+            # Live 800x600 centers. The older source-build calibration landed
+            # increasingly close to the right edge (and outside column 4),
+            # causing intermittent missing final letters such as tutorial Y.
+            tile_x = (0.4050, 0.4710, 0.5340, 0.5960)
             tile_y = (0.5617, 0.6483, 0.7333, 0.8183)
         else:
             tile_x = (0.3815, 0.4610, 0.5430, 0.6220)
@@ -415,6 +472,27 @@ class X11Keyboard:
             self.click(int(width * tile_x[column]), int(height * tile_y[row]), delay)
         time.sleep(settle)
         self.click(width // 2, int(height * 0.963), delay)
+
+    def play_tutorial_play(self, delay: float) -> None:
+        """Complete the fresh-profile PLAY lesson's step-gated tile sequence."""
+        if self.layout != "deluxe":
+            raise RuntimeError("PLAY tutorial automation is calibrated only for Deluxe")
+        width, height = self._size(self.window)
+        tile_x = (0.4050, 0.4710, 0.5340, 0.5960)
+        tile_y = (0.5617, 0.6483, 0.7333, 0.8183)
+        self.focus()
+        # Lua exposes the lesson as soon as its overlay opens, before the
+        # first arrow finishes animating and the P tile accepts input.
+        time.sleep(2.0)
+        # The tutorial enables one required tile at a time and animates its
+        # instruction before accepting the next click.
+        for index in (4, 13, 2, 11):
+            row, column = divmod(index, 4)
+            self.click(
+                int(width * tile_x[column]), int(height * tile_y[row]),
+                max(1.5, delay),
+            )
+        self.click(width // 2, int(height * 0.963), max(0.5, delay))
 
 
 def best_word(board_text: str) -> tuple[str, float]:

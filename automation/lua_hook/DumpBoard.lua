@@ -7,6 +7,7 @@ function TileEngine:AutomationDumpBoard()
   local letterRows = {}
   local gemRows = {}
   local powerRows = {}
+  local zeroDamageRows = {}
   local selectableRows = {}
   local complete = true
   local anySelectable = false
@@ -17,6 +18,7 @@ function TileEngine:AutomationDumpBoard()
     local gemRow = ""
     local powerRow = ""
     local selectableRow = ""
+    local zeroDamageRow = ""
     if y > 0 then
       snapshot = snapshot .. "/"
     end
@@ -50,6 +52,11 @@ function TileEngine:AutomationDumpBoard()
           letterPower = letterPower + LETTER_BONUSES[tile.mLetter]
         end
         local tilePower = tile.ApplyBonus(tile, letterPower)
+        if tilePower <= -letterPower then
+          zeroDamageRow = zeroDamageRow .. "1"
+        else
+          zeroDamageRow = zeroDamageRow .. "0"
+        end
         if powers ~= "" then powers = powers .. "," end
         powers = powers .. tilePower
         if powerRow ~= "" then powerRow = powerRow .. "," end
@@ -77,6 +84,7 @@ function TileEngine:AutomationDumpBoard()
     gemRows[y] = gemRow
     powerRows[y] = powerRow
     selectableRows[y] = selectableRow
+    zeroDamageRows[y] = zeroDamageRow
   end
 
   if complete and snapshot ~= gAutomationLastBoard then
@@ -87,6 +95,32 @@ function TileEngine:AutomationDumpBoard()
   local interrupted = false
   if gBattleEngine ~= nil and gBattleEngine.mInterruptState then
     interrupted = true
+  end
+  local livePlayerStunned = false
+  local livePlayerHealth = -1
+  local livePlayerMaxHealth = -1
+  local liveHealthPotionAvailable = false
+  if gBattleEngine ~= nil and gBattleEngine.mPlayerPtr ~= nil then
+    local livePlayer = gBattleEngine.mPlayerPtr
+    if livePlayer.mHealth ~= nil then livePlayerHealth = livePlayer.mHealth end
+    if livePlayer.mMaxHealth ~= nil then livePlayerMaxHealth = livePlayer.mMaxHealth end
+    if livePlayer.HasHealthPotion ~= nil then
+      liveHealthPotionAvailable = livePlayer:HasHealthPotion()
+    end
+    if livePlayer.mPAM ~= nil and livePlayer.mPAM.mPlayingFrame ~= nil then
+      local frame = livePlayer.mPAM.mPlayingFrame
+      livePlayerStunned = frame == "stunned" or frame == "stunnedflinch"
+    end
+  end
+  if gAutomationLivePlayerStunned == nil then
+    gAutomationLivePlayerStunned = false
+  end
+  if livePlayerStunned ~= gAutomationLivePlayerStunned then
+    gAutomationLivePlayerStunned = livePlayerStunned
+    print("AUTOMATION_PLAYER_STUNNED=" ..
+      (livePlayerStunned and "1" or "0") .. "|" ..
+      livePlayerHealth .. "|" .. livePlayerMaxHealth .. "|" ..
+      (liveHealthPotionAvailable and "1" or "0") .. "|E")
   end
   if complete and settled and not interrupted and
       gAutomationStableSnapshot == snapshot then
@@ -111,6 +145,8 @@ function TileEngine:AutomationDumpBoard()
     local maxHealth = -1
     local playerHealth = -1
     local playerMaxHealth = -1
+    local playerStunned = false
+    local healthPotionAvailable = false
     local offense = 0
     local treasures = "none"
     local overkillThresholds = "none"
@@ -128,6 +164,13 @@ function TileEngine:AutomationDumpBoard()
         if player.mHealth ~= nil then playerHealth = player.mHealth end
         if player.mMaxHealth ~= nil then playerMaxHealth = player.mMaxHealth end
         if player.mOffenseBonusPct ~= nil then offense = player.mOffenseBonusPct end
+        if player.mPAM ~= nil and player.mPAM.mPlayingFrame ~= nil then
+          local frame = player.mPAM.mPlayingFrame
+          playerStunned = frame == "stunned" or frame == "stunnedflinch"
+        end
+        if player.HasHealthPotion ~= nil then
+          healthPotionAvailable = player:HasHealthPotion()
+        end
         if player.mTreasures ~= nil then
           treasures = ""
           for treasureKey, treasureValue in pairs(player.mTreasures) do
@@ -187,6 +230,8 @@ function TileEngine:AutomationDumpBoard()
         powerRows[row] .. "|E")
       print("AUTOMATION_SELECTABLE=" .. gAutomationSequence .. "|" .. row .. "|" ..
         selectableRows[row] .. "|E")
+      print("AUTOMATION_ZERO_DAMAGE=" .. gAutomationSequence .. "|" .. row .. "|" ..
+        zeroDamageRows[row] .. "|E")
     end
     print("AUTOMATION_MODS=" .. gAutomationSequence .. "|" .. treasures .. "|E")
     print("AUTOMATION_OVERKILL=" .. gAutomationSequence .. "|" ..
@@ -201,6 +246,9 @@ function TileEngine:AutomationDumpBoard()
       maxHealth .. "|" .. offense .. "|E")
     print("AUTOMATION_PLAYER_HEALTH=" .. gAutomationSequence .. "|" ..
       playerHealth .. "|" .. playerMaxHealth .. "|E")
+    print("AUTOMATION_PLAYER_STATUS=" .. gAutomationSequence .. "|" ..
+      (playerStunned and "1" or "0") .. "|" ..
+      (healthPotionAvailable and "1" or "0") .. "|E")
     print("AUTOMATION_READY_SEQ=" .. gAutomationSequence .. "|E")
     print("AUTOMATION_READY=" .. snapshot)
   end

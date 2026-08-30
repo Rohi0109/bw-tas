@@ -2,7 +2,7 @@ import unittest
 
 from deluxe_optimizer import DeluxeState
 from deluxe_route import (
-    encounter_key, is_boss_encounter, menu_reset_reason,
+    encounter_key, is_boss_encounter, is_chapter_boss_defeat, menu_reset_reason,
     post_victory_reset_reason,
 )
 
@@ -36,6 +36,21 @@ class DeluxeRouteTests(unittest.TestCase):
             state(book=2, chapter=4, enemy="Sphinx (Riddle 1 of 5)")
         ))
 
+    def test_late_chapter_boss_event_does_not_restart_next_chapter(self):
+        defeated = state(enemy="Polyphemus (Boss)", stage=6)
+
+        self.assertTrue(is_chapter_boss_defeat(defeated))
+        self.assertIsNone(post_victory_reset_reason(defeated, set()))
+
+    def test_hydra_only_resets_after_main_head(self):
+        head = state(enemy="Hydra (Head 6)", chapter=7)
+        main = state(enemy="Hydra (Main Head)", chapter=7)
+
+        self.assertFalse(is_chapter_boss_defeat(head))
+        self.assertIsNone(post_victory_reset_reason(head, set()))
+        self.assertTrue(is_chapter_boss_defeat(main))
+        self.assertIsNone(post_victory_reset_reason(main, set()))
+
     def test_midchapter_note_triggers_immediately_after_defeat(self):
         defeated = state(enemy="Cyclops Herder", stage=3)
 
@@ -50,6 +65,14 @@ class DeluxeRouteTests(unittest.TestCase):
         self.assertEqual(
             post_victory_reset_reason(defeated, set(), chapter_override=8),
             "after route checkpoint Calydonian Boar",
+        )
+
+    def test_unique_route_enemy_survives_stale_inferred_chapter(self):
+        defeated = state(chapter=-1, enemy="Enyo", stage=3)
+
+        self.assertEqual(
+            post_victory_reset_reason(defeated, set(), chapter_override=9),
+            "after route checkpoint Enyo",
         )
 
     def test_predecessor_triggers_before_boss_ready(self):

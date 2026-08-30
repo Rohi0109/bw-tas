@@ -132,6 +132,12 @@ attack limit.
 
 #### Power-Up Potion optimization plan (highest priority)
 
+Initial routing hypothesis: when `Power Down` is active, use a power-up potion
+against an enemy with more than **10 current HP**. Treat 10 HP as a deliberately
+conservative starting threshold, not a finalized route constant; record whether
+the potion removes an attack and tune the threshold per enemy/chapter from run
+telemetry.
+
 1. Emit the live power-up potion inventory and active
    `DamageMultiplierEffect` state. Deluxe's `AttackItem` applies a next-attack
    multiplier (described by the shipped game as x2); do not infer availability
@@ -149,7 +155,10 @@ attack limit.
 6. Log inventory before/after, chosen word, predicted and observed damage, item
    animation time, and attacks saved so the route can be tuned from real runs.
 7. Add health and purify potions separately. They affect survival or board
-   state rather than direct damage and need their own decision rules.
+   state rather than direct damage and need their own decision rules. The
+   current health-potion rule maintains a **5-heart floor** (and fully heals
+   during Hydra); measure deaths, potion cost, and unused end-of-run inventory
+   to determine whether that floor should vary by chapter or enemy.
 
 #### Scramble optimization plan
 

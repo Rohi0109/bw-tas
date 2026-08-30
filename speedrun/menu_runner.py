@@ -13,7 +13,7 @@ from live_runner import X11Keyboard
 @dataclass(frozen=True)
 class MenuTiming:
     after_battle_menu: float = 0.35
-    after_quit_prompt: float = 0.40
+    after_quit_prompt: float = 1.00
     after_quit: float = 1.10
     after_adventure: float = 1.25
     after_enter: float = 1.50
