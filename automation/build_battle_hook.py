@@ -30,6 +30,30 @@ def main() -> None:
     transform.append_bound_method(
         chunk, "BattleEngine", "AutomationDumpDialogs", method
     )
+    prebattle = transform.compile_method(
+        str(ROOT / "automation/lua_hook/DumpPreBattleDialogs.lua"), str(args.luac)
+    )
+    transform.append_bound_method(
+        chunk, "BattleEngine", "AutomationDumpPreBattleDialogs", prebattle
+    )
+    convpanel_update = chunk.protos[
+        bound_method_proto(chunk, "GenericConvPanelUpdateCallback")
+    ]
+    transform.inject_self_call(
+        convpanel_update, "AutomationDumpPreBattleDialogs", arg_regs=[],
+        ret_reg=convpanel_update.maxstack, at_pc=0,
+    )
+    attack_method = transform.compile_method(
+        str(ROOT / "automation/lua_hook/DumpAttackSubmitted.lua"), str(args.luac)
+    )
+    transform.append_bound_method(
+        chunk, "BattleEngine", "AutomationAttackSubmitted", attack_method
+    )
+    submit = chunk.protos[bound_method_proto(chunk, "SubmitTiles")]
+    transform.inject_self_call(
+        submit, "AutomationAttackSubmitted", arg_regs=[],
+        ret_reg=submit.maxstack, at_pc=0,
+    )
     # Native widget and battle-state paths use different entry points. Hook
     # both; the Lua method shares one global state/heartbeat guard, so a frame
     # that reaches both cannot create unsafe independent dialogue streams.

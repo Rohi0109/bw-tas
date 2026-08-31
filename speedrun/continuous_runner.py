@@ -8,6 +8,7 @@ import os
 import re
 import sys
 import time
+from dataclasses import replace
 from pathlib import Path
 
 from live_runner import X11Keyboard, best_word
@@ -38,18 +39,34 @@ DONE_MARKER = "no more enemies left"
 CHAPTER_RE = re.compile(
     r"Book:StartGame called for book (?P<book>[^,]+), chapter (?P<chapter>\d+)"
 )
-DIALOG_RE = re.compile(
-    r"AUTOMATION_DIALOG=(?P<kind>[a-z]+)\|(?P<sequence>\d+)\|E"
+DIALOG_ACTIVE_RE = re.compile(
+    r"AUTOMATION_DIALOG_ACTIVE=(?P<source>[a-z]+)\|(?P<sequence>\d+)\|E"
+)
+DIALOG_PULSE_RE = re.compile(
+    r"AUTOMATION_DIALOG_PULSE=(?P<source>[a-z]+)\|(?P<sequence>\d+)\|"
+    r"(?P<pulse>\d+)\|E"
+)
+DIALOG_INACTIVE_RE = re.compile(r"AUTOMATION_DIALOG_INACTIVE=(?P<sequence>\d+)\|E")
+PLAY_TUTORIAL_RE = re.compile(r"AUTOMATION_PLAY_TUTORIAL=(?P<sequence>\d+)\|E")
+LEGACY_SCREEN_RE = re.compile(
+    r"AUTOMATION_DIALOG=(?P<kind>treasure|none)\|(?P<sequence>\d+)\|E"
 )
 DEFEATED_RE = re.compile(r"AUTOMATION_DEFEATED=(?P<enemy>[^|]+)\|E")
 ZERO_HEALTH_RE = re.compile(r"AUTOMATION_ZERO_HEALTH=(?P<enemy>[^|]+)\|E")
+ATTACK_SUBMITTED_RE = re.compile(
+    r"AUTOMATION_ATTACK_SUBMITTED=(?P<enemy>[^|]+)\|E"
+)
 RESET_READY_RE = re.compile(
     r"AUTOMATION_BOSS_RESET_READY=(?P<enemy>[^|]+)\|E"
 )
 PLAYER_STUNNED_RE = re.compile(
-    r"AUTOMATION_PLAYER_STUNNED=(?P<active>[01])"
+    r"AUTOMATION_PLAYER_(?P<kind>STUNNED|PETRIFIED)=(?P<active>[01])"
     r"(?:\|(?P<hp>-?\d+(?:\.\d+)?)\|(?P<max_hp>-?\d+(?:\.\d+)?)"
     r"\|(?P<health_potion>[01]))?\|E"
+)
+INCAP_OVERLAY_RE = re.compile(
+    r"AUTOMATION_INCAP_OVERLAY=(?P<kind>stunned|petrified)\|"
+    r"(?P<frame>[^|]+)\|E"
 )
 CHAPTER_MAP_RE = re.compile(
     r"AUTOMATION_CHAPTER_MAP=(?P<book>nil|\d+)\|"
@@ -72,6 +89,7 @@ SPHINX_ANSWERS = {
     "Sphinx (Riddle 2 of 5)": "WALL",
     "Sphinx (Riddle 3 of 5)": "FIST",
     "Sphinx (Riddle 4 of 5)": "TRUTH",
+    "Sphinx (Last Riddle)": "WATER",
 }
 TUTORIAL_PLAY_BOARD = "SFAE/PFUN/RJDY/TLIS"
 TREASURE_LOADOUT_AFTER_BOSS = {
@@ -91,6 +109,21 @@ def treasure_slots_after(enemy: str) -> tuple[int, ...] | None:
     """Resolve multi-phase boss display names to their treasure route."""
     route_enemy = "Hydra (Boss)" if enemy.startswith("Hydra (Head ") else enemy
     return TREASURE_LOADOUT_AFTER_BOSS.get(route_enemy)
+
+
+def clear_stale_treasure_transition(
+    source: str, blocked_screen: str | None, selection_started: bool,
+) -> tuple[str | None, bool]:
+    """Let a native conversation supersede a stale treasure-screen marker.
+
+    Deluxe can publish its legacy treasure edge before the post-boss Cassandra
+    conversation becomes active. Once ``convpanel.Active()`` is true, the
+    visible screen is authoritatively a conversation and treasure clicks must
+    no longer suppress its Lua-authorized pulses.
+    """
+    if source == "convpanel":
+        return None, False
+    return blocked_screen, selection_started
 
 
 def treasure_slots_for_state(state: DeluxeState) -> tuple[int, ...] | None:
@@ -137,10 +170,13 @@ def is_book3_final_gauntlet(state: DeluxeState) -> bool:
 def should_use_health_potion(
     state: DeluxeState, candidate: Candidate | None = None
 ) -> bool:
-    """Heal before a nonlethal turn when Lex has at most four hearts.
+    """Heal before attacking when Lex has at most four hearts.
 
     Hydra and the Book 3 final gauntlet retain their conservative full-heal
     rules because leaving either sequence discards substantially more progress.
+    Ordinary encounters refill Lex between enemies, so do not spend a potion
+    before a predicted killing blow. High-risk multi-phase encounters retain
+    their conservative rules below.
     """
     if state.player_hp < 0 or state.player_max_hp <= 0:
         return False
@@ -150,14 +186,27 @@ def should_use_health_potion(
         state.player_hp <= min(4.0, state.player_max_hp)
         and state.player_hp < state.player_max_hp
     )
+    if state.player_petrified:
+        return state.player_hp < state.player_max_hp
     if state.player_stunned and in_danger:
         return True
     if state.enemy.startswith("Hydra (") or is_book3_final_gauntlet(state):
         return state.player_hp < state.player_max_hp
-    return (
+    return (in_danger and (candidate is None or not candidate.lethal)) or (
+        state.player_has_damage_over_time
+        and state.player_hp < state.player_max_hp
+    )
+
+
+def should_use_powerup_potion(
+    state: DeluxeState, candidate: Candidate | None,
+) -> bool:
+    """Spend Power-Up only when doubling this attack removes a whole turn."""
+    return bool(
         candidate is not None
+        and state.attack_potion_available
         and not candidate.lethal
-        and in_danger
+        and candidate.damage * 2 >= state.hp
     )
 
 
@@ -171,9 +220,17 @@ def should_heal_during_stun(state: DeluxeState | None) -> bool:
     )
 
 
-def should_use_purification_potion(state: DeluxeState) -> bool:
-    """Cleanse known petrify enemies and the Book 3 final gauntlet."""
+def should_use_purification_potion(
+    state: DeluxeState, candidate: Candidate | None = None,
+) -> bool:
+    """Cleanse blocking ailments without wasting Purify on a finisher."""
+    if state.player_petrified:
+        return True
     if is_book3_final_gauntlet(state):
+        return True
+    if candidate is not None and candidate.lethal:
+        return False
+    if state.player_has_damage_over_time:
         return True
     return (
         state.enemy in PURIFY_AFTER_HIT_ENEMIES
@@ -216,6 +273,32 @@ def sphinx_candidate(
     return next((candidate for candidate in ranked if candidate.word == answer), None), answer
 
 
+def sphinx_allows_damage_fallback(enemy: str, candidate: Candidate) -> bool:
+    """Use ordinary combat on the last riddle only when it ends the phase now."""
+    return enemy == "Sphinx (Last Riddle)" and candidate.lethal
+
+
+def immediate_defeated_reset_reason(
+    state: DeluxeState | None,
+    defeated_enemy: str,
+    already_reset: set[tuple[int, int, int, str]],
+    chapter_override: int | None,
+) -> str | None:
+    """Return a non-boss route reset only after Lua confirms the defeat."""
+    if state is None or state.enemy != defeated_enemy:
+        return None
+    if is_chapter_boss_defeat(state):
+        return None
+    return post_victory_reset_reason(state, already_reset, chapter_override)
+
+
+def should_arm_boss_reset_on_zero_health(
+    state: DeluxeState | None,
+) -> bool:
+    """Chapter bosses arm an exit when Lua confirms their HP reached zero."""
+    return state is not None and is_chapter_boss_defeat(state)
+
+
 def enemy_accepts_candidate(state: DeluxeState, candidate: Candidate) -> bool:
     """Apply known enemy word immunities before strategy ranking."""
     if state.enemy.casefold().startswith("mama roc"):
@@ -230,19 +313,45 @@ def is_initial_play_tutorial(
     """Recognize Deluxe's fixed PLAY lesson despite a stale launch snapshot."""
     return (
         board == TUTORIAL_PLAY_BOARD
-        and active_dialog == "levelup"
+        and active_dialog == "interrupt"
+    )
+
+
+def dialogue_pulse_suppressed(
+    boss_reset_pending: bool, treasure_active: bool,
+    chapter_transition: bool, menu_transition: bool,
+) -> bool:
+    """Protect non-dialogue screens from otherwise valid Lua pulses."""
+    return (
+        boss_reset_pending or treasure_active
+        or chapter_transition or menu_transition
+    )
+
+
+def boss_reset_dialog_recovery_allowed(
+    source: str, menu_reentry_pending: bool,
+    last_boss_reset_key: tuple[int, int, int, str] | None,
+) -> bool:
+    """Allow only a post-reset result overlay to unblock a missed menu exit."""
+    return bool(
+        menu_reentry_pending
+        and last_boss_reset_key is not None
+        and source in {"interrupt", "convpanel"}
     )
 
 
 def is_unchanged_combat_snapshot(
     current: DeluxeState, submitted: DeluxeState | None
 ) -> bool:
-    """Reject READY churn before the submitted attack changes the enemy."""
-    return (
+    """Reject only sequence churn with no combat-relevant state change.
+
+    Enemy HP and board letters can remain unchanged while an enemy attack
+    lowers Lex's health or damages tiles. Those snapshots must be processed so
+    healing and damage selection use the new state.
+    """
+    return bool(
         submitted is not None
-        and current.enemy == submitted.enemy
-        and current.hp == submitted.hp
-        and current.board == submitted.board
+        and current == replace(submitted, sequence=current.sequence)
     )
 
 
@@ -272,16 +381,34 @@ def read_seed(log_path: Path) -> tuple[str | None, bool, bool, int | None]:
     return board, ready, done, chapter
 
 
+def unresolved_play_tutorial(text: str) -> bool:
+    """Recognize PLAY when its event predates the runner's tail cursor."""
+    plays = list(PLAY_TUTORIAL_RE.finditer(text))
+    if not plays:
+        return False
+    play = plays[-1]
+    sequence = int(play.group("sequence"))
+    return not any(
+        int(match.group("sequence")) == sequence and match.start() > play.start()
+        for match in DIALOG_INACTIVE_RE.finditer(text)
+    )
+
+
 def read_latest_dialog(log_path: Path) -> str | None:
     """Recover the most recently reported dialogue or non-combat screen."""
     latest = None
     if not log_path.exists():
         return latest
-    for match in DIALOG_RE.finditer(
-        log_path.read_text(encoding="utf-8", errors="replace")
-    ):
-        kind = match.group("kind")
-        latest = None if kind == "none" else kind
+    text = log_path.read_text(encoding="utf-8", errors="replace")
+    events = []
+    events.extend((m.start(), m.group("source")) for m in DIALOG_ACTIVE_RE.finditer(text))
+    events.extend((m.start(), None) for m in DIALOG_INACTIVE_RE.finditer(text))
+    events.extend(
+        (m.start(), "treasure" if m.group("kind") == "treasure" else None)
+        for m in LEGACY_SCREEN_RE.finditer(text)
+    )
+    for _, latest in sorted(events):
+        pass
     return latest
 
 
@@ -387,8 +514,8 @@ def main() -> None:
     input_confirmed = True
     input_attempts = 0
     input_confirm_at = float("inf")
-    handled_dialogs: set[int] = set()
     tutorial_play_submitted = False
+    tutorial_interrupt_active = False
     reset_encounters: set[tuple[int, int, int, str]] = set()
     movie_skip_confirmed: set[tuple[int, int, int, str]] = set()
     map_enter_encounters: set[tuple[int, int, int, str]] = set()
@@ -405,9 +532,11 @@ def main() -> None:
     menu_reentry_at = float("inf")
     menu_reentry_pending = False
     menu_reentry_attempts = 0
+    menu_reset_dialog_seen = False
     boss_reset_state: DeluxeState | None = None
     boss_reset_dialog_ready = False
     pending_stun_heal_hp: float | None = None
+    player_incapacitated = False
     last_boss_reset_key: tuple[int, int, int, str] | None = None
     treasure_selection_started = False
     handled_minigame_prompts: set[int] = set()
@@ -439,6 +568,21 @@ def main() -> None:
         # read_seed() but before this cursor is established.
         startup_text = log_path.read_text(encoding="utf-8", errors="replace")
         refreshed_dialog = read_latest_dialog(log_path)
+        if (
+            refreshed_dialog == "interrupt"
+            and unresolved_play_tutorial(startup_text)
+            and not tutorial_play_submitted
+        ):
+            tutorial_play_submitted = True
+            tutorial_interrupt_active = True
+            active_dialog = "interrupt"
+            print(
+                "Recovering fixed fresh-profile PLAY tutorial from active "
+                "startup marker.",
+                flush=True,
+            )
+            controller.play_tutorial_play(args.delay)
+            deadline = time.monotonic() + args.timeout
         if refreshed_dialog == "treasure":
             blocked_screen = "treasure"
             active_dialog = None
@@ -593,18 +737,29 @@ def main() -> None:
                             flush=True,
                         )
                     elif riddle_answer is not None:
-                        print(
-                            f"  Sphinx answer {riddle_answer} is not playable; "
-                            "scrambling instead of submitting a wrong word.",
-                            flush=True,
-                        )
-                        scrambles += 1
-                        controller.scramble(args.delay)
-                        submitted_board = board
-                        submitted_sequence = deluxe_state.sequence
-                        ready = False
-                        deadline = time.monotonic() + args.timeout
-                        continue
+                        if sphinx_allows_damage_fallback(
+                            deluxe_state.enemy, selected
+                        ):
+                            print(
+                                "  Sphinx WATER is absent, but the normal "
+                                f"solver can one-shot with {selected.word}; "
+                                "using the lethal fallback.",
+                                flush=True,
+                            )
+                            word, damage, path = (
+                                selected.word, selected.damage, selected.path
+                            )
+                        else:
+                            print(
+                                f"  Sphinx answer {riddle_answer} is not playable; "
+                                "waiting for Lua puzzle-board rotation.",
+                                flush=True,
+                            )
+                            submitted_board = board
+                            submitted_sequence = deluxe_state.sequence
+                            ready = False
+                            deadline = time.monotonic() + args.timeout
+                            continue
                     word, damage, path = selected.word, selected.damage, selected.path
                     shortest = alternatives.get("shortest_lethal")
                     maximum = alternatives["max_damage"]
@@ -638,15 +793,33 @@ def main() -> None:
                     args.layout == "deluxe" and deluxe_state is not None
                     and should_use_health_potion(deluxe_state, selected)
                 ):
-                    # Ordinary fights only heal before a nonlethal turn below
-                    # four hearts. Continuous gauntlets retain full healing.
+                    # Heal low-health ordinary fights even before a predicted
+                    # killing blow; health carries across encounter boundaries.
                     controller.use_health_potion(max(0.8, args.delay))
                 if (
                     args.layout == "deluxe" and deluxe_state is not None
-                    and should_use_purification_potion(deluxe_state)
+                    and should_use_powerup_potion(deluxe_state, selected)
+                ):
+                    print(
+                        "Power-Up converts the selected attack into a predicted "
+                        "one-shot; activating it.",
+                        flush=True,
+                    )
+                    controller.use_powerup_potion(max(0.8, args.delay))
+                if (
+                    args.layout == "deluxe" and deluxe_state is not None
+                    and should_use_purification_potion(deluxe_state, selected)
                 ):
                     # Petrify can end an encounter with Lex still at full
                     # health. Cleanse it before submitting the next word.
+                    print(
+                        "Purify required before attack: "
+                        f"enemy={deluxe_state.enemy}; "
+                        f"petrified={int(deluxe_state.player_petrified)}; "
+                        "damage_over_time="
+                        f"{int(deluxe_state.player_has_damage_over_time)}.",
+                        flush=True,
+                    )
                     controller.use_purification_potion(max(0.8, args.delay))
                 controller.play_word(board, word, args.delay, args.settle, path)
                 submitted_board = board
@@ -711,47 +884,8 @@ def main() -> None:
                     time.sleep(args.poll)
                     continue
                 if (
-                    args.layout == "deluxe" and args.auto_dialog and not ready
-                    and blocked_screen is None
-                    and (
-                        boss_reset_state is None
-                        or (
-                            boss_reset_dialog_ready
-                            and active_dialog is not None
-                        )
-                    )
-                    and time.monotonic() >= dialog_probe_at
-                ):
-                    dialog_probe_count += 1
-                    probe_kind = active_dialog or "conversation"
-                    print(
-                        f"BOARD still blocked without READY; {probe_kind} probe "
-                        f"{dialog_probe_count}.",
-                        flush=True,
-                    )
-                    movie_key = (
-                        encounter_key(submitted_state)
-                        if submitted_state is not None else None
-                    )
-                    if (
-                        should_confirm_book_movie_skip(
-                            submitted_state, dialog_probe_count, chapter
-                        )
-                        and movie_key not in movie_skip_confirmed
-                    ):
-                        assert movie_key is not None
-                        movie_skip_confirmed.add(movie_key)
-                        print(
-                            "Confirming inter-book movie skip after prolonged "
-                            "Chapter 10 transition.",
-                            flush=True,
-                        )
-                        controller.confirm_quit_to_main_menu(args.delay)
-                    else:
-                        controller.advance_dialog(probe_kind, args.delay)
-                    dialog_probe_at = time.monotonic() + args.dialog_probe_interval
-                if (
                     not input_confirmed
+                    and not player_incapacitated
                     and active_dialog is None
                     and blocked_screen is None
                     and time.monotonic() >= input_confirm_at
@@ -815,8 +949,104 @@ def main() -> None:
                 continue
 
             line = line.rstrip("\r\n")
+            dialog_active = DIALOG_ACTIVE_RE.search(line)
+            if dialog_active:
+                active_dialog = dialog_active.group("source")
+                old_blocked_screen = blocked_screen
+                old_treasure_selection = treasure_selection_started
+                blocked_screen, treasure_selection_started = (
+                    clear_stale_treasure_transition(
+                        active_dialog, blocked_screen, treasure_selection_started
+                    )
+                )
+                if (
+                    old_blocked_screen == "treasure" or old_treasure_selection
+                ) and blocked_screen is None and not treasure_selection_started:
+                    print(
+                        "Native conversation superseded stale treasure "
+                        "transition; dialogue pulses rearmed.",
+                        flush=True,
+                    )
+                ready = False
+                input_confirm_at = float("inf")
+                if (
+                    not tutorial_play_submitted
+                    and is_initial_play_tutorial(
+                        board, active_dialog, deluxe_state, attacks
+                    )
+                ):
+                    tutorial_play_submitted = True
+                    print("Completing fixed fresh-profile PLAY tutorial.", flush=True)
+                    controller.play_tutorial_play(args.delay)
+                    deadline = time.monotonic() + args.timeout
+            play_tutorial = PLAY_TUTORIAL_RE.search(line)
+            if play_tutorial and not tutorial_play_submitted:
+                tutorial_play_submitted = True
+                tutorial_interrupt_active = True
+                active_dialog = "interrupt"
+                print("Completing fixed fresh-profile PLAY tutorial.", flush=True)
+                controller.play_tutorial_play(args.delay)
+                deadline = time.monotonic() + args.timeout
+            dialog_inactive = DIALOG_INACTIVE_RE.search(line)
+            if dialog_inactive:
+                active_dialog = None
+                tutorial_interrupt_active = False
+                if menu_reset_dialog_seen and menu_reentry_pending:
+                    print(
+                        "Post-boss result overlay closed after blocking the "
+                        "menu exit; retrying the full battle-menu reset.",
+                        flush=True,
+                    )
+                    reset_from_battle(controller, MenuTiming())
+                    menu_reset_dialog_seen = False
+                    menu_reentry_attempts = 0
+                    menu_reentry_at = time.monotonic() + 2.0
+                    deadline = time.monotonic() + args.timeout
+                if not input_confirmed:
+                    input_attempts = 1
+                    input_confirm_at = time.monotonic() + args.input_confirm_timeout
+                    print("Input retry rearmed after dialogue exit.", flush=True)
+            dialog_pulse = DIALOG_PULSE_RE.search(line)
+            if dialog_pulse and args.auto_dialog:
+                source = dialog_pulse.group("source")
+                pulse = int(dialog_pulse.group("pulse"))
+                recover_blocked_reset = boss_reset_dialog_recovery_allowed(
+                    source, menu_reentry_pending, last_boss_reset_key
+                )
+                suppress = dialogue_pulse_suppressed(
+                    boss_reset_state is not None,
+                    blocked_screen == "treasure" or treasure_selection_started,
+                    chapter_enter_pending or chapter_enter_at != float("inf"),
+                    (menu_reentry_pending or menu_reentry_at != float("inf"))
+                    and not recover_blocked_reset,
+                )
+                # PLAY is submitted through its fixed rack, never by clicking
+                # the generic interrupt target over the lesson.
+                if source == "interrupt" and (
+                    board == TUTORIAL_PLAY_BOARD or tutorial_interrupt_active
+                ):
+                    suppress = True
+                if suppress:
+                    print(
+                        f"Lua dialogue pulse {pulse}: source={source}; "
+                        "suppressed during special-screen transition.", flush=True,
+                    )
+                else:
+                    if recover_blocked_reset:
+                        menu_reset_dialog_seen = True
+                    destination = (
+                        "Continue" if source == "levelup" else "safe arena point"
+                    )
+                    print(
+                        f"Lua dialogue pulse {pulse}: source={source}; "
+                        f"clicking {destination}.", flush=True,
+                    )
+                    controller.advance_dialog(source, args.delay)
             stunned_event = PLAYER_STUNNED_RE.search(line)
             if stunned_event and stunned_event.group("active") == "1":
+                incapacitation = stunned_event.group("kind").casefold()
+                player_incapacitated = True
+                input_confirm_at = float("inf")
                 live_hp = (
                     float(stunned_event.group("hp"))
                     if stunned_event.group("hp") is not None
@@ -838,28 +1068,51 @@ def main() -> None:
                         and deluxe_state.health_potion_available
                     )
                 )
+                heal_threshold = (
+                    live_max_hp
+                    if incapacitation == "petrified"
+                    else min(4.0, live_max_hp)
+                )
                 if (
-                    live_potion and 0 < live_hp <= min(4.0, live_max_hp)
+                    live_potion and 0 < live_hp <= heal_threshold
                     and live_hp < live_max_hp
                 ):
                     pending_stun_heal_hp = live_hp
                 print(
-                    "Lua confirmed Lex is stunned; clicking a tile to skip the animation.",
+                    f"Lua confirmed Lex is {incapacitation}; waiting for the "
+                    "native grid overlay to become clickable.",
                     flush=True,
                 )
-                controller.click_tile(0, args.delay)
             elif (
                 stunned_event and stunned_event.group("active") == "0"
-                and pending_stun_heal_hp is not None
             ):
+                player_incapacitated = False
+                if pending_stun_heal_hp is not None:
+                    print(
+                        f"Incapacitation ended with Lex at "
+                        f"{pending_stun_heal_hp:g} hearts; using the "
+                        "Lua-confirmed health potion now that native UI "
+                        "control returned.",
+                        flush=True,
+                    )
+                    controller.use_health_potion(args.delay)
+                    pending_stun_heal_hp = None
+                if not input_confirmed:
+                    # Time spent petrified/stunned is not evidence of a missed
+                    # click. Give the game a fresh acknowledgement window.
+                    input_confirm_at = (
+                        time.monotonic() + args.input_confirm_timeout
+                    )
+            incap_overlay_event = INCAP_OVERLAY_RE.search(line)
+            if incap_overlay_event:
                 print(
-                    f"Stun ended with Lex at {pending_stun_heal_hp:g} hearts; "
-                    "using the Lua-confirmed health potion now that native UI "
-                    "control returned.",
+                    "Lua confirmed the native "
+                    f"{incap_overlay_event.group('kind')} overlay is active "
+                    f"(frame {incap_overlay_event.group('frame')}); "
+                    "clicking its continuation area.",
                     flush=True,
                 )
-                controller.use_health_potion(args.delay)
-                pending_stun_heal_hp = None
+                controller.dismiss_incapacitation_overlay(args.delay)
             if timer_state is not None and process_timer_line(
                 timer_state, line, time.time()
             ):
@@ -934,7 +1187,7 @@ def main() -> None:
                     int(minigame_prompt.group("sequence"))
                 )
                 deadline = time.monotonic() + args.timeout
-            dialog = DIALOG_RE.search(line)
+            dialog = LEGACY_SCREEN_RE.search(line)
             if dialog and dialog.group("kind") == "none":
                 was_blocked = blocked_screen is not None
                 blocked_screen = None
@@ -1018,38 +1271,8 @@ def main() -> None:
                         )
                         treasure_selection_started = True
                         controller.select_treasures(slots, args.delay)
-            elif dialog:
-                dialog_sequence = int(dialog.group("sequence"))
-                kind = dialog.group("kind")
-                active_dialog = kind
-                chapter_enter_pending = False
-                chapter_enter_at = float("inf")
-                # READY immediately before a level-up/conversation can
-                # describe the board that is about to transition. Require Lua
-                # to publish a fresh stable READY after the overlay.
-                ready = False
-                input_confirm_at = float("inf")
-                if not args.auto_dialog:
-                    continue
-                if dialog_sequence not in handled_dialogs:
-                    handled_dialogs.add(dialog_sequence)
-                    if boss_reset_state is not None and not boss_reset_dialog_ready:
-                        print(
-                            f"Holding Lua-confirmed {kind} dialogue during "
-                            "pending boss reset.",
-                            flush=True,
-                        )
-                        continue
-                    print(
-                        f"Advancing Lua-confirmed {kind} dialogue "
-                        f"{dialog_sequence}.",
-                        flush=True,
-                    )
-                    controller.advance_dialog(kind, args.delay)
-                    dialog_probe_at = (
-                        time.monotonic() + args.dialog_probe_interval
-                    )
-            if "User clicked ATTACK" in line:
+            attack_submitted_event = ATTACK_SUBMITTED_RE.search(line)
+            if attack_submitted_event or "User clicked ATTACK" in line:
                 input_confirmed = True
                 input_confirm_at = float("inf")
                 if input_attempts > 1:
@@ -1073,13 +1296,16 @@ def main() -> None:
             if (
                 zero_health_event and args.auto_menu_reset
                 and submitted_state is not None
-                and is_chapter_boss_defeat(submitted_state)
+                # Chapter bosses arm on zero health, then exit at the native
+                # reset-ready/save edge to skip their long post-victory
+                # sequence. Route checkpoints use DEFEATED instead.
+                and should_arm_boss_reset_on_zero_health(submitted_state)
                 and encounter_key(submitted_state) not in reset_encounters
                 and boss_reset_state is None
             ):
                 print(
                     f"Lua confirmed {zero_health_event.group('enemy')} reached zero HP; "
-                    "waiting for Lua-confirmed reset-ready state.",
+                    "waiting for the Lua-confirmed save-ready edge.",
                     flush=True,
                 )
                 boss_reset_state = submitted_state
@@ -1090,21 +1316,35 @@ def main() -> None:
                 deadline = time.monotonic() + args.timeout
             reset_ready_event = RESET_READY_RE.search(line)
             if reset_ready_event and boss_reset_state is not None:
+                last_boss_reset_key = encounter_key(boss_reset_state)
+                reset_encounters.add(last_boss_reset_key)
                 print(
                     f"Lua confirmed {reset_ready_event.group('enemy')} death animation "
-                    "settled; waiting for its post-defeat overlay to close.",
+                    "settled before the result interrupt; immediate reset "
+                    "through the main menu.",
                     flush=True,
                 )
-                boss_reset_dialog_ready = True
-                if active_dialog is not None:
-                    dialog_probe_at = (
-                        time.monotonic() + args.dialog_probe_interval
-                    )
+                reset_from_battle(controller, MenuTiming())
+                boss_reset_state = None
+                boss_reset_dialog_ready = False
+                menu_reentry_pending = True
+                menu_reentry_attempts = 0
+                menu_reentry_at = time.monotonic() + 2.0
+                submitted_sequence = (
+                    deluxe_state.sequence if deluxe_state is not None else None
+                )
+                input_confirmed = True
+                input_confirm_at = float("inf")
+                ready = False
                 deadline = time.monotonic() + args.timeout
             defeated_event = DEFEATED_RE.search(line)
-            if defeated_event and args.auto_menu_reset:
-                reset_reason = post_victory_reset_reason(
-                    submitted_state, reset_encounters, chapter
+            if (
+                defeated_event and args.auto_menu_reset
+                and boss_reset_state is None
+            ):
+                reset_reason = immediate_defeated_reset_reason(
+                    submitted_state, defeated_event.group("enemy"),
+                    reset_encounters, chapter,
                 )
                 if reset_reason is not None:
                     assert submitted_state is not None
@@ -1168,6 +1408,16 @@ def main() -> None:
                 if chapter_enter_attempts and submitted_state is not None:
                     map_enter_encounters.add(encounter_key(submitted_state))
                 board = event.group("board")
+                if (
+                    not tutorial_play_submitted
+                    and is_initial_play_tutorial(
+                        board, active_dialog, deluxe_state, attacks
+                    )
+                ):
+                    tutorial_play_submitted = True
+                    print("Completing fixed fresh-profile PLAY tutorial.", flush=True)
+                    controller.play_tutorial_play(args.delay)
+                    deadline = time.monotonic() + args.timeout
                 menu_reentry_pending = False
                 menu_reentry_at = float("inf")
                 chapter_enter_pending = False

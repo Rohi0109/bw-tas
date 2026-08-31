@@ -52,7 +52,12 @@ function TileEngine:AutomationDumpBoard()
           letterPower = letterPower + LETTER_BONUSES[tile.mLetter]
         end
         local tilePower = tile.ApplyBonus(tile, letterPower)
-        if tilePower <= -letterPower then
+        -- Smashed and plagued attributes suppress the tile's base letter
+        -- value through ModifyValue; they do not expose that suppression via
+        -- ApplyBonus. Mirror TileEngine:GetWordValue so the runner sees the
+        -- same zero-damage tiles as the game.
+        local modifiedLetterPower = tile.ModifyValue(tile, letterPower)
+        if modifiedLetterPower <= 0 then
           zeroDamageRow = zeroDamageRow .. "1"
         else
           zeroDamageRow = zeroDamageRow .. "0"
@@ -87,6 +92,10 @@ function TileEngine:AutomationDumpBoard()
     zeroDamageRows[y] = zeroDamageRow
   end
 
+  local fixedPlayBoard = "SFAE/PFUN/RJDY/TLIS"
+  if complete and snapshot == fixedPlayBoard then
+    gAutomationSawPlayTutorial = true
+  end
   if complete and snapshot ~= gAutomationLastBoard then
     gAutomationLastBoard = snapshot
     print("AUTOMATION_BOARD=" .. snapshot)
@@ -96,7 +105,21 @@ function TileEngine:AutomationDumpBoard()
   if gBattleEngine ~= nil and gBattleEngine.mInterruptState then
     interrupted = true
   end
+  -- IntroTutorial leaves BattleEngine.mInterruptState asserted briefly after
+  -- PLAY has replaced the fixed rack and returned tile control. At that point
+  -- the changed, settled, selectable board is the native handoff signal; do
+  -- not wait for blind dialogue probes to clear a stale tutorial flag.
+  local postPlayEnemyAdvanced = false
+  if gBattleEngine ~= nil and gBattleEngine.mEnemyPtr ~= nil and
+      gBattleEngine.mEnemyPtr.mName ~= nil then
+    postPlayEnemyAdvanced =
+      gBattleEngine.mEnemyPtr.mName ~= "Trojan Spearman"
+  end
+  local postPlayHandoff = gAutomationSawPlayTutorial and
+    postPlayEnemyAdvanced and snapshot ~= fixedPlayBoard and
+    complete and anySelectable and settled
   local livePlayerStunned = false
+  local livePlayerPetrified = false
   local livePlayerHealth = -1
   local livePlayerMaxHealth = -1
   local liveHealthPotionAvailable = false
@@ -110,6 +133,7 @@ function TileEngine:AutomationDumpBoard()
     if livePlayer.mPAM ~= nil and livePlayer.mPAM.mPlayingFrame ~= nil then
       local frame = livePlayer.mPAM.mPlayingFrame
       livePlayerStunned = frame == "stunned" or frame == "stunnedflinch"
+      livePlayerPetrified = frame == "petrify1" or frame == "petrify2"
     end
   end
   if gAutomationLivePlayerStunned == nil then
@@ -122,6 +146,36 @@ function TileEngine:AutomationDumpBoard()
       livePlayerHealth .. "|" .. livePlayerMaxHealth .. "|" ..
       (liveHealthPotionAvailable and "1" or "0") .. "|E")
   end
+  if gAutomationLivePlayerPetrified == nil then
+    gAutomationLivePlayerPetrified = false
+  end
+  if livePlayerPetrified ~= gAutomationLivePlayerPetrified then
+    gAutomationLivePlayerPetrified = livePlayerPetrified
+    print("AUTOMATION_PLAYER_PETRIFIED=" ..
+      (livePlayerPetrified and "1" or "0") .. "|" ..
+      livePlayerHealth .. "|" .. livePlayerMaxHealth .. "|" ..
+      (liveHealthPotionAvailable and "1" or "0") .. "|E")
+  end
+  local incapOverlayKind = "none"
+  local incapOverlayFrame = "none"
+  if gBattleEngine ~= nil and gBattleEngine.mGridOverlayPAM ~= nil then
+    local gridOverlay = gBattleEngine.mGridOverlayPAM
+    if gridOverlay.mPlayingFrame ~= nil then
+      incapOverlayFrame = tostring(gridOverlay.mPlayingFrame)
+    end
+    if livePlayerStunned then
+      incapOverlayKind = "stunned"
+    elseif livePlayerPetrified then
+      incapOverlayKind = "petrified"
+    end
+  end
+  local incapOverlayState = incapOverlayKind .. "|" .. incapOverlayFrame
+  if gAutomationIncapOverlayState ~= incapOverlayState then
+    gAutomationIncapOverlayState = incapOverlayState
+    if incapOverlayKind ~= "none" then
+      print("AUTOMATION_INCAP_OVERLAY=" .. incapOverlayState .. "|E")
+    end
+  end
   if complete and settled and not interrupted and
       gAutomationStableSnapshot == snapshot then
     if gAutomationStableTicks == nil then gAutomationStableTicks = 0 end
@@ -133,8 +187,8 @@ function TileEngine:AutomationDumpBoard()
   -- Require a short run of identical, motionless frames. Some enemy/level-up
   -- transitions briefly expose CanSelect between animation phases, which can
   -- otherwise publish coordinates for a board that is about to move.
-  local ready = complete and anySelectable and settled and not interrupted and
-    gAutomationStableTicks >= 12
+  local ready = (complete and anySelectable and settled and not interrupted and
+    gAutomationStableTicks >= 12) or postPlayHandoff
 
   if complete and ready and not gAutomationWasReady then
     local book = -1
@@ -146,7 +200,10 @@ function TileEngine:AutomationDumpBoard()
     local playerHealth = -1
     local playerMaxHealth = -1
     local playerStunned = false
+    local playerPetrified = false
     local healthPotionAvailable = false
+    local attackPotionAvailable = false
+    local playerHasDamageOverTime = false
     local offense = 0
     local treasures = "none"
     local overkillThresholds = "none"
@@ -167,9 +224,25 @@ function TileEngine:AutomationDumpBoard()
         if player.mPAM ~= nil and player.mPAM.mPlayingFrame ~= nil then
           local frame = player.mPAM.mPlayingFrame
           playerStunned = frame == "stunned" or frame == "stunnedflinch"
+          playerPetrified = frame == "petrify1" or frame == "petrify2"
         end
         if player.HasHealthPotion ~= nil then
           healthPotionAvailable = player:HasHealthPotion()
+        end
+        if player.HasAttackPotion ~= nil then
+          attackPotionAvailable = player:HasAttackPotion()
+        end
+        if player.mStatusEffects ~= nil then
+          for _, effect in pairs(player.mStatusEffects) do
+            if type(effect) == "table" then
+              local className = effect.mClassName
+              local pamName = effect.mEffectPAMName
+              if className == "FireAilment" or className == "PoisonAilment" or
+                  pamName == "burning" or pamName == "poison" then
+                playerHasDamageOverTime = true
+              end
+            end
+          end
         end
         if player.mTreasures ~= nil then
           treasures = ""
@@ -248,9 +321,13 @@ function TileEngine:AutomationDumpBoard()
       playerHealth .. "|" .. playerMaxHealth .. "|E")
     print("AUTOMATION_PLAYER_STATUS=" .. gAutomationSequence .. "|" ..
       (playerStunned and "1" or "0") .. "|" ..
-      (healthPotionAvailable and "1" or "0") .. "|E")
+      (healthPotionAvailable and "1" or "0") .. "|" ..
+      (playerHasDamageOverTime and "1" or "0") .. "|" ..
+      (playerPetrified and "1" or "0") .. "|" ..
+      (attackPotionAvailable and "1" or "0") .. "|E")
     print("AUTOMATION_READY_SEQ=" .. gAutomationSequence .. "|E")
     print("AUTOMATION_READY=" .. snapshot)
+    if postPlayHandoff then gAutomationSawPlayTutorial = false end
   end
   gAutomationWasReady = complete and ready
 end

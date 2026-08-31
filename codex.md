@@ -27,11 +27,14 @@ already emitted its sole READY snapshot can leave it waiting for another event.
   dialogue telemetry used by the runner.
 - Added automatic chapter entry, dialogue advancement, deterministic treasure
   selection, Moxie skip confirmation, and recovery/retry behavior.
-- Added fixed Sphinx answers for the first four riddles: `SKY`, `WALL`, `FIST`,
-  and `TRUTH`. The final Sphinx encounter is ordinary combat, not `WATER`.
+- Added the five fixed Sphinx answers from the shipped `mPuzzleWords` table:
+  `SKY`, `WALL`, `FIST`, `TRUTH`, and `WATER`. The final board is installed
+  incrementally, so an early READY can expose an incomplete `WAT...` board;
+  wait for a later Lua board rather than attacking or scrambling.
 - Mama Roc filters out three-letter words because they are immune.
-- Ordinary fights heal before a nonlethal turn when Lex has fewer than four
-  hearts. Hydra and the Book 3 final gauntlet retain conservative full-heal
+- Ordinary fights heal before attacking when Lex has four hearts or fewer,
+  including predicted killing blows so low health is not carried into the next
+  encounter. Hydra and the Book 3 final gauntlet retain conservative full-heal
   behavior. Known petrify encounters use Purify.
 - Boss finishing turns use the shortest lethal candidate to avoid useless
   overkill animation time.
@@ -81,11 +84,13 @@ desired selections. Confirm actual slot identities from telemetry/live tests.
 - Complete a fresh-profile, uninterrupted full-game run and record chapter/book
   splits. Validate treasure choices, cutscene skips, deaths, and all three book
   transitions.
-- Add and validate the Alibaba (the live roster may label it as the 7/8/9
-  encounter) pre-boss exit. Its defeat can be followed by a level-up overlay;
-  reset only after Lua confirms that dialogue has closed.
-- Fix the final Sphinx attack to consume the puzzle solution telemetry rather
-  than falling back to ordinary combat-word selection.
+- Validate the Ali Baba chapter pre-boss exit after `Thief 9, 10 & 11`; the
+  final boss is `Thief 12, 13 & 14 (Boss)`. Its defeat can be followed by a
+  guaranteed level-up overlay, so reset when Lua acknowledges the accepted
+  lethal attack, while the native battle menu is still available.
+- Keep all five Sphinx rounds on their fixed puzzle answers without Scramble;
+  on the last round, prefer `WATER`, allow a normal word only when it is a
+  predicted one-shot, and otherwise wait through incomplete board telemetry.
 - Schedule a solver-improvement session: build deterministic board/enemy
   simulations and compare richer candidate-search strategies before changing
   the live default.

@@ -36,6 +36,30 @@ class DeluxeRouteTests(unittest.TestCase):
             state(book=2, chapter=4, enemy="Sphinx (Riddle 1 of 5)")
         ))
 
+    def test_ali_baba_reset_uses_penultimate_thief_group(self):
+        penultimate = state(book=2, chapter=2, enemy="Thieves 9, 10 & 11")
+        earlier = state(book=2, chapter=2, enemy="Thieves 6, 7 & 8")
+
+        self.assertIsNotNone(post_victory_reset_reason(penultimate, set()))
+        self.assertIsNone(post_victory_reset_reason(earlier, set()))
+
+    def test_ali_baba_live_final_boss_name_matches_roster(self):
+        boss = state(
+            book=2, chapter=2, enemy="Thieves 12, 13 & 14 (Boss)"
+        )
+
+        self.assertTrue(is_boss_encounter(boss))
+
+    def test_dread_pirate_skip_triggers_after_swashbuckler(self):
+        predecessor = state(
+            book=2, chapter=5, enemy="Swashbuckler", hp=0, max_hp=24
+        )
+
+        self.assertEqual(
+            post_victory_reset_reason(predecessor, set()),
+            "after Swashbuckler, before boss entrance",
+        )
+
     def test_late_chapter_boss_event_does_not_restart_next_chapter(self):
         defeated = state(enemy="Polyphemus (Boss)", stage=6)
 

@@ -172,6 +172,23 @@ telemetry.
    run telemetry, then promote a policy to the TAS default only when it saves
    measured time.
 
+#### Enemy-regeneration investigation
+
+The Book 1 Kraken run exposed a readiness race: the runner received Kraken at
+1 HP, selected an exact-lethal word, and the following snapshot reported 2 HP.
+Sea Elemental showed the same +1 HP transition. Do not compensate by adding a
+generic extra heart to optimizer HP; that changes routing for enemies and turns
+where regeneration is not active.
+
+1. Emit the native regeneration/effect state and the point in the turn update
+   at which healing has finished.
+2. Distinguish a stable, post-regeneration READY snapshot from intermediate
+   snapshots before allowing an attack.
+3. Confirm which enemies and effects regenerate, including whether the amount
+   or timing varies by chapter, difficulty, or status.
+4. Add captured-log tests for exact-lethal attacks both with and without active
+   regeneration, then measure the route impact in a fresh run.
+
 #### Tile-hazard optimization plan
 
 1. Extend each tile snapshot with its live class/attribute flags and individual

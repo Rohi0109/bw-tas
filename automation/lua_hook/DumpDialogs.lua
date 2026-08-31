@@ -2,10 +2,20 @@ function BattleEngine:AutomationDumpDialogs()
   local enemy = self.mEnemyPtr
   if enemy ~= nil and enemy.mName ~= nil then
     local currentEnemyName = enemy.mName
-    -- Enemy-pointer changes occur after chapter/treasure transitions, which is
-    -- too late for a post-boss animation skip.  Health reaches zero while the
-    -- defeated boss is still the active encounter, so expose that edge once.
+    if gAutomationZeroHealthEnemy ~= nil and currentEnemyName ~= gAutomationZeroHealthEnemy then
+      gAutomationZeroHealthEnemy = nil
+      gAutomationResetReadyEnemy = nil
+      gAutomationLastDeathFlags = nil
+    end
     if enemy.mHealth ~= nil and enemy.mHealth <= 0 then
+      local deathFlags = tostring(enemy.mStateAnimsDone) .. "|" ..
+        tostring(self.mDidDeathState) .. "|" .. tostring(self.mDidFinalDeathSequence) .. "|" ..
+        tostring(self.mInterruptState) .. "|" .. tostring(self.mBossState) .. "|" ..
+        tostring(self.mCheckpointState)
+      if gAutomationLastDeathFlags ~= deathFlags then
+        gAutomationLastDeathFlags = deathFlags
+        print("AUTOMATION_DEATH_FLAGS=" .. currentEnemyName .. "|" .. deathFlags .. "|E")
+      end
       if gAutomationZeroHealthEnemy ~= currentEnemyName then
         gAutomationZeroHealthEnemy = currentEnemyName
         gAutomationResetReadyEnemy = nil
@@ -14,6 +24,7 @@ function BattleEngine:AutomationDumpDialogs()
     elseif gAutomationZeroHealthEnemy == currentEnemyName then
       gAutomationZeroHealthEnemy = nil
       gAutomationResetReadyEnemy = nil
+      gAutomationLastDeathFlags = nil
     end
     if gAutomationTrackedEnemyName == nil then
       gAutomationTrackedEnemyName = currentEnemyName
@@ -23,56 +34,61 @@ function BattleEngine:AutomationDumpDialogs()
     end
   end
 
-  local dialogType = "none"
-  if self.mInterruptState then
-    if self.mNeedsLevelUp or self.mLevelUpData ~= nil then
-      dialogType = "levelup"
-    end
-  end
-  if dialogType == "none" and convpanel ~= nil and convpanel.Active ~= nil then
-    if convpanel.Active() then dialogType = "conversation" end
+  -- Match BattleEngine:MouseUp ownership. mNeedsLevelUp is merely a request
+  -- flag and can remain stale after PLAY; mLevelupEffect is the clickable UI.
+  local dialogSource = nil
+  if self.mLevelupEffect ~= nil then
+    dialogSource = "levelup"
+  elseif convpanel ~= nil and convpanel.Active ~= nil and convpanel.Active() then
+    dialogSource = "convpanel"
+  elseif gAutomationSawPlayTutorial and self.mInterruptState then
+    -- PLAY overlaps a nonzero checkpoint state, but its click owner is the
+    -- scripted IntroTutorial interrupt.
+    dialogSource = "interrupt"
+  elseif self.mCheckpointState ~= nil and self.mCheckpointState > 0 then
+    dialogSource = "checkpoint"
+  elseif self.mInterruptState then
+    dialogSource = "interrupt"
   end
 
-  -- Every live boss sample enters the level-up/result interrupt after zero HP
-  -- and before victory conversation.  This is the first Lua-confirmed state
-  -- matching the WR's settled corpse/RIP frame where Menu is safe to open.
-  if dialogType == "levelup" and gAutomationZeroHealthEnemy ~= nil and
+  if enemy ~= nil and enemy.mStateAnimsDone and self.mDidFinalDeathSequence and
+      not self.mInterruptState and gAutomationZeroHealthEnemy ~= nil and
       gAutomationResetReadyEnemy ~= gAutomationZeroHealthEnemy then
     gAutomationResetReadyEnemy = gAutomationZeroHealthEnemy
-    print("AUTOMATION_BOSS_RESET_READY=" ..
-      gAutomationZeroHealthEnemy .. "|E")
+    print("AUTOMATION_BOSS_RESET_READY=" .. gAutomationZeroHealthEnemy .. "|E")
   end
 
-  if gAutomationDialogTicks == nil then gAutomationDialogTicks = 0 end
-  local repeatBossResult = dialogType == "levelup" and
-    gAutomationZeroHealthEnemy ~= nil and
-    string.find(gAutomationZeroHealthEnemy, "(Boss)", 1, true) ~= nil
-  if dialogType == "conversation" or repeatBossResult then
-    gAutomationDialogTicks = gAutomationDialogTicks + 1
-  else
-    gAutomationDialogTicks = 0
+  if gAutomationDialogSequence == nil then gAutomationDialogSequence = 0 end
+  if gAutomationDialogUpdates == nil then gAutomationDialogUpdates = 0 end
+  if gAutomationDialogPulse == nil then gAutomationDialogPulse = 0 end
+  if dialogSource ~= gAutomationDialogSource then
+    if gAutomationDialogSource ~= nil then
+      print("AUTOMATION_DIALOG_INACTIVE=" .. gAutomationDialogSequence .. "|E")
+    end
+    gAutomationDialogSource = dialogSource
+    gAutomationDialogUpdates = 0
+    gAutomationDialogPulse = 0
+    if dialogSource ~= nil then
+      gAutomationDialogSequence = gAutomationDialogSequence + 1
+      print("AUTOMATION_DIALOG_ACTIVE=" .. dialogSource .. "|" ..
+        gAutomationDialogSequence .. "|E")
+      if dialogSource == "interrupt" and gAutomationSawPlayTutorial then
+        print("AUTOMATION_PLAY_TUTORIAL=" .. gAutomationDialogSequence .. "|E")
+      end
+    end
   end
-  if gAutomationLastDialog == nil then gAutomationLastDialog = "none" end
-  local emitDialog = dialogType ~= gAutomationLastDialog
-  -- Multi-page result/level-up panels can remain the same dialog type after a
-  -- Continue click.  Re-emit their still-active state so the controller can
-  -- advance each page and wait for an explicit `none` edge before opening Menu.
-  if (dialogType == "conversation" or repeatBossResult) and
-      gAutomationDialogTicks >= 30 then
-    emitDialog = true
+
+  if dialogSource ~= nil then
+    gAutomationDialogUpdates = gAutomationDialogUpdates + 1
+    -- First authorization after three native updates, then every fifteen.
+    if gAutomationDialogUpdates >= 3 and ((gAutomationDialogUpdates - 3) % 15) == 0 then
+      gAutomationDialogPulse = gAutomationDialogPulse + 1
+      print("AUTOMATION_DIALOG_PULSE=" .. dialogSource .. "|" ..
+        gAutomationDialogSequence .. "|" .. gAutomationDialogPulse .. "|E")
+    end
   end
-  if emitDialog then
-    gAutomationLastDialog = dialogType
-    gAutomationDialogTicks = 0
-    if gAutomationDialogSequence == nil then gAutomationDialogSequence = 0 end
-    gAutomationDialogSequence = gAutomationDialogSequence + 1
-    print("AUTOMATION_SYNC=1")
-    print("AUTOMATION_SYNC=2")
-    print("AUTOMATION_SYNC=3")
-    print("AUTOMATION_DIALOG=" .. dialogType .. "|" ..
-      gAutomationDialogSequence .. "|E")
-  end
-  if dialogType == "none" and gAutomationZeroHealthEnemy ~= nil and
+
+  if dialogSource == nil and gAutomationZeroHealthEnemy ~= nil and
       gAutomationResetReadyEnemy == gAutomationZeroHealthEnemy then
     gAutomationZeroHealthEnemy = nil
     gAutomationResetReadyEnemy = nil

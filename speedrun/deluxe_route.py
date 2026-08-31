@@ -27,9 +27,8 @@ FINAL_ENCOUNTERS = frozenset({
 # Hydra and Codex chapters contain no ordinary predecessor encounter.
 PRE_BOSS_ENCOUNTERS = frozenset({
     "alexander", "cyclopswarrior", "scylla", "enchantedserpent", "orthrus",
-    "alibaba",
     "harpywitch", "stymphalianbirdsteel", "naiad", "greaterbasilisk",
-    "firebreather", "thief789", "thief91011", "embalmedguardian", "swashbuckler",
+    "firebreather", "thief91011", "embalmedguardian", "swashbuckler",
     "bullelephant", "miragegoat", "flyingarmor", "airspirit", "necromancer",
     "hatefulhousemaid", "plaguedpork", "arnoldstein", "werehawk", "mrblobs",
     "disturbedskeleton", "fallenhuntresshero", "unlivingpyromancer",

@@ -187,11 +187,15 @@ class X11Keyboard:
         return root_x.value, root_y.value
 
     def focus(self) -> None:
-        # Reparenting window managers may give the title to the outer frame, but
-        # XSetInputFocus still delivers synthetic keys to its active child.
+        # Mutter can leave Wine's 800x600 child unviewable while its virtual
+        # desktop is changing workspaces. Focusing that child immediately after
+        # XMapRaised produces an asynchronous BadMatch that terminates Xlib.
+        # Synchronize the map and focus the mapped top-level frame; XTest input
+        # is then routed to Wine's active child normally.
         self._refresh_window()
         self.x11.XMapRaised(self.display, self.frame)
-        self.x11.XSetInputFocus(self.display, self.window, 1, 0)
+        self.x11.XSync(self.display, False)
+        self.x11.XSetInputFocus(self.display, self.frame, 1, 0)
         self.x11.XFlush(self.display)
 
     def key(self, name: str) -> None:
@@ -264,7 +268,7 @@ class X11Keyboard:
             raise RuntimeError("Potion automation is calibrated only for Deluxe")
         self.focus()
         width, height = self._size(self.window)
-        self.click(int(width * 0.180), int(height * 0.570), delay)
+        self.click(int(width * 0.276), int(height * 0.570), delay)
 
     def use_powerup_potion(self, delay: float) -> None:
         """Use Deluxe's blue power-up potion."""
@@ -272,7 +276,7 @@ class X11Keyboard:
             raise RuntimeError("Potion automation is calibrated only for Deluxe")
         self.focus()
         width, height = self._size(self.window)
-        self.click(int(width * 0.276), int(height * 0.570), delay)
+        self.click(int(width * 0.180), int(height * 0.570), delay)
 
     def dismiss_invalid_word_dialog(self, delay: float) -> None:
         """Dismiss Deluxe's centered invalid-word dialog, if it is present.
@@ -285,20 +289,30 @@ class X11Keyboard:
         width, height = self._size(self.window)
         self.click(width // 2, int(height * 0.435), delay)
 
-    def advance_dialog(self, kind: str, delay: float) -> None:
-        """Click a Lua-confirmed Deluxe dialogue's primary continuation area."""
+    def advance_dialog(self, source: str, delay: float) -> None:
+        """Route a Lua-authorized pulse to a non-grid continuation point."""
         if self.layout != "deluxe":
             raise RuntimeError("Automated dialogue is calibrated only for Deluxe")
         points = {
             "levelup": (0.50, 0.665),
-            "conversation": (0.50, 0.60),
+            "convpanel": (0.50, 0.435),
+            "checkpoint": (0.50, 0.435),
+            "interrupt": (0.50, 0.435),
         }
-        if kind not in points:
-            raise RuntimeError(f"No click calibration for dialogue kind {kind!r}")
+        if source not in points:
+            raise RuntimeError(f"No click calibration for dialogue source {source!r}")
         width, height = self._size(self.window)
-        x, y = points[kind]
+        x, y = points[source]
         self.focus()
         self.click(int(width * x), int(height * y), delay)
+
+    def dismiss_incapacitation_overlay(self, delay: float) -> None:
+        """Click the native Stunned/Petrified card's continuation area."""
+        if self.layout != "deluxe":
+            raise RuntimeError("Incapacitation overlay is calibrated only for Deluxe")
+        width, height = self._size(self.window)
+        self.focus()
+        self.click(width // 2, int(height * 0.80), delay)
 
     def open_battle_menu(self, delay: float) -> None:
         """Open Deluxe's in-battle menu from the bottom action strip."""
@@ -376,7 +390,9 @@ class X11Keyboard:
             raise RuntimeError("Profile automation is calibrated only for Deluxe")
         width, height = self._size(self.window)
         self.focus()
-        self.click(int(width * 0.500), int(height * 0.340), delay)
+        # At 800x600 the underlined link is centered around client y=216.
+        # 0.340 lands in the blank welcome panel just above it.
+        self.click(int(width * 0.500), int(height * 0.360), delay)
 
     def delete_selected_user(self, delay: float) -> None:
         """Click Delete for the currently selected user."""
@@ -483,16 +499,16 @@ class X11Keyboard:
         self.focus()
         # Lua exposes the lesson as soon as its overlay opens, before the
         # first arrow finishes animating and the P tile accepts input.
-        time.sleep(2.0)
+        time.sleep(0.5)
         # The tutorial enables one required tile at a time and animates its
         # instruction before accepting the next click.
         for index in (4, 13, 2, 11):
             row, column = divmod(index, 4)
             self.click(
                 int(width * tile_x[column]), int(height * tile_y[row]),
-                max(1.5, delay),
+                max(0.35, delay),
             )
-        self.click(width // 2, int(height * 0.963), max(0.5, delay))
+        self.click(width // 2, int(height * 0.963), max(0.2, delay))
 
 
 def best_word(board_text: str) -> tuple[str, float]:

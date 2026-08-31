@@ -24,7 +24,8 @@ PLAYER_HEALTH_RE = re.compile(
 )
 PLAYER_STATUS_RE = re.compile(
     r"AUTOMATION_PLAYER_STATUS=(?P<seq>\d+)\|(?P<stunned>[01])\|"
-    r"(?P<health_potion>[01])\|E"
+    r"(?P<health_potion>[01])(?:\|(?P<damage_over_time>[01]))?"
+    r"(?:\|(?P<petrified>[01]))?(?:\|(?P<attack_potion>[01]))?\|E"
 )
 LETTERS_RE = re.compile(
     r"AUTOMATION_LETTERS=(?P<seq>\d+)\|(?P<row>[0-3])\|(?P<value>[A-Z]{4})\|E"
@@ -85,9 +86,13 @@ BOOK1_MIN_KILL_ENEMIES = frozenset({
 # the same name. Keep exceptional mappings explicit and auditable; structural
 # decorations such as "(Boss)" and Hydra phases are handled below.
 DISPLAY_NAME_ALIASES = {
+    "angryewe": "ewe",
+    "angrymountaingoat": "mountaingoat",
     "calydonianboar": "caledonianboar",
     "bronzestymphalian": "stymphalianbirdbronze",
     "steelstymphalian": "stymphalianbirdsteel",
+    "thieves91011": "thief91011",
+    "thieves121314": "thief121314",
     "centaurgrappler": "centaurwarrior",
     "centaurhunter": "centaurarcher",
     "limniad": "helead",
@@ -102,8 +107,6 @@ def _normal_name(value: str) -> str:
 def _roster_name(value: str) -> str:
     """Normalize Deluxe's decorated display names to roster identifiers."""
     normalized = _normal_name(value)
-    if normalized.startswith("angry"):
-        normalized = normalized[len("angry"):]
     if normalized.endswith("boss"):
         normalized = normalized[:-len("boss")]
     if re.fullmatch(r"hydra(?:head\d+|mainhead)", normalized):
@@ -188,7 +191,10 @@ class DeluxeState:
     player_hp: float = -1
     player_max_hp: float = -1
     player_stunned: bool = False
+    player_petrified: bool = False
     health_potion_available: bool = False
+    attack_potion_available: bool = False
+    player_has_damage_over_time: bool = False
     zero_damage: tuple[bool, ...] = (False,) * 16
 
 
@@ -276,9 +282,24 @@ def parse_state(text: str) -> DeluxeState | None:
             player_statuses[-1].group("stunned") == "1"
             if player_statuses else False
         ),
+        player_petrified=(
+            player_statuses[-1].group("petrified") == "1"
+            if player_statuses and player_statuses[-1].group("petrified")
+            else False
+        ),
         health_potion_available=(
             player_statuses[-1].group("health_potion") == "1"
             if player_statuses else False
+        ),
+        attack_potion_available=(
+            player_statuses[-1].group("attack_potion") == "1"
+            if player_statuses and player_statuses[-1].group("attack_potion")
+            else False
+        ),
+        player_has_damage_over_time=(
+            player_statuses[-1].group("damage_over_time") == "1"
+            if player_statuses and player_statuses[-1].group("damage_over_time")
+            else False
         ),
         book=int(match.group("book")),
         chapter=int(match.group("chapter")),
@@ -296,6 +317,10 @@ def parse_state(text: str) -> DeluxeState | None:
 
 def ceil_quarter(value: float) -> float:
     return math.ceil((value - 1e-9) * 4.0) / 4.0
+
+
+def floor_quarter(value: float) -> float:
+    return math.floor((value + 1e-9) * 4.0) / 4.0
 
 
 def load_metal_words(path: Path) -> frozenset[str]:
@@ -352,11 +377,12 @@ def damage_for(
     tile_contributions = []
     for index in path:
         contribution = state.tile_powers[index]
-        # Smashed/plagued tiles contribute no letter damage. ApplyBonus usually
-        # exposes that as -1; the explicit mask is a safe fallback and makes
-        # the behavior visible in captured telemetry.
-        if state.zero_damage[index] and contribution > -1.0:
-            contribution -= 1.0
+        # A smashed/plagued tile contributes no letter damage. The game's
+        # damage scale is quarter-heart based, so remove that tile's normal
+        # quarter-heart contribution while preserving any separately reported
+        # gem/treasure bonus.
+        if state.zero_damage[index]:
+            contribution -= 0.25
         tile_contributions.append(contribution)
     tile_bonus = ceil_quarter(sum(tile_contributions))
     damage = max(0.0, base + tile_bonus + base * state.offense)
@@ -365,7 +391,10 @@ def damage_for(
             damage *= 1.5
         damage += 1.0
     elif "heph's hammer" in state.treasures:
-        damage += 0.5
+        # Deluxe quantizes ordinary word damage before applying Hammer's
+        # documented extra half-heart. Chimera snapshot 80's TUT therefore
+        # deals 0.25 + 0.5, rather than rounding the combined value to 1.0.
+        damage = floor_quarter(damage) + 0.5
     return ceil_quarter(damage)
 
 

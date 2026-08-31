@@ -35,7 +35,6 @@ def main() -> None:
         update, "AutomationDumpChapterMap", arg_regs=[],
         ret_reg=update.maxstack, at_pc=0,
     )
-
     actions = (
         ("ContinueButtonPressed", "AutomationChapterContinue", "ChapterContinue.lua"),
         ("MiniGamePromptCallback", "AutomationChapterMiniGame", "ChapterMiniGame.lua"),

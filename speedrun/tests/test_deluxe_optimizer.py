@@ -1,7 +1,7 @@
 import unittest
 
 from deluxe_optimizer import (
-    DeluxeState, candidates, ceil_quarter, choose, damage_for,
+    DeluxeState, candidates, ceil_quarter, choose, damage_for, floor_quarter,
     load_chapter1_hp_map, parse_state, strategy_for_state,
     validate_chapter1_state,
 )
@@ -36,7 +36,38 @@ class DeluxeOptimizerTests(unittest.TestCase):
         )
 
         self.assertEqual(damage_for(normal, "TEST", (0, 1, 2, 3), frozenset()), 0.5)
-        self.assertEqual(damage_for(smashed, "TEST", (0, 1, 2, 3), frozenset()), 0.0)
+        self.assertEqual(damage_for(smashed, "TEST", (0, 1, 2, 3), frozenset()), 0.25)
+
+    def test_specter_acid_regression_with_zero_damage_tile(self):
+        current = state(
+            board="ACID/AAAA/AAAA/AAAA",
+            hp=0.75,
+            max_hp=7.0,
+            offense=0.4087301587301587,
+            zero_damage=(True, False, False, False) + (False,) * 12,
+        )
+
+        self.assertEqual(
+            damage_for(current, "ACID", (0, 1, 2, 3), frozenset()), 0.5
+        )
+
+    def test_manes_aliqot_two_damaged_tiles_regression(self):
+        current = state(
+            board="OLTN/FTJI/ENOA/YYQH",
+            enemy="Manes",
+            hp=1.5,
+            max_hp=8.0,
+            offense=0.46494567990303,
+            zero_damage=(False,) * 5 + (True,) + (False,) * 5
+            + (True, False, False, True, False),
+        )
+
+        # Snapshot 80 used A/L/I/Q/O/T at 11/1/7/14/0/2. The two damaged
+        # tiles reduce the observed attack from the stale 1.5 estimate to 1.0.
+        self.assertEqual(
+            damage_for(current, "ALIQOT", (11, 1, 7, 14, 0, 2), frozenset()),
+            1.0,
+        )
 
     def test_candidates_exclude_locked_tiles(self):
         selectable = (True,) * 7 + (False,) + (True,) * 8
@@ -54,6 +85,8 @@ class DeluxeOptimizerTests(unittest.TestCase):
     def test_decorated_enemy_names_match_roster(self):
         hp_map = {
             "mountaingoat": 3,
+            "ewe": 2,
+            "angryram": 3,
             "polyphemus": 7,
             "hydra": (4, 4, 4, 4, 5, 5, 7),
             "caledonianboar": 14,
@@ -65,9 +98,13 @@ class DeluxeOptimizerTests(unittest.TestCase):
             "basilisk": 25,
         }
         goat = state(enemy="Angry Mountain Goat", max_hp=3)
+        ewe = state(enemy="Angry Ewe", max_hp=2)
+        ram = state(enemy="Angry Ram", max_hp=3)
         boss = state(enemy="Polyphemus (Boss)", max_hp=7)
 
         self.assertIsNone(validate_chapter1_state(goat, hp_map))
+        self.assertIsNone(validate_chapter1_state(ewe, hp_map))
+        self.assertIsNone(validate_chapter1_state(ram, hp_map))
         self.assertIsNone(validate_chapter1_state(boss, hp_map))
         for head, hp in enumerate((4, 4, 4, 4, 5, 5, 7), 1):
             hydra = state(enemy=f"Hydra (Head {head})", max_hp=hp)
@@ -151,6 +188,7 @@ class DeluxeOptimizerTests(unittest.TestCase):
         line += "AUTOMATION_ENEMY=7|Trojan Warrior|E\n"
         line += "AUTOMATION_HEALTH=7|2|2|0.125|E\n"
         line += "AUTOMATION_PLAYER_HEALTH=7|3|5|E\n"
+        line += "AUTOMATION_PLAYER_STATUS=7|0|1|0|0|1|E\n"
         for row, letters in enumerate(("ABCD", "EFGH", "IJKL", "MNOP")):
             line += f"AUTOMATION_LETTERS=7|{row}|{letters}|E\n"
             line += f"AUTOMATION_GEMS=7|{row}|n,n,n,n|E\n"
@@ -165,12 +203,30 @@ class DeluxeOptimizerTests(unittest.TestCase):
         self.assertEqual(parsed.enemy, "Trojan Warrior")
         self.assertEqual(parsed.treasures, frozenset({"artemis bow"}))
         self.assertEqual((parsed.player_hp, parsed.player_max_hp), (3, 5))
+        self.assertTrue(parsed.health_potion_available)
+        self.assertTrue(parsed.attack_potion_available)
         self.assertFalse(parsed.selectable[7])
 
     def test_quarter_rounding(self):
         self.assertEqual(ceil_quarter(0.01), 0.25)
         self.assertEqual(ceil_quarter(0.25), 0.25)
         self.assertEqual(ceil_quarter(0.26), 0.5)
+        self.assertEqual(floor_quarter(0.49), 0.25)
+        self.assertEqual(floor_quarter(0.5), 0.5)
+
+    def test_chimera_tut_hammer_rounding_regression(self):
+        chimera = state(
+            board="TVIT/TFRI/IUTU/VUQO",
+            enemy="Chimera",
+            hp=1.0,
+            max_hp=9.0,
+            offense=0.57161235729853,
+            treasures=frozenset({"heph's hammer"}),
+        )
+
+        self.assertEqual(
+            damage_for(chimera, "TUT", (0, 9, 3), frozenset()), 0.75
+        )
 
     def test_hand_and_metal_damage(self):
         current = state(treasures=frozenset({"hand of hercules"}))
