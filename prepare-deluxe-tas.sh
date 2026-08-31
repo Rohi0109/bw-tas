@@ -2,4 +2,4 @@
 set -euo pipefail
 
 repo_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-exec python3 "$repo_dir/automation/prepare_deluxe.py" "$@"
+exec python3 "$repo_dir/automation/prepare_deluxe.py" "$@"# Build/rebuild the disposable modded Deluxe TAS copy.

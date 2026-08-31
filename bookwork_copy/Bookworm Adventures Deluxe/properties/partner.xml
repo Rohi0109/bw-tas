@@ -1,0 +1,18 @@
+<Properties>
+<String id="MarketingMode"></String>
+<Boolean id="DefaultWindowed">false</Boolean>
+<Boolean id="DontUpdate">true</Boolean>
+<Boolean id="NoReg">true</Boolean>
+<Integer id="NumPartnerLogos">1</Integer>	
+<String id="PartnerLogo1">images/gamehouselogo</String>
+<Integer id="PartnerLogo1X">250</Integer>
+<Integer id="PartnerLogo1Y">188</Integer>
+<Integer id="PopCapLogoTimer">100</Integer>
+<Integer id="PartnerLogoTimer">100</Integer>
+<Integer id="PopCapLogoFadeSpeed">2</Integer>
+<Integer id="PartnerLogoFadeSpeed">2</Integer>
+<Integer id="PartnerBGRed">0</Integer>
+<Integer id="PartnerBGGreen">0</Integer>
+<Integer id="PartnerBGBlue">0</Integer>
+<Boolean id="VistaCompliant">true</Boolean>
+</Properties>

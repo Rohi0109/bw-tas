@@ -1,0 +1,120 @@
+***  Installation Started 12/12/2007 21:45  ***
+Title: Bookworm Adventures Deluxe
+Source: C:\Users\CrossDLC\AppData\Local\Temp\GLB9C6E.tmp
+Made Dir: C:\Program Files\GameHouse
+Made Dir: C:\Program Files\GameHouse\Bookworm Adventures Deluxe
+File Copy: C:\Program Files\GameHouse\Bookworm Adventures Deluxe\UNWISE.EXE
+RegDB Key: Software\Microsoft\Windows\CurrentVersion\Uninstall\Bookworm Adventures Deluxe
+RegDB Val: Bookworm Adventures Deluxe
+RegDB Name: DisplayName
+RegDB Root: 2
+RegDB Key: Software\Microsoft\Windows\CurrentVersion\Uninstall\Bookworm Adventures Deluxe
+RegDB Val: C:\PROGRA~1\GAMEHO~1\BOOKWO~1\UNWISE.EXE /U C:\PROGRA~1\GAMEHO~1\BOOKWO~1\INSTALL.LOG
+RegDB Name: UninstallString
+RegDB Root: 2
+File Copy: C:\Program Files\GameHouse\Bookworm Adventures Deluxe\bass.dll
+File Copy: C:\Program Files\GameHouse\Bookworm Adventures Deluxe\bookwormadv.dll
+File Copy: C:\Program Files\GameHouse\Bookworm Adventures Deluxe\BookwormAdventures.exe
+File Copy: C:\Program Files\GameHouse\Bookworm Adventures Deluxe\Flash.ocx
+File Copy: C:\Program Files\GameHouse\Bookworm Adventures Deluxe\j2k-codec.dll
+File Copy: C:\Program Files\GameHouse\Bookworm Adventures Deluxe\main.pak
+File Copy: C:\Program Files\GameHouse\Bookworm Adventures Deluxe\vhwb.dat
+File Copy: C:\Program Files\GameHouse\Bookworm Adventures Deluxe\vssver.scc
+Made Dir: C:\Program Files\GameHouse\Bookworm Adventures Deluxe\images
+File Copy: C:\Program Files\GameHouse\Bookworm Adventures Deluxe\images\gamehouselogo.gif
+File Copy: C:\Program Files\GameHouse\Bookworm Adventures Deluxe\images\vssver.scc
+Made Dir: C:\Program Files\GameHouse\Bookworm Adventures Deluxe\images\cutscenes
+File Copy: C:\Program Files\GameHouse\Bookworm Adventures Deluxe\images\cutscenes\Book2Intro.swf
+File Copy: C:\Program Files\GameHouse\Bookworm Adventures Deluxe\images\cutscenes\Book3End.swf
+File Copy: C:\Program Files\GameHouse\Bookworm Adventures Deluxe\images\cutscenes\Book3Intro.swf
+File Copy: C:\Program Files\GameHouse\Bookworm Adventures Deluxe\images\cutscenes\intro.swf
+File Copy: C:\Program Files\GameHouse\Bookworm Adventures Deluxe\images\cutscenes\vssver.scc
+Made Dir: C:\Program Files\GameHouse\Bookworm Adventures Deluxe\properties
+File Copy: C:\Program Files\GameHouse\Bookworm Adventures Deluxe\properties\partner.xml
+File Copy: C:\Program Files\GameHouse\Bookworm Adventures Deluxe\properties\partner.xml.sig
+File Copy: C:\Program Files\GameHouse\Bookworm Adventures Deluxe\properties\vssver.scc
+File Copy: C:\Program Files\GameHouse\Bookworm Adventures Deluxe\readme.txt
+Made Dir: C:\Program Files\GameHouse\Bookworm Adventures Deluxe\store
+File Copy: C:\Program Files\GameHouse\Bookworm Adventures Deluxe\store\exit.html
+File Copy: C:\Program Files\GameHouse\Bookworm Adventures Deluxe\store\exitMember.html
+File Copy: C:\Program Files\GameHouse\Bookworm Adventures Deluxe\store\funpass.html
+File Copy: C:\Program Files\GameHouse\Bookworm Adventures Deluxe\store\funpassMember.html
+File Copy: C:\Program Files\GameHouse\Bookworm Adventures Deluxe\store\register.html
+File Copy: C:\Program Files\GameHouse\Bookworm Adventures Deluxe\store\trial.html
+File Copy: C:\Program Files\GameHouse\Bookworm Adventures Deluxe\store\wrapper.css
+Made Dir: C:\Program Files\GameHouse\Bookworm Adventures Deluxe\store\images
+File Copy: C:\Program Files\GameHouse\Bookworm Adventures Deluxe\store\images\bottom_box.gif
+File Copy: C:\Program Files\GameHouse\Bookworm Adventures Deluxe\store\images\browse_button.gif
+File Copy: C:\Program Files\GameHouse\Bookworm Adventures Deluxe\store\images\buynow_button.gif
+File Copy: C:\Program Files\GameHouse\Bookworm Adventures Deluxe\store\images\continue_button.gif
+File Copy: C:\Program Files\GameHouse\Bookworm Adventures Deluxe\store\images\fp_logo.gif
+File Copy: C:\Program Files\GameHouse\Bookworm Adventures Deluxe\store\images\gh_logo.gif
+File Copy: C:\Program Files\GameHouse\Bookworm Adventures Deluxe\store\images\h_line.gif
+File Copy: C:\Program Files\GameHouse\Bookworm Adventures Deluxe\store\images\joinnow_button.gif
+File Copy: C:\Program Files\GameHouse\Bookworm Adventures Deluxe\store\images\lock.gif
+File Copy: C:\Program Files\GameHouse\Bookworm Adventures Deluxe\store\images\loginplay_button.gif
+File Copy: C:\Program Files\GameHouse\Bookworm Adventures Deluxe\store\images\login_button.gif
+File Copy: C:\Program Files\GameHouse\Bookworm Adventures Deluxe\store\images\logoutquit_button.gif
+File Copy: C:\Program Files\GameHouse\Bookworm Adventures Deluxe\store\images\playnow_button.gif
+File Copy: C:\Program Files\GameHouse\Bookworm Adventures Deluxe\store\images\quit_button.gif
+File Copy: C:\Program Files\GameHouse\Bookworm Adventures Deluxe\store\images\register_button.gif
+File Copy: C:\Program Files\GameHouse\Bookworm Adventures Deluxe\store\images\tab.gif
+File Copy: C:\Program Files\GameHouse\Bookworm Adventures Deluxe\store\images\top.gif
+File Copy: C:\Program Files\GameHouse\Bookworm Adventures Deluxe\store\images\top_box.gif
+File Copy: C:\Program Files\GameHouse\Bookworm Adventures Deluxe\store\images\top_left.gif
+File Copy: C:\Program Files\GameHouse\Bookworm Adventures Deluxe\store\images\top_no_tabs.gif
+File Copy: C:\Program Files\GameHouse\Bookworm Adventures Deluxe\store\images\top_right.gif
+File Copy: C:\Program Files\GameHouse\Bookworm Adventures Deluxe\store\images\trial_bar.gif
+File Copy: C:\Program Files\GameHouse\Bookworm Adventures Deluxe\store\images\trial_bg.gif
+File Copy: C:\Program Files\GameHouse\Bookworm Adventures Deluxe\store\images\update_button.gif
+File Copy: C:\Program Files\GameHouse\Bookworm Adventures Deluxe\store\images\v_line.gif
+File Copy: C:\Program Files\GameHouse\Bookworm Adventures Deluxe\store\images\product-detail.jpg
+File Copy: C:\Program Files\GameHouse\Bookworm Adventures Deluxe\store\images\product-logo.jpg
+Made Dir: C:\Users\CrossDLC\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\GameHouse
+File Copy: C:\Users\CrossDLC\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\GameHouse\Visit GameHouse.com.url
+File Copy: C:\Users\CrossDLC\Desktop\More Games at GameHouse.com.url
+Shell Link: C:\Users\Public\Desktop\Bookworm Adventures Deluxe.lnk
+Made Dir: C:\ProgramData\Microsoft\Windows\Start Menu\Programs\GameHouse
+Made Dir: C:\ProgramData\Microsoft\Windows\Start Menu\Programs\GameHouse\Bookworm Adventures Deluxe
+Shell Link: C:\ProgramData\Microsoft\Windows\Start Menu\Programs\GameHouse\Bookworm Adventures Deluxe\Bookworm Adventures Deluxe.lnk
+Shell Link: C:\ProgramData\Microsoft\Windows\Start Menu\Programs\GameHouse\Bookworm Adventures Deluxe\Read Me!.lnk
+Shell Link: C:\ProgramData\Microsoft\Windows\Start Menu\Programs\GameHouse\Bookworm Adventures Deluxe\Uninstall Bookworm Adventures Deluxe.lnk
+RegDB Key: Software\GameHouse
+RegDB Val: 
+RegDB Name: AFF
+RegDB Root: 1
+RegDB Key: Software\GameHouse\BookwormAdventures
+RegDB Val: C:\Program Files\GameHouse\Bookworm Adventures Deluxe\BookwormAdventures.exe
+RegDB Name: InstallPath
+RegDB Root: 1
+RegDB Key: Software\GameHouse\BookwormAdventures
+RegDB Val: 1.0.0.1
+RegDB Name: InstallVersion
+RegDB Root: 1
+Delete in-use files: On
+File Tree: C:\Program Files\GameHouse\Bookworm Adventures Deluxe\cached\*
+RegDB Key: Software\Microsoft\Windows\CurrentVersion\Uninstall\Bookworm Adventures Deluxe
+RegDB Val: http://www.gamehouse.com/
+RegDB Name: HelpLink
+RegDB Root: 2
+RegDB Key: Software\Microsoft\Windows\CurrentVersion\Uninstall\Bookworm Adventures Deluxe
+RegDB Val: GameHouse, Inc.
+RegDB Name: Publisher
+RegDB Root: 2
+RegDB Key: Software\Microsoft\Windows\CurrentVersion\Uninstall\Bookworm Adventures Deluxe
+RegDB Val: http://www.gamehouse.com/
+RegDB Name: URLInfoAbout
+RegDB Root: 2
+RegDB Key: Software\Microsoft\Windows\CurrentVersion\Uninstall\Bookworm Adventures Deluxe
+RegDB Val: support@gamehouse.com
+RegDB Name: Contact
+RegDB Root: 2
+RegDB Key: Software\Microsoft\Windows\CurrentVersion\Uninstall\Bookworm Adventures Deluxe
+RegDB Val: Copyright © 2006 GameHouse, Inc.
+RegDB Name: Comments
+RegDB Root: 2
+RegDB Key: Software\Microsoft\Windows\CurrentVersion\Uninstall\Bookworm Adventures Deluxe
+RegDB Val: C:\Program Files\GameHouse\Bookworm Adventures Deluxe\BookwormAdventures.exe,-0
+RegDB Name: DisplayIcon
+RegDB Root: 2
+User Rights: Admin
