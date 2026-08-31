@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Bookworm Adventures — WebAssembly runtime</title>
+  <link rel="stylesheet" href="boxedwine.css">
+  <style>
+    html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: #000; }
+    #loading { position: fixed; inset: 0; display: grid; place-content: center; z-index: 2; background: #101820; color: white; }
+    #status { margin: 12px; font: 16px system-ui, sans-serif; text-align: center; }
+    #progress { width: min(70vw, 480px); }
+    #controls { position: absolute; right: 8px; top: 8px; z-index: 3; opacity: .7; }
+    #controls:hover { opacity: 1; }
+    #dropzone, .emscripten_border { width: 100%; height: 100%; border: 0; }
+    canvas.emscripten { width: 100%; height: 100%; border: 0; object-fit: contain; background: #000; }
+    #output, #openModal, #openModalExe, #upload, #uploadbtn, #downloadbtn, #startbtn,
+    #sound-checkbox, #pointerLock, #showConsole, #resize { display: none !important; }
+  </style>
+</head>
+<body>
+  <div id="loading">
+    <figure id="spinner"><div class="spinner"></div></figure>
+    <div id="status">Downloading emulator…</div>
+    <progress value="0" max="100" id="progress"></progress>
+  </div>
+  <button id="controls" type="button" onclick="Module.requestFullscreen(false, true)">Fullscreen</button>
+  <button id="startbtn" type="button" onclick="start()">Start</button>
+  <button id="uploadbtn" type="button"></button>
+  <input id="upload" type="file" multiple onchange="startWithFiles(event.target.files)">
+  <button id="downloadbtn" type="button"></button>
+  <span id="sound-checkbox"><input type="checkbox" id="soundToggle" checked onclick="toggleSound()"></span>
+  <input type="checkbox" id="pointerLock">
+  <input type="checkbox" id="showConsole">
+  <input type="checkbox" id="resize" checked>
+  <div id="dropzone"><div class="emscripten_border"><canvas class="emscripten" id="canvas" width="800" height="600" oncontextmenu="event.preventDefault()"></canvas></div></div>
+  <textarea id="output"></textarea>
+  <a id="modalLink" href="#openModal"></a><a id="modalLinkExe" href="#openModalExe"></a>
+  <div id="openModal"><div id="tree"></div><input id="selectedItem"><div id="loadStatus"></div></div>
+  <div id="openModalExe"><a id="openModalExeClick" href="#"></a><div id="message"></div><div id="items"></div></div>
+  <script src="boxedwine-shell.js"></script>
+  <script async src="boxedwine.js"></script>
+</body>
+</html>

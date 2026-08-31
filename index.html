@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Bookworm Adventures</title>
+  <style>
+    :root { color-scheme: dark; font-family: Georgia, "Times New Roman", serif; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      background: radial-gradient(circle at top, #29475b, #101b25 65%);
+      color: #f5e7b2;
+    }
+    main { width: min(100%, 920px); padding: 24px; text-align: center; }
+    h1 { margin: 0 0 8px; color: #ffd76a; text-shadow: 0 2px #542d0e; }
+    p { margin: 8px auto 18px; max-width: 720px; line-height: 1.45; }
+    .game-frame {
+      display: block;
+      width: min(100%, 832px);
+      height: min(680px, calc(100vh - 150px));
+      min-height: 520px;
+      margin: auto;
+      border: 6px solid #8b5c26;
+      border-radius: 10px;
+      background: #000;
+      box-shadow: 0 18px 45px #000a, inset 0 0 0 2px #e0b45d;
+    }
+    .fine-print { color: #c9d3d9; font-family: system-ui, sans-serif; font-size: .82rem; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Bookworm Adventures</h1>
+    <p>The original Windows game runs locally in your browser through WebAssembly. The first launch downloads the emulator and game data, so it may take a minute.</p>
+    <iframe
+      class="game-frame"
+      title="Bookworm Adventures game"
+      src="web/boxedwine/boxedwine.html?app=bookworm&amp;p=BookwormAdventures.exe&amp;resolution=800x600&amp;sound=true&amp;auto=true"
+      allow="autoplay; fullscreen"
+      allowfullscreen></iframe>
+    <p class="fine-print">Click inside the game for keyboard input. Saves are kept in this browser's local storage.</p>
+  </main>
+</body>
+</html>
