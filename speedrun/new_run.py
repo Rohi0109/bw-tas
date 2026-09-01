@@ -18,6 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 PREFIX = ROOT / "runtime/wineprefix"
 USERS = PREFIX / "drive_c/ProgramData/PopCap Games/WinBAD/users"
 USER_REG = PREFIX / "user.reg"
+LUA_LOG = ROOT / "runtime/deluxe-modded/lua.log"
 LAST_USER_RE = re.compile(r'^"LastUser"="(?P<name>[^"]+)"$', re.MULTILINE)
 
 
@@ -49,6 +50,33 @@ def wait_for_profile(name: str, *, present: bool, timeout: float = 3.0) -> Path 
         time.sleep(0.05)
     condition = "appear" if present else "disappear"
     raise RuntimeError(f"Timed out waiting for profile {name!r} to {condition}")
+
+
+def log_suffix_contains(path: Path, offset: int, marker: str) -> bool:
+    if not path.exists():
+        return False
+    if path.stat().st_size < offset:
+        offset = 0
+    with path.open("r", encoding="utf-8", errors="replace") as log:
+        log.seek(offset)
+        return marker in log.read()
+
+
+def skip_intro_until_chapter(
+    controller: X11Keyboard, log_path: Path, offset: int,
+    timeout: float = 8.0,
+) -> None:
+    """Pulse only the two intro controls until Lua proves chapter startup."""
+    deadline = time.monotonic() + timeout
+    time.sleep(0.35)
+    while time.monotonic() < deadline:
+        if log_suffix_contains(log_path, offset, "Book:StartGame called"):
+            return
+        controller.skip_intro(0.08)
+        if log_suffix_contains(log_path, offset, "Book:StartGame called"):
+            return
+        controller.confirm_skip_intro(0.08)
+    raise RuntimeError("Timed out waiting for intro confirmation to start Chapter 1")
 
 
 def recreate_profile(
@@ -83,6 +111,7 @@ def recreate_profile(
             )
 
     controller.create_new_user(0.4)
+    log_offset = LUA_LOG.stat().st_size if LUA_LOG.exists() else 0
     confirmed_at = controller.replace_user_name(name, name, 0.08)
     created = wait_for_profile(name, present=True)
     print(f"Created fresh TAS profile: {created}", flush=True)
@@ -95,12 +124,9 @@ def recreate_profile(
         save_state(timer_path, timer)
         print(f"Run timer started: {timer['started_at_iso']}", flush=True)
     if skip_intro:
-        time.sleep(2.5)
-        # The comic and its confirmation are native UI; Lua telemetry does not
-        # begin until BookManager starts the chapter.  Give the confirmation
-        # animation a conservative settle instead of racing it.
-        controller.skip_intro(1.0)
-        controller.confirm_skip_intro(0.8)
+        # These pre-Lua screens have no engine update hook. Alternate only
+        # their two safe controls and stop on the first new chapter-start line.
+        skip_intro_until_chapter(controller, LUA_LOG, log_offset)
 
 
 def main() -> None:

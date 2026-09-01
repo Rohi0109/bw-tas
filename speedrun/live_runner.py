@@ -516,16 +516,16 @@ class X11Keyboard:
         tile_x = (0.4050, 0.4710, 0.5340, 0.5960)
         tile_y = (0.5617, 0.6483, 0.7333, 0.8183)
         self.focus()
-        # Lua exposes the lesson as soon as its overlay opens, before the
-        # first arrow finishes animating and the P tile accepts input.
-        time.sleep(0.5)
+        # Lua exposes the lesson just before its first arrow accepts input.
+        # The 0.20 guard is calibrated from the 60 fps Chapter 1 capture.
+        time.sleep(0.20)
         # The tutorial enables one required tile at a time and animates its
         # instruction before accepting the next click.
         for index in (4, 13, 2, 11):
             row, column = divmod(index, 4)
             self.click(
                 int(width * tile_x[column]), int(height * tile_y[row]),
-                max(0.35, delay),
+                max(0.20, delay),
             )
         self.click(width // 2, int(height * 0.963), max(0.2, delay))
 

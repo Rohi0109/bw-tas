@@ -3,10 +3,20 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-from new_run import last_user, profile_path, recreate_profile
+from new_run import last_user, log_suffix_contains, profile_path, recreate_profile
 
 
 class NewRunTests(unittest.TestCase):
+    def test_log_suffix_ignores_stale_chapter_marker(self):
+        with tempfile.TemporaryDirectory() as directory:
+            log = Path(directory) / "lua.log"
+            log.write_text("Book:StartGame called stale\n", encoding="utf-8")
+            offset = log.stat().st_size
+            self.assertFalse(log_suffix_contains(log, offset, "Book:StartGame called"))
+            with log.open("a", encoding="utf-8") as output:
+                output.write("Book:StartGame called fresh\n")
+            self.assertTrue(log_suffix_contains(log, offset, "Book:StartGame called"))
+
     def test_last_user_reads_wine_registry(self):
         with tempfile.TemporaryDirectory() as directory:
             registry = Path(directory) / "user.reg"
@@ -39,8 +49,9 @@ class NewRunTests(unittest.TestCase):
     @patch("new_run.last_user", return_value="Lex10")
     @patch("new_run.USERS")
     @patch("new_run.time.sleep")
+    @patch("new_run.skip_intro_until_chapter")
     def test_fresh_run_confirms_intro_skip(
-        self, _sleep, users, _last_user, profile, wait_for_profile,
+        self, intro, _sleep, users, _last_user, profile, wait_for_profile,
         _start_timer, _record_chapter, _save_state,
     ):
         users.glob.return_value = []
@@ -59,12 +70,7 @@ class NewRunTests(unittest.TestCase):
         _record_chapter.assert_called_once_with(
             _start_timer.return_value, 1, 1, 123.5,
         )
-        controller.skip_intro.assert_called_once_with(1.0)
-        controller.confirm_skip_intro.assert_called_once_with(0.8)
-        self.assertLess(
-            controller.method_calls.index(unittest.mock.call.skip_intro(1.0)),
-            controller.method_calls.index(unittest.mock.call.confirm_skip_intro(0.8)),
-        )
+        intro.assert_called_once()
 
 
 if __name__ == "__main__":
