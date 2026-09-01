@@ -18,6 +18,7 @@ DEFAULT_STATE = ROOT / "runtime/deluxe-modded/run-timer.json"
 DEFAULT_LOG = ROOT / "runtime/deluxe-modded/lua.log"
 DEFAULT_WR_SPLITS = ROOT / "human-wr-splits.json"
 DEFAULT_TAS_BEST = ROOT / "tas-best-splits.json"
+DEFAULT_RUN_HISTORY = ROOT / "tas-run-history.json"
 CHAPTER_RE = re.compile(
     r"Book:StartGame called for book Book(?P<book>\d+), chapter (?P<chapter>\d+)"
 )
@@ -64,7 +65,9 @@ def now_iso(timestamp: float) -> str:
 
 def start_timer(path: Path = DEFAULT_STATE, timestamp: float | None = None) -> dict:
     if path.exists():
-        update_tas_best(load_state(path))
+        previous = load_state(path)
+        update_tas_best(previous)
+        save_run_history(previous)
     now = time.time() if timestamp is None else timestamp
     state = {
         "version": 2,
@@ -76,6 +79,7 @@ def start_timer(path: Path = DEFAULT_STATE, timestamp: float | None = None) -> d
         "finished_at": None,
     }
     save_state(path, state)
+    save_run_history(state)
     return state
 
 
@@ -90,6 +94,49 @@ def save_state(path: Path, state: dict) -> None:
     temporary = path.with_suffix(path.suffix + ".tmp")
     temporary.write_text(json.dumps(state, indent=2) + "\n", encoding="utf-8")
     temporary.replace(path)
+
+
+def save_run_history(
+    state: dict, path: Path = DEFAULT_RUN_HISTORY,
+) -> dict:
+    """Upsert one complete timer snapshot without replacing prior attempts."""
+    history = (
+        json.loads(path.read_text(encoding="utf-8"))
+        if path.exists() else {"version": 1, "runs": []}
+    )
+    run_id = state.get("started_at_iso")
+    snapshot = json.loads(json.dumps(state))
+    runs = history.setdefault("runs", [])
+    for index, run in enumerate(runs):
+        if run.get("started_at_iso") == run_id:
+            runs[index] = snapshot
+            break
+    else:
+        runs.append(snapshot)
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    temporary.write_text(json.dumps(history, indent=2) + "\n", encoding="utf-8")
+    temporary.replace(path)
+    return history
+
+
+def run_history_report(path: Path = DEFAULT_RUN_HISTORY) -> str:
+    if not path.exists():
+        return "No archived TAS runs."
+    history = json.loads(path.read_text(encoding="utf-8"))
+    lines = []
+    for run in history.get("runs", []):
+        parts = []
+        for split in run.get("splits", []):
+            status = "clean" if split.get("clean", True) else "invalid"
+            parts.append(
+                f"{split['book']}.{split['chapter']}="
+                f"{format_duration(split['elapsed'])}({status})"
+            )
+        current = run.get("current")
+        if current is not None:
+            parts.append(f"{current['book']}.{current['chapter']}=incomplete")
+        lines.append(f"{run.get('started_at_iso', 'unknown')}: " + ", ".join(parts))
+    return "\n".join(lines) if lines else "No archived TAS runs."
 
 
 def record_chapter(state: dict, book: int, chapter: int, timestamp: float) -> bool:
@@ -306,6 +353,7 @@ def watch(log_path: Path, state_path: Path, poll: float = 0.1) -> None:
                 timestamp = time.time()
                 if process_line(state, line, timestamp):
                     save_state(state_path, state)
+                    save_run_history(state)
                     update_tas_best(state)
                     current = state["current"]
                     print(
@@ -320,7 +368,9 @@ def watch(log_path: Path, state_path: Path, poll: float = 0.1) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "action", choices=("start", "watch", "report", "finish", "update-best")
+        "action", choices=(
+            "start", "watch", "report", "history", "finish", "update-best",
+        )
     )
     parser.add_argument("--state", type=Path, default=DEFAULT_STATE)
     parser.add_argument("--log", type=Path, default=DEFAULT_LOG)
@@ -330,6 +380,8 @@ def main() -> None:
         print(f"Timer started: {state['started_at_iso']}")
     elif args.action == "watch":
         watch(args.log, args.state)
+    elif args.action == "history":
+        print(run_history_report())
     elif args.action == "finish":
         state = load_state(args.state)
         now = time.time()
@@ -342,6 +394,7 @@ def main() -> None:
             state["current"] = None
         state["finished_at"] = now
         save_state(args.state, state)
+        save_run_history(state)
         update_tas_best(state)
         print(report(state, now))
     elif args.action == "update-best":

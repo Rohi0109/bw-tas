@@ -3,7 +3,9 @@ import unittest
 from pathlib import Path
 
 from run_timer import (
-    mark_current_issue, process_line, record_chapter, report, start_timer,
+    mark_current_issue, process_line, record_chapter, report, run_history_report,
+    save_run_history,
+    start_timer,
     update_tas_best,
 )
 
@@ -104,6 +106,22 @@ class RunTimerTests(unittest.TestCase):
             state["splits"][0]["elapsed"] = 55.0
             best = update_tas_best(state, path)
             self.assertEqual(best["segments"]["1.1"], 55.0)
+
+    def test_run_history_upserts_attempt_and_preserves_other_runs(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "history.json"
+            first = self.state()
+            save_run_history(first, path)
+            record_chapter(first, 1, 1, 110.0)
+            save_run_history(first, path)
+            second = {**self.state(), "started_at_iso": "second"}
+            history = save_run_history(second, path)
+            text = run_history_report(path)
+
+        self.assertEqual(len(history["runs"]), 2)
+        self.assertEqual(history["runs"][0]["current"]["chapter"], 1)
+        self.assertIn("test: 1.1=incomplete", text)
+        self.assertIn("second:", text)
 
     def test_dirty_split_cannot_update_tas_best(self):
         state = self.state()

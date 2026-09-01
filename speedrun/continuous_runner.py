@@ -31,6 +31,7 @@ from run_timer import (
     load_state as load_timer_state,
     mark_current_issue,
     process_line as process_timer_line,
+    save_run_history,
     save_state as save_timer_state,
     update_tas_best,
 )
@@ -1268,6 +1269,7 @@ def main() -> None:
                             f"input-retry:{submitted_word.upper()}",
                         )
                         save_timer_state(args.timer_state, timer_state)
+                        save_run_history(timer_state)
                     print(
                         f"No ATTACK acknowledgement; clearing and retrying "
                         f"{submitted_word.upper()} ({input_attempts}/{args.max_input_attempts}).",
@@ -1543,6 +1545,7 @@ def main() -> None:
                 timer_state, line, time.time()
             ):
                 save_timer_state(args.timer_state, timer_state)
+                save_run_history(timer_state)
                 update_tas_best(timer_state)
                 timed = timer_state["current"]
                 print(

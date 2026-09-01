@@ -58,6 +58,10 @@ timer *args:
 timer-report:
     PYTHONPATH=speedrun python3 speedrun/run_timer.py report
 
+# Print every archived run separately; personal-best splits remain in `just wr`.
+run-history:
+    PYTHONPATH=speedrun python3 speedrun/run_timer.py history
+
 # Short alias for the live human-WR comparison report.
 wr:
     PYTHONPATH=speedrun python3 speedrun/run_timer.py update-best

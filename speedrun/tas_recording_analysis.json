@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "source": "/home/rnadgir/2026-09-01 16-37-45.mkv",
+  "duration": "6:07.217",
+  "video": "1280x720 at 60 fps",
+  "run_id": "2026-09-01T20:37:52.834987+00:00",
+  "splits": {
+    "1.1": {"seconds": 72.92127633094788, "human_seconds": 46.7, "clean": true},
+    "1.2": {"seconds": 78.27280116081238, "human_seconds": 74.7, "clean": true},
+    "1.3": {"seconds": 114.11030054092407, "human_seconds": 91.6, "clean": true},
+    "1.4": {"clean": true, "complete": false}
+  },
+  "findings": [
+    "Chapter 1 used only three telemetry-recorded attacks; its gap is dominated by tutorial, dialogue, and timing-boundary overhead rather than word input.",
+    "The Chapter 1 boss-to-next-combat transition is approximately seven seconds in the TAS recording versus approximately six seconds in the WR.",
+    "Chapter 2 is within approximately 3.6 seconds of the human segment and is the regression-control chapter.",
+    "Chapter 3 used twelve attacks and Charybdis's final READY cycle took approximately 17.1 seconds.",
+    "Chapter 4 reached its map near the end of the recording, but no Chapter 5 event finalized its timer split."
+  ],
+  "priorities": [
+    "Stabilize dialogue/incapacitation exit by requiring a newer READY sequence before selecting tiles.",
+    "Instrument the first actionable combat frame and boss-death split edge so profile setup and post-kill transitions are classified consistently with the WR.",
+    "Compare Chapter 3 attack count and Charybdis route against the WR before changing general word scoring.",
+    "Replace conservative fixed menu waits with native screen-state acknowledgements."
+  ]
+}

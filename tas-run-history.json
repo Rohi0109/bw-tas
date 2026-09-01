@@ -1,0 +1,48 @@
+{
+  "version": 1,
+  "runs": [
+    {
+      "version": 2,
+      "started_at": 1788295072.8349874,
+      "started_at_iso": "2026-09-01T20:37:52.834987+00:00",
+      "current": {
+        "book": 1,
+        "chapter": 4,
+        "started_at": 1788295338.1393654,
+        "clean": true,
+        "issues": []
+      },
+      "live_book": 1,
+      "splits": [
+        {
+          "book": 1,
+          "chapter": 1,
+          "started_at": 1788295072.8349874,
+          "clean": true,
+          "issues": [],
+          "ended_at": 1788295145.7562637,
+          "elapsed": 72.92127633094788
+        },
+        {
+          "book": 1,
+          "chapter": 2,
+          "started_at": 1788295145.7562637,
+          "clean": true,
+          "issues": [],
+          "ended_at": 1788295224.029065,
+          "elapsed": 78.27280116081238
+        },
+        {
+          "book": 1,
+          "chapter": 3,
+          "started_at": 1788295224.029065,
+          "clean": true,
+          "issues": [],
+          "ended_at": 1788295338.1393654,
+          "elapsed": 114.11030054092407
+        }
+      ],
+      "finished_at": null
+    }
+  ]
+}

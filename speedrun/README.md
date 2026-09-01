@@ -132,6 +132,11 @@ WR chapter endpoints. The report separates schema-v2 combat samples from the
 remaining chapter time and rejects unmistakably contaminated segments, such as
 the old paused Chapter 1.10 sample.
 
+`tas-best-splits.json` remains the per-chapter personal-best table.
+`tas-run-history.json` separately upserts the complete timer snapshot for every
+attempt at each chapter transition, so starting a new profile no longer erases
+the previous run's clean/invalid splits.
+
 New timing rows are self-contained transition records: run/book/chapter/stage,
 complete state before and after the attack, chosen word and tile path, Pareto
 candidate frontier, input attempts, and READY-to-READY wall time. They no
