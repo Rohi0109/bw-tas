@@ -1,0 +1,8 @@
+cannot read Z:\home\rnadgir\Bookworm-google\scripts\main.lua: No such file or directory
+stack traceback:
+	[C]: ?
+Lua Exection Error!
+cannot read Z:\home\rnadgir\Bookworm-google\scripts\main.lua: No such file or directory
+
+Continuing will cause execution to resume at the next call into Lua.
+!!! Execution Stopped !!!

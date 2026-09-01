@@ -1,0 +1,61 @@
+<?xml version="1.0"?>
+
+<ResourceManifest>
+	<Resources id="TimedModeCommon">
+		<SetDefaults path="images/arenas/Arena" idprefix="IMAGE_TMA_"/>	
+		<Image id="BG"				path="Sunny_sky"/>
+		
+		<SetDefaults path="images/board" idprefix="IMAGE_TMA_"/>
+		<Image id="ENEMY_ATTACKING"			path="enemyattacking_button" cols="4"/>		
+		<Image id="TIMERBAR"				path="timerbar_arena"/>
+		<Image id="TIMERBAR_FILL"			path="timerbarfill_arena"/>
+		<Image id="CHECKPOINT"				path="checkpointreached"/>	
+		
+		<SetDefaults path="images/minigames" idprefix="IMAGE_TMA_"/>
+		<Image id="COUNTDOWN"				path="minigame_countdown" cols="4"/>
+		
+		<SetDefaults path="sounds" idprefix="SOUND_"/>	
+		<Sound id="1_TM"				path="pulsing_attack_01"/>		
+		<Sound id="2_TM"				path="Female_groan_01"/>		
+		<Sound id="3_TM"				path="Female_groan_02"/>
+		<Sound id="4_TM"				path="dragon_pain"/>
+		<Sound id="5_TM"				path="Female_Mmm"/>
+		<Sound id="7_TM"				path="roar_01"/>		
+		<Sound id="8_TM"				path="Fading_ghostly_wail_02"/>
+		<Sound id="9_TM"				path="Feline_whimper_02"/>
+		<Sound id="11_TM"				path="generic_animal_grumble_01"/>
+		<Sound id="12_TM"				path="Wail_05"/>		
+		<Sound id="13_TM"				path="GiantGruntDry1"/>		
+		<Sound id="14_TM"				path="male_low_warcry"/>		
+		<Sound id="15_TM"				path="slicing_attack_02"/>		
+		<Sound id="16_TM"		 		path="male_low_pain"/>
+		<Sound id="17_TM"				path="male_low_anger"/>
+		<Sound id="18_TM"				path="Feline_whimper_01"/>
+		<Sound id="19_TM"				path="Fading_ghostly_wail_01"/>
+		<Sound id="20_TM"				path="GiantGruntEcho2"/>
+		<Sound id="21_TM"				path="arrow_shot_01"/>
+		<Sound id="22_TM"				path="SwordSpearImpact"/>
+		<Sound id="23_TM"				path="moan_01"/>
+		<Sound id="24_TM"				path="male_anger"/>
+		<Sound id="25_TM"				path="humanmalegrunt2"/>
+		<Sound id="29_TM"				path="male_laugh2"/>
+		<Sound id="30_TM"				path="SwordSpearImpact_Dry"/>
+		<Sound id="31_TM"				path="Lightning_Attack_01"/>
+		<Sound id="34_TM"				path="Bat_Death_01"/>
+		<Sound id="35_TM"				path="Eagle_Cry_01"/>
+		<Sound id="37_TM"				path="SmallImpact_01"/>
+		<Sound id="39_TM"				path="Slicing_Attack_01"/>
+		<Sound id="40_TM"				path="Fading_Ghostly_Wail_03"/>
+		<Sound id="41_TM"				path="Slump_Small_01"/>
+		<Sound id="42_TM"				path="humanmalegrunt3"/>
+		<Sound id="43_TM"				path="Sonic_Attack_02"/>
+		<Sound id="44_TM"				path="male_pain"/>
+		<Sound id="45_TM"				path="dragon_death"/>
+		<Sound id="46_TM"				path="kubwa_barh"/>
+		<Sound id="47_TM"				path="kubwa_greeting2"/>
+		<Sound id="48_TM"				path="kubwa_roar"/>
+		<Sound id="49_TM"				path="LargeImpact_01"/>
+		<Sound id="50_TM"				path="kubwa_greeting"/>
+	
+	</Resources>
+</ResourceManifest>

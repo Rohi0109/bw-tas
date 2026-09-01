@@ -188,7 +188,7 @@ class DeluxeOptimizerTests(unittest.TestCase):
         line += "AUTOMATION_ENEMY=7|Trojan Warrior|E\n"
         line += "AUTOMATION_HEALTH=7|2|2|0.125|E\n"
         line += "AUTOMATION_PLAYER_HEALTH=7|3|5|E\n"
-        line += "AUTOMATION_PLAYER_STATUS=7|0|1|0|0|1|E\n"
+        line += "AUTOMATION_PLAYER_STATUS=7|0|1|0|0|1|1|E\n"
         for row, letters in enumerate(("ABCD", "EFGH", "IJKL", "MNOP")):
             line += f"AUTOMATION_LETTERS=7|{row}|{letters}|E\n"
             line += f"AUTOMATION_GEMS=7|{row}|n,n,n,n|E\n"
@@ -205,6 +205,7 @@ class DeluxeOptimizerTests(unittest.TestCase):
         self.assertEqual((parsed.player_hp, parsed.player_max_hp), (3, 5))
         self.assertTrue(parsed.health_potion_available)
         self.assertTrue(parsed.attack_potion_available)
+        self.assertTrue(parsed.player_frozen)
         self.assertFalse(parsed.selectable[7])
 
     def test_quarter_rounding(self):

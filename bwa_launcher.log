@@ -1,0 +1,1051 @@
+resolve: getparam
+resolve: notify
+resolve: setdrawparams
+resolve: drawtodc
+resolve: urlnavigate
+resolve: getdllhandle
+getdllhandle
+getparam: pc_scorebroadcast
+getparam: pc_sendgamebreaks
+getparam: NumExtrasLoaded
+getparam: chapter2URL
+setdrawparams
+getparam: ZoneScript
+getparam: focuspause
+getparam: pc_scorebroadcast
+before SexyCreateGame
+resolve: getparam
+resolve: notify
+resolve: setdrawparams
+resolve: drawtodc
+resolve: urlnavigate
+resolve: getdllhandle
+getdllhandle
+getparam: pc_scorebroadcast
+getparam: pc_sendgamebreaks
+getparam: NumExtrasLoaded
+getparam: chapter2URL
+setdrawparams
+getparam: ZoneScript
+getparam: focuspause
+getparam: pc_scorebroadcast
+after SexyCreateGame: success
+before SexyCreateGame
+resolve: getparam
+resolve: notify
+resolve: setdrawparams
+resolve: drawtodc
+resolve: urlnavigate
+resolve: getdllhandle
+getdllhandle
+getparam: pc_scorebroadcast
+getparam: pc_sendgamebreaks
+getparam: NumExtrasLoaded
+getparam: chapter2URL
+setdrawparams
+getparam: ZoneScript
+getparam: focuspause
+getparam: pc_scorebroadcast
+after SexyCreateGame: success
+before SexyCreateGame
+resolve: getparam
+resolve: notify
+resolve: setdrawparams
+resolve: drawtodc
+resolve: urlnavigate
+resolve: getdllhandle
+getdllhandle
+getparam: pc_scorebroadcast
+getparam: pc_sendgamebreaks
+getparam: NumExtrasLoaded
+getparam: chapter2URL
+setdrawparams
+getparam: ZoneScript
+getparam: focuspause
+getparam: pc_scorebroadcast
+after SexyCreateGame: success
+before SexyGetDimensions
+after SexyGetDimensions
+window created
+before first update
+after update
+before SexyCreateGame
+resolve: getparam
+resolve: notify
+resolve: setdrawparams
+resolve: drawtodc
+resolve: urlnavigate
+resolve: getdllhandle
+getdllhandle
+getparam: pc_scorebroadcast
+getparam: pc_sendgamebreaks
+getparam: NumExtrasLoaded
+getparam: chapter2URL
+setdrawparams
+getparam: ZoneScript
+getparam: focuspause
+getparam: pc_scorebroadcast
+after SexyCreateGame: success
+before SexyGetDimensions
+after SexyGetDimensions
+window created
+before SexyCreateGame
+resolve: getparam
+resolve: notify
+resolve: setdrawparams
+resolve: drawtodc
+resolve: urlnavigate
+resolve: getdllhandle
+getdllhandle
+getparam: pc_scorebroadcast
+getparam: pc_sendgamebreaks
+getparam: NumExtrasLoaded
+getparam: chapter2URL
+setdrawparams
+getparam: ZoneScript
+getparam: focuspause
+getparam: pc_scorebroadcast
+after SexyCreateGame: success
+before SexyGetDimensions
+after SexyGetDimensions
+process message: 36
+message not handled: 36
+process message: 129
+message not handled: 129
+process message: 131
+message not handled: 131
+process message: 1
+message not handled: 1
+window created
+process message: 24
+message not handled: 24
+process message: 70
+message not handled: 70
+process message: 127
+message not handled: 127
+process message: 127
+message not handled: 127
+process message: 783
+message not handled: 783
+process message: 28
+message not handled: 28
+process message: 134
+message not handled: 134
+process message: 6
+message not handled: 6
+process message: 641
+message not handled: 641
+process message: 7
+message not handled: 7
+process message: 133
+message not handled: 133
+process message: 20
+message not handled: 20
+process message: 71
+message not handled: 71
+process message: 5
+message not handled: 5
+process message: 3
+message not handled: 3
+process message: 15
+message not handled: 15
+process message: 70
+message not handled: 70
+process message: 36
+message not handled: 36
+process message: 131
+message not handled: 131
+process message: 133
+message not handled: 133
+process message: 20
+message not handled: 20
+process message: 71
+message not handled: 71
+process message: 3
+message not handled: 3
+process message: 5
+message not handled: 5
+process message: 132
+message not handled: 132
+process message: 32
+message not handled: 32
+process message: 512
+message not handled: 512
+process message: 15
+message not handled: 15
+before SexyCreateGame
+resolve: getparam
+resolve: notify
+resolve: setdrawparams
+resolve: drawtodc
+resolve: urlnavigate
+resolve: getdllhandle
+getdllhandle
+getparam: pc_scorebroadcast
+getparam: pc_sendgamebreaks
+getparam: NumExtrasLoaded
+getparam: chapter2URL
+setdrawparams
+getparam: ZoneScript
+getparam: focuspause
+getparam: pc_scorebroadcast
+after SexyCreateGame: success
+before SexyGetDimensions
+after SexyGetDimensions
+process message: 36
+message not handled: 36
+process message: 129
+message not handled: 129
+process message: 131
+message not handled: 131
+process message: 1
+message not handled: 1
+window created
+process message: 24
+message not handled: 24
+process message: 70
+message not handled: 70
+process message: 127
+message not handled: 127
+process message: 127
+message not handled: 127
+process message: 783
+message not handled: 783
+process message: 28
+message not handled: 28
+process message: 134
+message not handled: 134
+process message: 6
+message not handled: 6
+process message: 641
+message not handled: 641
+process message: 7
+message not handled: 7
+process message: 133
+message not handled: 133
+process message: 20
+message not handled: 20
+process message: 71
+message not handled: 71
+process message: 5
+message not handled: 5
+process message: 3
+message not handled: 3
+process message: 15
+message not handled: 15
+process message: 70
+message not handled: 70
+process message: 36
+message not handled: 36
+process message: 131
+message not handled: 131
+process message: 133
+message not handled: 133
+process message: 20
+message not handled: 20
+process message: 71
+message not handled: 71
+process message: 3
+message not handled: 3
+process message: 5
+message not handled: 5
+process message: 132
+message not handled: 132
+process message: 32
+message not handled: 32
+process message: 512
+message not handled: 512
+process message: 15
+message not handled: 15
+before SexyCreateGame
+resolve: getparam
+resolve: notify
+resolve: setdrawparams
+resolve: drawtodc
+resolve: urlnavigate
+resolve: getdllhandle
+getdllhandle
+getparam: pc_scorebroadcast
+getparam: pc_sendgamebreaks
+getparam: NumExtrasLoaded
+getparam: chapter2URL
+getparam: chapter2URL
+notify: pc_download
+setdrawparams
+getparam: ZoneScript
+getparam: focuspause
+getparam: pc_scorebroadcast
+after SexyCreateGame: success
+before SexyGetDimensions
+after SexyGetDimensions
+process message: 36
+message not handled: 36
+process message: 129
+message not handled: 129
+process message: 131
+message not handled: 131
+process message: 1
+message not handled: 1
+window created
+process message: 24
+message not handled: 24
+process message: 70
+message not handled: 70
+process message: 127
+message not handled: 127
+process message: 127
+message not handled: 127
+process message: 783
+message not handled: 783
+process message: 28
+message not handled: 28
+process message: 134
+message not handled: 134
+process message: 6
+message not handled: 6
+process message: 641
+message not handled: 641
+process message: 7
+message not handled: 7
+process message: 133
+message not handled: 133
+process message: 20
+message not handled: 20
+process message: 71
+message not handled: 71
+process message: 5
+message not handled: 5
+process message: 3
+message not handled: 3
+process message: 15
+message not handled: 15
+process message: 70
+message not handled: 70
+process message: 36
+message not handled: 36
+process message: 131
+message not handled: 131
+process message: 133
+message not handled: 133
+process message: 20
+message not handled: 20
+process message: 71
+message not handled: 71
+process message: 3
+message not handled: 3
+process message: 5
+message not handled: 5
+process message: 15
+message not handled: 15
+process message: 70
+message not handled: 70
+process message: 36
+message not handled: 36
+process message: 131
+message not handled: 131
+process message: 133
+message not handled: 133
+process message: 20
+message not handled: 20
+process message: 71
+message not handled: 71
+process message: 3
+message not handled: 3
+process message: 5
+message not handled: 5
+process message: 15
+message not handled: 15
+process message: 132
+message not handled: 132
+process message: 32
+message not handled: 32
+process message: 512
+message not handled: 512
+before SexyCreateGame
+resolve: getparam
+resolve: notify
+resolve: setdrawparams
+resolve: drawtodc
+resolve: urlnavigate
+resolve: getdllhandle
+getdllhandle
+getparam: pc_scorebroadcast
+getparam: pc_sendgamebreaks
+getparam: NumExtrasLoaded
+setdrawparams
+getparam: ZoneScript
+getparam: focuspause
+getparam: pc_scorebroadcast
+after SexyCreateGame: success
+before SexyGetDimensions
+after SexyGetDimensions
+process message: 36
+message not handled: 36
+process message: 129
+message not handled: 129
+process message: 131
+message not handled: 131
+process message: 1
+message not handled: 1
+window created
+process message: 24
+message not handled: 24
+process message: 70
+message not handled: 70
+process message: 127
+message not handled: 127
+process message: 127
+message not handled: 127
+process message: 783
+message not handled: 783
+process message: 28
+message not handled: 28
+process message: 134
+message not handled: 134
+process message: 6
+message not handled: 6
+process message: 641
+message not handled: 641
+process message: 7
+message not handled: 7
+process message: 133
+message not handled: 133
+process message: 20
+message not handled: 20
+process message: 71
+message not handled: 71
+process message: 5
+message not handled: 5
+process message: 3
+message not handled: 3
+process message: 15
+message not handled: 15
+process message: 70
+message not handled: 70
+process message: 36
+message not handled: 36
+process message: 131
+message not handled: 131
+process message: 133
+message not handled: 133
+process message: 20
+message not handled: 20
+process message: 71
+message not handled: 71
+process message: 3
+message not handled: 3
+process message: 5
+message not handled: 5
+process message: 15
+message not handled: 15
+process message: 132
+message not handled: 132
+process message: 32
+message not handled: 32
+process message: 512
+message not handled: 512
+before SexyCreateGame
+resolve: getparam
+resolve: notify
+resolve: setdrawparams
+resolve: drawtodc
+resolve: urlnavigate
+resolve: getdllhandle
+getdllhandle
+getparam: pc_scorebroadcast
+getparam: pc_sendgamebreaks
+getparam: NumExtrasLoaded
+setdrawparams
+getparam: ZoneScript
+getparam: focuspause
+getparam: pc_scorebroadcast
+after SexyCreateGame: success
+before SexyGetDimensions
+after SexyGetDimensions
+process message: 36
+message not handled: 36
+process message: 129
+message not handled: 129
+process message: 131
+message not handled: 131
+process message: 1
+message not handled: 1
+window created
+process message: 24
+message not handled: 24
+process message: 70
+message not handled: 70
+process message: 127
+message not handled: 127
+process message: 127
+message not handled: 127
+process message: 783
+message not handled: 783
+process message: 28
+message not handled: 28
+process message: 134
+message not handled: 134
+process message: 6
+message not handled: 6
+process message: 641
+message not handled: 641
+process message: 7
+message not handled: 7
+process message: 133
+message not handled: 133
+process message: 20
+message not handled: 20
+process message: 71
+message not handled: 71
+process message: 5
+message not handled: 5
+process message: 3
+message not handled: 3
+process message: 15
+message not handled: 15
+process message: 70
+message not handled: 70
+process message: 36
+message not handled: 36
+process message: 131
+message not handled: 131
+process message: 133
+message not handled: 133
+process message: 20
+message not handled: 20
+process message: 71
+message not handled: 71
+process message: 3
+message not handled: 3
+process message: 5
+message not handled: 5
+process message: 132
+message not handled: 132
+process message: 32
+message not handled: 32
+process message: 512
+message not handled: 512
+process message: 70
+message not handled: 70
+process message: 36
+message not handled: 36
+process message: 131
+message not handled: 131
+process message: 133
+message not handled: 133
+process message: 20
+message not handled: 20
+process message: 71
+message not handled: 71
+process message: 3
+message not handled: 3
+process message: 5
+message not handled: 5
+process message: 132
+message not handled: 132
+process message: 32
+message not handled: 32
+process message: 512
+message not handled: 512
+process message: 132
+message not handled: 132
+process message: 32
+message not handled: 32
+process message: 512
+message not handled: 512
+process message: 15
+message not handled: 15
+engine stopped: -1
+before SexyCreateGame
+resolve: getparam
+resolve: notify
+resolve: setdrawparams
+resolve: drawtodc
+resolve: urlnavigate
+resolve: getdllhandle
+getdllhandle
+getparam: pc_scorebroadcast
+getparam: pc_sendgamebreaks
+getparam: NumExtrasLoaded
+setdrawparams
+getparam: ZoneScript
+getparam: focuspause
+getparam: pc_scorebroadcast
+after SexyCreateGame: success
+before SexyGetDimensions
+after SexyGetDimensions
+process message: 36
+message not handled: 36
+process message: 129
+message not handled: 129
+process message: 131
+message not handled: 131
+process message: 1
+message not handled: 1
+window created
+process message: 24
+message not handled: 24
+process message: 70
+message not handled: 70
+process message: 127
+message not handled: 127
+process message: 127
+message not handled: 127
+process message: 783
+message not handled: 783
+process message: 28
+message not handled: 28
+process message: 134
+message not handled: 134
+process message: 6
+message not handled: 6
+process message: 641
+message not handled: 641
+process message: 7
+message not handled: 7
+process message: 133
+message not handled: 133
+process message: 20
+message not handled: 20
+process message: 71
+message not handled: 71
+process message: 5
+message not handled: 5
+process message: 3
+message not handled: 3
+process message: 15
+message not handled: 15
+process message: 70
+message not handled: 70
+process message: 36
+message not handled: 36
+process message: 131
+message not handled: 131
+process message: 133
+message not handled: 133
+process message: 20
+message not handled: 20
+process message: 71
+message not handled: 71
+process message: 3
+message not handled: 3
+process message: 5
+message not handled: 5
+process message: 15
+message not handled: 15
+process message: 70
+message not handled: 70
+process message: 36
+message not handled: 36
+process message: 131
+message not handled: 131
+process message: 133
+message not handled: 133
+process message: 20
+message not handled: 20
+process message: 71
+message not handled: 71
+process message: 3
+message not handled: 3
+process message: 5
+message not handled: 5
+process message: 15
+message not handled: 15
+process message: 132
+message not handled: 132
+process message: 32
+message not handled: 32
+process message: 512
+message not handled: 512
+process message: 132
+message not handled: 132
+process message: 32
+message not handled: 32
+process message: 512
+message not handled: 512
+process message: 132
+message not handled: 132
+process message: 32
+message not handled: 32
+process message: 512
+message not handled: 512
+process message: 132
+message not handled: 132
+process message: 32
+message not handled: 32
+process message: 512
+message not handled: 512
+process message: 132
+message not handled: 132
+process message: 32
+message not handled: 32
+process message: 512
+message not handled: 512
+process message: 132
+message not handled: 132
+process message: 32
+message not handled: 32
+process message: 512
+message not handled: 512
+process message: 132
+message not handled: 132
+process message: 32
+message not handled: 32
+process message: 512
+message not handled: 512
+process message: 132
+message not handled: 132
+process message: 32
+message not handled: 32
+process message: 512
+message not handled: 512
+process message: 132
+message not handled: 132
+process message: 32
+message not handled: 32
+process message: 512
+message not handled: 512
+process message: 132
+message not handled: 132
+process message: 32
+message not handled: 32
+process message: 512
+message not handled: 512
+process message: 132
+message not handled: 132
+process message: 32
+message not handled: 32
+process message: 512
+message not handled: 512
+process message: 132
+message not handled: 132
+process message: 32
+message not handled: 32
+process message: 512
+message not handled: 512
+process message: 132
+message not handled: 132
+process message: 32
+message not handled: 32
+process message: 512
+message not handled: 512
+process message: 132
+message not handled: 132
+process message: 32
+message not handled: 32
+process message: 512
+message not handled: 512
+process message: 132
+message not handled: 132
+process message: 32
+message not handled: 32
+process message: 512
+message not handled: 512
+process message: 132
+message not handled: 132
+process message: 32
+message not handled: 32
+process message: 512
+message not handled: 512
+process message: 132
+message not handled: 132
+process message: 32
+message not handled: 32
+process message: 512
+message not handled: 512
+process message: 132
+message not handled: 132
+process message: 32
+message not handled: 32
+process message: 512
+message not handled: 512
+process message: 132
+message not handled: 132
+process message: 32
+message not handled: 32
+process message: 512
+message not handled: 512
+process message: 132
+message not handled: 132
+process message: 32
+message not handled: 32
+process message: 512
+message not handled: 512
+process message: 132
+message not handled: 132
+process message: 32
+message not handled: 32
+process message: 512
+message not handled: 512
+process message: 132
+message not handled: 132
+process message: 32
+message not handled: 32
+process message: 512
+message not handled: 512
+process message: 132
+message not handled: 132
+process message: 32
+message not handled: 32
+process message: 512
+message not handled: 512
+process message: 132
+message not handled: 132
+process message: 32
+message not handled: 32
+process message: 512
+message not handled: 512
+process message: 132
+message not handled: 132
+process message: 32
+message not handled: 32
+process message: 512
+message not handled: 512
+process message: 132
+message not handled: 132
+process message: 32
+message not handled: 32
+process message: 512
+message not handled: 512
+process message: 132
+message not handled: 132
+process message: 32
+message not handled: 32
+process message: 512
+message not handled: 512
+process message: 132
+message not handled: 132
+process message: 32
+message not handled: 32
+process message: 512
+message not handled: 512
+process message: 132
+message not handled: 132
+process message: 32
+message not handled: 32
+process message: 512
+message not handled: 512
+process message: 132
+message not handled: 132
+process message: 32
+message not handled: 32
+process message: 512
+message not handled: 512
+process message: 132
+message not handled: 132
+process message: 32
+message not handled: 32
+process message: 512
+message not handled: 512
+process message: 132
+message not handled: 132
+process message: 32
+message not handled: 32
+process message: 512
+message not handled: 512
+process message: 132
+message not handled: 132
+process message: 32
+message not handled: 32
+process message: 512
+message not handled: 512
+process message: 31
+message not handled: 31
+process message: 132
+message not handled: 132
+process message: 32
+message not handled: 32
+process message: 512
+message not handled: 512
+process message: 132
+message not handled: 132
+process message: 32
+message not handled: 32
+process message: 512
+message not handled: 512
+process message: 132
+message not handled: 132
+process message: 32
+message not handled: 32
+process message: 512
+message not handled: 512
+process message: 132
+message not handled: 132
+process message: 32
+message not handled: 32
+process message: 512
+message not handled: 512
+process message: 132
+message not handled: 132
+process message: 32
+message not handled: 32
+process message: 512
+message not handled: 512
+process message: 132
+message not handled: 132
+process message: 32
+message not handled: 32
+process message: 512
+message not handled: 512
+process message: 132
+message not handled: 132
+process message: 32
+message not handled: 32
+process message: 512
+message not handled: 512
+process message: 132
+message not handled: 132
+process message: 32
+message not handled: 32
+process message: 512
+message not handled: 512
+process message: 132
+message not handled: 132
+process message: 32
+message not handled: 32
+process message: 512
+message not handled: 512
+process message: 132
+message not handled: 132
+process message: 32
+message not handled: 32
+process message: 512
+message not handled: 512
+process message: 132
+message not handled: 132
+process message: 32
+message not handled: 32
+process message: 512
+message not handled: 512
+process message: 132
+message not handled: 132
+process message: 32
+message not handled: 32
+process message: 512
+message not handled: 512
+process message: 132
+message not handled: 132
+process message: 32
+message not handled: 32
+process message: 512
+message not handled: 512
+process message: 132
+message not handled: 132
+process message: 32
+message not handled: 32
+process message: 512
+message not handled: 512
+process message: 132
+message not handled: 132
+process message: 32
+message not handled: 32
+process message: 512
+message not handled: 512
+process message: 132
+message not handled: 132
+process message: 32
+message not handled: 32
+process message: 512
+message not handled: 512
+process message: 132
+message not handled: 132
+process message: 32
+message not handled: 32
+process message: 512
+message not handled: 512
+process message: 132
+message not handled: 132
+process message: 32
+message not handled: 32
+process message: 512
+message not handled: 512
+process message: 132
+message not handled: 132
+process message: 32
+message not handled: 32
+process message: 512
+message not handled: 512
+process message: 132
+message not handled: 132
+process message: 32
+message not handled: 32
+process message: 512
+message not handled: 512
+process message: 132
+message not handled: 132
+process message: 32
+message not handled: 32
+process message: 512
+message not handled: 512
+process message: 132
+message not handled: 132
+process message: 32
+message not handled: 32
+process message: 512
+message not handled: 512
+process message: 132
+message not handled: 132
+process message: 32
+message not handled: 32
+process message: 512
+message not handled: 512
+process message: 132
+message not handled: 132
+process message: 32
+message not handled: 32
+process message: 512
+message not handled: 512
+process message: 132
+message not handled: 132
+process message: 32
+message not handled: 32
+process message: 512
+message not handled: 512
+process message: 132
+message not handled: 132
+process message: 32
+message not handled: 32
+process message: 512
+message not handled: 512
+process message: 132
+message not handled: 132
+process message: 32
+message not handled: 32
+process message: 512
+message not handled: 512
+process message: 132
+message not handled: 132
+process message: 32
+message not handled: 32
+process message: 512
+message not handled: 512
+process message: 132
+message not handled: 132
+process message: 32
+message not handled: 32
+process message: 512
+message not handled: 512
+process message: 132
+message not handled: 132
+process message: 32
+message not handled: 32
+process message: 512
+message not handled: 512
+process message: 31
+message not handled: 31
+window created
+before SexyCreateGame
+resolve: getparam
+resolve: notify
+resolve: setdrawparams
+resolve: drawtodc
+resolve: urlnavigate
+resolve: getdllhandle
+getdllhandle
+getparam: pc_scorebroadcast
+getparam: pc_sendgamebreaks
+getparam: NumExtrasLoaded
+setdrawparams
+getparam: ZoneScript
+getparam: focuspause
+getparam: pc_scorebroadcast

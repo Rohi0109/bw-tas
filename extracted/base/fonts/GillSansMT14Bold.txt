@@ -1,0 +1,27 @@
+Define CharList
+ ( '0', '1', '2', '3', '4', '5', '6', '7', '8', '9');
+
+Define WidthList
+ (  10,  10,  10,  10,  10,  10,  10,  10,  10,  10);
+
+Define RectList
+ ( (   0,  0, 14, 28), (  15,  0,  9, 28), (  25,  0, 15, 28), (  41,  0, 14, 28),
+   (  56,  0, 15, 28), (  72,  0, 14, 28), (  87,  0, 14, 28), ( 102,  0, 15, 28),
+   ( 118,  0, 14, 28), ( 133,  0, 14, 28));
+
+Define OffsetList
+ ( (-2, 0), ( 1, 0), (-2, 0), (-2, 0), (-3, 0), (-2, 0), (-2, 0), (-2, 0),
+   (-2, 0), (-2, 0));
+
+CreateLayer               Main;
+LayerSetImage             Main 'GillSansMT14Bold';
+LayerSetAscent            Main 21;
+LayerSetCharWidths        Main CharList WidthList;
+LayerSetCharWidths        Main (' ') (5);
+LayerSetImageMap          Main CharList RectList;
+LayerSetCharOffsets       Main CharList OffsetList;
+LayerSetAscentPadding     Main 3;
+LayerSetLineSpacingOffset Main 3;
+LayerSetPointSize         Main 14;
+
+SetDefaultPointSize  14;

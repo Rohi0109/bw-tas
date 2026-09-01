@@ -16,6 +16,8 @@ from deluxe_optimizer import DISPLAY_NAME_ALIASES
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_STATE = ROOT / "runtime/deluxe-modded/run-timer.json"
 DEFAULT_LOG = ROOT / "runtime/deluxe-modded/lua.log"
+DEFAULT_WR_SPLITS = ROOT / "human-wr-splits.json"
+DEFAULT_TAS_BEST = ROOT / "tas-best-splits.json"
 CHAPTER_RE = re.compile(
     r"Book:StartGame called for book Book(?P<book>\d+), chapter (?P<chapter>\d+)"
 )
@@ -61,9 +63,11 @@ def now_iso(timestamp: float) -> str:
 
 
 def start_timer(path: Path = DEFAULT_STATE, timestamp: float | None = None) -> dict:
+    if path.exists():
+        update_tas_best(load_state(path))
     now = time.time() if timestamp is None else timestamp
     state = {
-        "version": 1,
+        "version": 2,
         "started_at": now,
         "started_at_iso": now_iso(now),
         "current": None,
@@ -101,8 +105,35 @@ def record_chapter(state: dict, book: int, chapter: int, timestamp: float) -> bo
             "ended_at": timestamp,
             "elapsed": timestamp - current["started_at"],
         })
-    state["current"] = {**key, "started_at": timestamp}
+    state["current"] = {
+        **key, "started_at": timestamp, "clean": True, "issues": [],
+    }
     return True
+
+
+def mark_current_issue(state: dict, issue: str) -> bool:
+    """Mark the active split ineligible for clean TAS-best comparisons."""
+    current = state.get("current")
+    if current is None:
+        return False
+    issues = current.setdefault("issues", [])
+    if issue not in issues:
+        issues.append(issue)
+    current["clean"] = False
+    return True
+
+
+def wr_segment_seconds(wr: dict, book: int, chapter: int) -> float | None:
+    current = wr.get("chapters", {}).get(f"{book}.{chapter}")
+    if current is None:
+        return None
+    if chapter > 1:
+        previous = wr.get("chapters", {}).get(f"{book}.{chapter - 1}")
+    elif book > 1:
+        previous = wr.get("chapters", {}).get(f"{book - 1}.10")
+    else:
+        previous = 0.0
+    return float(current) - float(previous or 0.0)
 
 
 def process_line(state: dict, line: str, timestamp: float) -> bool:
@@ -132,8 +163,68 @@ def format_duration(seconds: float) -> str:
     return f"{hours}:{minutes:02d}:{seconds:02d}" if hours else f"{minutes}:{seconds:02d}"
 
 
-def report(state: dict, timestamp: float | None = None) -> str:
+def format_delta(seconds: float) -> str:
+    sign = "+" if seconds >= 0 else "-"
+    return f"{sign}{format_duration(abs(seconds))}"
+
+
+def load_wr_splits(path: Path = DEFAULT_WR_SPLITS) -> dict:
+    if not path.exists():
+        return {"chapters": {}}
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def load_tas_best(path: Path = DEFAULT_TAS_BEST) -> dict:
+    if not path.exists():
+        return {"version": 1, "segments": {}}
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def update_tas_best(
+    state: dict, path: Path = DEFAULT_TAS_BEST,
+) -> dict:
+    """Persist fastest completed TAS chapter segments across fresh runs."""
+    best = load_tas_best(path)
+    segments = best.setdefault("segments", {})
+    wr = load_wr_splits()
+    changed = False
+    # Purge only unmistakable abandoned/manual pauses from legacy best data.
+    for key, elapsed in list(segments.items()):
+        book, chapter = map(int, key.split("."))
+        target = wr_segment_seconds(wr, book, chapter)
+        if target is not None and elapsed > target * 3:
+            del segments[key]
+            changed = True
+    for row in state.get("splits", []):
+        key = f"{row['book']}.{row['chapter']}"
+        elapsed = row["elapsed"]
+        target = wr_segment_seconds(wr, row["book"], row["chapter"])
+        if not row.get("clean", True) or row.get("issues"):
+            continue
+        if target is not None and elapsed > target * 3:
+            continue
+        if key not in segments or elapsed < segments[key]:
+            segments[key] = elapsed
+            changed = True
+    if changed:
+        path.write_text(json.dumps(best, indent=2) + "\n", encoding="utf-8")
+    return best
+
+
+def report(
+    state: dict, timestamp: float | None = None, wr: dict | None = None,
+    tas_best: dict | None = None,
+) -> str:
     now = time.time() if timestamp is None else timestamp
+    wr = load_wr_splits() if wr is None else wr
+    wr_chapters = wr.get("chapters", {})
+    tas_best = load_tas_best() if tas_best is None else tas_best
+    best_segments = dict(tas_best.get("segments", {}))
+    for completed in state.get("splits", []):
+        key = f"{completed['book']}.{completed['chapter']}"
+        best_segments[key] = min(
+            completed["elapsed"], best_segments.get(key, float("inf"))
+        )
     end = state.get("finished_at") or now
     rows = list(state.get("splits", []))
     current = state.get("current")
@@ -141,15 +232,54 @@ def report(state: dict, timestamp: float | None = None) -> str:
         rows.append({**current, "elapsed": end - current["started_at"]})
     lines = [f"Total: {format_duration(end - state['started_at'])}"]
     book_totals: dict[int, float] = {}
+    completed_books = {
+        row["book"] for row in state.get("splits", []) if row["chapter"] == 10
+    }
+    cumulative = 0.0
+    previous_wr = 0.0
     for row in rows:
+        cumulative += row["elapsed"]
         book_totals[row["book"]] = book_totals.get(row["book"], 0) + row["elapsed"]
         suffix = " (running)" if current is not None and row is rows[-1] and not state.get("finished_at") else ""
+        wr_cumulative = wr_chapters.get(f"{row['book']}.{row['chapter']}")
+        comparison = ""
+        tas_segment = best_segments.get(f"{row['book']}.{row['chapter']}")
+        if tas_segment is not None:
+            comparison += f" | TAS best {format_duration(tas_segment)}"
+        if wr_cumulative is not None:
+            wr_segment = wr_cumulative - previous_wr
+            comparison += (
+                f" | WR {format_duration(wr_segment)}"
+                f" | chapter {format_delta(row['elapsed'] - wr_segment)}"
+                f" | cumulative {format_delta(cumulative - wr_cumulative)}"
+            )
+            previous_wr = wr_cumulative
         lines.append(
             f"  Book {row['book']} Chapter {row['chapter']}: "
-            f"{format_duration(row['elapsed'])}{suffix}"
+            f"{format_duration(row['elapsed'])}{suffix}{comparison}"
         )
     for book in sorted(book_totals):
-        lines.append(f"Book {book} total: {format_duration(book_totals[book])}")
+        wr_book = wr.get("book_seconds", {}).get(str(book))
+        label = "total" if book in completed_books else "progress"
+        comparison = ""
+        if wr_book is not None:
+            comparison = f" | Human WR {format_duration(wr_book)}"
+            if book in completed_books:
+                comparison += f" | gap {format_delta(book_totals[book] - wr_book)}"
+        lines.append(
+            f"Book {book} {label}: {format_duration(book_totals[book])}"
+            f"{comparison}"
+        )
+    if wr.get("book_seconds"):
+        targets = ", ".join(
+            f"Book {book} {format_duration(seconds)}"
+            for book, seconds in sorted(
+                ((int(book), seconds) for book, seconds in wr["book_seconds"].items())
+            )
+        )
+        lines.append(f"Human WR books: {targets}")
+    if wr.get("total_seconds") is not None:
+        lines.append(f"Human WR target: {format_duration(wr['total_seconds'])}")
     return "\n".join(lines)
 
 
@@ -176,6 +306,7 @@ def watch(log_path: Path, state_path: Path, poll: float = 0.1) -> None:
                 timestamp = time.time()
                 if process_line(state, line, timestamp):
                     save_state(state_path, state)
+                    update_tas_best(state)
                     current = state["current"]
                     print(
                         f"Split: Book {current['book']} Chapter {current['chapter']} "
@@ -188,7 +319,9 @@ def watch(log_path: Path, state_path: Path, poll: float = 0.1) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=("start", "watch", "report", "finish"))
+    parser.add_argument(
+        "action", choices=("start", "watch", "report", "finish", "update-best")
+    )
     parser.add_argument("--state", type=Path, default=DEFAULT_STATE)
     parser.add_argument("--log", type=Path, default=DEFAULT_LOG)
     args = parser.parse_args()
@@ -209,7 +342,11 @@ def main() -> None:
             state["current"] = None
         state["finished_at"] = now
         save_state(args.state, state)
+        update_tas_best(state)
         print(report(state, now))
+    elif args.action == "update-best":
+        best = update_tas_best(load_state(args.state))
+        print(f"Saved {len(best['segments'])} TAS best chapter splits.")
     else:
         print(report(load_state(args.state)))
 

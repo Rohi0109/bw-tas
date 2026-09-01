@@ -107,6 +107,14 @@ class DeluxeRouteTests(unittest.TestCase):
             "after Cyclops Warrior, before boss entrance",
         )
 
+    def test_naiad_triggers_reset_before_boss_entrance(self):
+        defeated = state(book=1, chapter=8, enemy="Naiad", stage=5)
+
+        self.assertEqual(
+            post_victory_reset_reason(defeated, set()),
+            "after Naiad, before boss entrance",
+        )
+
     def test_boss_ready_no_longer_triggers_reset(self):
         boss = state(enemy="Polyphemus (Boss)", stage=6)
 

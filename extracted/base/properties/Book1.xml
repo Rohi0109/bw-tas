@@ -1,0 +1,52 @@
+<?xml version="1.0"?>
+
+<ResourceManifest>
+	<Resources id="Book1Init">	
+		
+	</Resources>
+
+	<Resources id="Book1Common">	
+		
+	</Resources>
+	
+	<Resources id="Book1Chapter1">
+		<SetDefaults path="sounds" idprefix="SOUND_CH1_"/>
+		<Sound id="ATTACK1"					path="bite_01"/>
+		<Sound id="DEATH1"					path="bat_death_01"/>
+	
+	</Resources>
+	
+	<Resources id="Book1Chapter2">	
+		<SetDefaults path="sounds" idprefix="SOUND_CH2_"/>
+		<Sound id="ATTACK1"					path="BluntImpact_WithWoosh"/>
+		<Sound id="DEATH1"					path="male_low_pain"/>
+		<Sound id="ATTACK2"					path="female_seduce"/>
+		<Sound id="DEATH2"					path="Female_Groan_02"/>		
+	</Resources>
+	
+	<Resources id="Book1Chapter3">
+		<SetDefaults path="sounds" idprefix="SOUND_CH3_"/>
+		<Sound id="ATTACK1"					path="BluntImpact_WithWoosh"/>
+		<Sound id="DEATH1"					path="bat_death_01"/>
+		<Sound id="ATTACK2"					path="male_low_warcry"/>
+		<Sound id="DEATH2"					path="male_low_pain"/>
+		<Sound id="ATTACK3"					path="Slicing_attack_02"/>
+		<Sound id="DEATH3"					path="humanmalegrunt3"/>
+		<Sound id="ATTACK4"					path="fire1"/>
+		
+	</Resources>
+	
+	<Resources id="Book1Chapter4">
+		<SetDefaults path="sounds" idprefix="SOUND_CH4_"/>
+		<Sound id="ATTACK1"					path="dog_barking_02"/>
+		<Sound id="DEATH1"					path="dog_whimper_01"/>
+		<Sound id="ATTACK2"					path="bite_01"/>
+		<Sound id="DEATH2"					path="Snake_Hiss_01"/>
+		<Sound id="ATTACK3"					path="Slicing_attack_02"/>
+		<Sound id="DEATH3"					path="humanmalegrunt3"/>
+		<Sound id="ATTACK4"					path="BluntImpact_WithWoosh"/>
+		<Sound id="ATTACK5"					path="male_low_warcry"/>
+		
+	</Resources>
+		
+</ResourceManifest>

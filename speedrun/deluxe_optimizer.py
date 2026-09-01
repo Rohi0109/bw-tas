@@ -25,7 +25,8 @@ PLAYER_HEALTH_RE = re.compile(
 PLAYER_STATUS_RE = re.compile(
     r"AUTOMATION_PLAYER_STATUS=(?P<seq>\d+)\|(?P<stunned>[01])\|"
     r"(?P<health_potion>[01])(?:\|(?P<damage_over_time>[01]))?"
-    r"(?:\|(?P<petrified>[01]))?(?:\|(?P<attack_potion>[01]))?\|E"
+    r"(?:\|(?P<petrified>[01]))?(?:\|(?P<attack_potion>[01]))?"
+    r"(?:\|(?P<frozen>[01]))?\|E"
 )
 LETTERS_RE = re.compile(
     r"AUTOMATION_LETTERS=(?P<seq>\d+)\|(?P<row>[0-3])\|(?P<value>[A-Z]{4})\|E"
@@ -51,6 +52,9 @@ OVERKILL_RE = re.compile(
     r"(?P<value>none|-?\d+(?:\.\d+)?(?:,-?\d+(?:\.\d+)?)*)\|E"
 )
 READY_SEQ_RE = re.compile(r"AUTOMATION_READY_SEQ=(?P<seq>\d+)\|E")
+RNG_RE = re.compile(
+    r"AUTOMATION_RNG=(?P<seq>\d+)\|(?P<calls>-?\d+)\|E"
+)
 GEM_CODE_NAMES = {
     "n": "none", "a": "amethyst", "s": "sapphire", "e": "emerald",
     "g": "garnet", "r": "ruby", "c": "crystal", "d": "diamond",
@@ -191,11 +195,13 @@ class DeluxeState:
     player_hp: float = -1
     player_max_hp: float = -1
     player_stunned: bool = False
+    player_frozen: bool = False
     player_petrified: bool = False
     health_potion_available: bool = False
     attack_potion_available: bool = False
     player_has_damage_over_time: bool = False
     zero_damage: tuple[bool, ...] = (False,) * 16
+    rng_calls: int = -1
 
 
 @dataclass(frozen=True)
@@ -240,6 +246,7 @@ def parse_state(text: str) -> DeluxeState | None:
         }
         mods = [m for m in MODS_RE.finditer(text) if int(m.group("seq")) == sequence]
         overkills = [m for m in OVERKILL_RE.finditer(text) if int(m.group("seq")) == sequence]
+        rng = [m for m in RNG_RE.finditer(text) if int(m.group("seq")) == sequence]
         if contexts and enemies and healths and len(letters) == len(gems) == len(powers) == 4 and mods and overkills:
             break
     else:
@@ -274,6 +281,7 @@ def parse_state(text: str) -> DeluxeState | None:
                 zero_damage[row].group("value") if row in zero_damage else "0000"
             )
         ),
+        rng_calls=int(rng[-1].group("calls")) if rng else -1,
         player_hp=(float(player_healths[-1].group("hp")) if player_healths else -1),
         player_max_hp=(
             float(player_healths[-1].group("max_hp")) if player_healths else -1
@@ -285,6 +293,11 @@ def parse_state(text: str) -> DeluxeState | None:
         player_petrified=(
             player_statuses[-1].group("petrified") == "1"
             if player_statuses and player_statuses[-1].group("petrified")
+            else False
+        ),
+        player_frozen=(
+            player_statuses[-1].group("frozen") == "1"
+            if player_statuses and player_statuses[-1].group("frozen")
             else False
         ),
         health_potion_available=(

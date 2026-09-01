@@ -5,22 +5,30 @@ from pathlib import Path
 
 from continuous_runner import (
     ATTACK_SUBMITTED_RE, DEFEATED_RE, DIALOG_ACTIVE_RE, DIALOG_PULSE_RE,
-    MINIGAME_PROMPT_RE, PLAYER_STUNNED_RE,
+    INCAP_OVERLAY_RE, MINIGAME_PROMPT_RE, PLAYER_STUNNED_RE,
     RESET_READY_RE,
     ZERO_HEALTH_RE,
     boss_finish_strategy,
-    boss_reset_dialog_recovery_allowed, clear_stale_treasure_transition,
+    boss_reset_dialog_recovery_allowed, clear_stale_treasure_on_ready,
+    clear_stale_treasure_transition,
+    completes_early_ready,
     dialogue_pulse_suppressed,
-    enemy_accepts_candidate, is_initial_play_tutorial,
+    enemy_accepts_candidate, health_potion_confirmed, is_initial_play_tutorial,
     is_unchanged_combat_snapshot,
-    read_latest_dialog, read_screen_blocker, read_seed, sphinx_candidate,
+    latest_active_incapacitation_event, latest_incapacitation_state,
+    latest_unresolved_incapacitation_overlay,
+    lua_runtime_is_waiting,
+    read_latest_dialog, read_screen_blocker,
+    read_seed, sphinx_candidate,
+    state_is_incapacitated,
     unresolved_play_tutorial,
     sphinx_allows_damage_fallback,
-    is_book3_final_gauntlet, should_heal_during_stun, should_use_health_potion,
+    is_book3_final_gauntlet, should_use_health_potion,
     should_use_powerup_potion,
     should_confirm_book_movie_skip,
     immediate_defeated_reset_reason,
     should_arm_boss_reset_on_zero_health,
+    incapacitation_recovery_action,
     should_use_purification_potion,
     treasure_slots_after, treasure_slots_for_context, treasure_slots_for_state,
 )
@@ -29,6 +37,63 @@ from live_runner import X11Keyboard
 
 
 class ContinuousRunnerTests(unittest.TestCase):
+    def test_lua_runtime_wait_marker_is_detected_near_log_tail(self):
+        marker = "Program in waiting. Type go() or press F5 to continue execution."
+
+        self.assertTrue(lua_runtime_is_waiting("old output\n" + marker))
+        self.assertTrue(lua_runtime_is_waiting(marker + "\n\0\0> \b"))
+        self.assertFalse(lua_runtime_is_waiting(marker + "\nAUTOMATION_SYNC=1"))
+        self.assertFalse(lua_runtime_is_waiting("AUTOMATION_BOARD=ABCD/EFGH/IJKL/MNOP"))
+
+    def test_startup_recovers_existing_incapacitation(self):
+        normal = self.state(1)
+
+        self.assertFalse(state_is_incapacitated(None))
+        self.assertFalse(state_is_incapacitated(normal))
+        self.assertTrue(state_is_incapacitated(replace(normal, player_stunned=True)))
+        self.assertTrue(state_is_incapacitated(replace(normal, player_frozen=True)))
+        self.assertTrue(state_is_incapacitated(replace(normal, player_petrified=True)))
+
+    def test_startup_replays_incapacitation_edges_after_snapshot(self):
+        normal = self.state(1)
+        stunned = "AUTOMATION_PLAYER_STUNNED=1|4.75|5|0|E\n"
+        recovered = stunned + "AUTOMATION_PLAYER_STUNNED=0|4.75|5|0|E\n"
+
+        self.assertTrue(latest_incapacitation_state(stunned, normal))
+        self.assertFalse(latest_incapacitation_state(recovered, normal))
+        self.assertTrue(latest_incapacitation_state(
+            "AUTOMATION_PLAYER_FROZEN=1|3|5|0|E\n", normal,
+        ))
+
+    def test_startup_preserves_active_incapacitation_potion_telemetry(self):
+        text = (
+            "AUTOMATION_PLAYER_STUNNED=1|3|6|1|0|E\n"
+            "AUTOMATION_PLAYER_STUNNED=0|3|6|1|0|E\n"
+            "AUTOMATION_PLAYER_PETRIFIED=1|6|6|1|1|E\n"
+        )
+
+        event = latest_active_incapacitation_event(text)
+
+        self.assertEqual(event.group("kind"), "PETRIFIED")
+        self.assertEqual(event.group("health_potion"), "1")
+        self.assertEqual(event.group("purify_potion"), "1")
+
+    def test_startup_recovers_final_overlay_after_status_flag_clears(self):
+        text = (
+            "AUTOMATION_READY_SEQ=73|E\n"
+            "AUTOMATION_PLAYER_PETRIFIED=1|6|6|1|1|E\n"
+            "AUTOMATION_INCAP_OVERLAY=petrified|petrify2done|E\n"
+            "AUTOMATION_PLAYER_PETRIFIED=0|2|6|1|1|E\n"
+        )
+
+        overlay = latest_unresolved_incapacitation_overlay(text)
+
+        self.assertEqual(overlay.group("kind"), "petrified")
+        self.assertEqual(overlay.group("frame"), "petrify2done")
+        self.assertIsNone(latest_unresolved_incapacitation_overlay(
+            text + "AUTOMATION_READY_SEQ=74|E\n"
+        ))
+
     def test_native_attack_submission_event_captures_enemy(self):
         event = ATTACK_SUBMITTED_RE.search(
             "AUTOMATION_ATTACK_SUBMITTED=Alexander|E"
@@ -66,6 +131,13 @@ class ContinuousRunnerTests(unittest.TestCase):
             )
         )
 
+    def test_only_last_sphinx_riddle_arms_save_ready_reset(self):
+        earlier = replace(self.state(1), enemy="Sphinx (Riddle 4 of 5)")
+        final = replace(self.state(1), enemy="Sphinx (Last Riddle)")
+
+        self.assertFalse(should_arm_boss_reset_on_zero_health(earlier))
+        self.assertTrue(should_arm_boss_reset_on_zero_health(final))
+
     def test_petrify_edges_include_native_health_state(self):
         started = PLAYER_STUNNED_RE.search(
             "AUTOMATION_PLAYER_PETRIFIED=1|6|6|1|E"
@@ -77,6 +149,43 @@ class ContinuousRunnerTests(unittest.TestCase):
         self.assertEqual(started.group("kind"), "PETRIFIED")
         self.assertEqual(ended.group("active"), "0")
         self.assertEqual(float(ended.group("hp")), 2.0)
+
+    def test_frozen_edges_and_native_overlay_are_recognized(self):
+        frozen = PLAYER_STUNNED_RE.search(
+            "AUTOMATION_PLAYER_FROZEN=1|3.5|6|1|1|E"
+        )
+        overlay = INCAP_OVERLAY_RE.search(
+            "AUTOMATION_INCAP_OVERLAY=frozen|breakfrozen|2|6|1|0|E"
+        )
+
+        self.assertEqual(frozen.group("kind"), "FROZEN")
+        self.assertEqual(float(frozen.group("hp")), 3.5)
+        self.assertEqual(frozen.group("purify_potion"), "1")
+        self.assertEqual(overlay.group("kind"), "frozen")
+        self.assertEqual(overlay.group("frame"), "breakfrozen")
+        self.assertEqual(float(overlay.group("hp")), 2)
+
+    def test_incapacitation_recovery_priority(self):
+        cases = (
+            (True, True, 2, "purify"),
+            (False, True, 2, "heal_then_continue"),
+            (False, True, 4, "heal_then_continue"),
+            (False, True, 4.25, "continue"),
+            (False, False, 2, "continue"),
+        )
+        for purify, health, hp, expected in cases:
+            with self.subTest(
+                purify=purify, health=health, hp=hp,
+            ):
+                self.assertEqual(
+                    incapacitation_recovery_action(
+                        purify_available=purify,
+                        health_available=health,
+                        player_hp=hp,
+                        player_max_hp=6,
+                    ),
+                    expected,
+                )
 
     def test_mama_roc_rejects_three_letter_candidates(self):
         mama = replace(self.state(1), enemy="Mama Roc (Boss)")
@@ -173,12 +282,21 @@ class ContinuousRunnerTests(unittest.TestCase):
 
         self.assertFalse(should_use_health_potion(low, lethal))
 
+    def test_sphinx_low_health_heals_before_fallback_killing_blow(self):
+        sphinx = replace(
+            self.state(1), enemy="Sphinx (Riddle 3 of 5)",
+            player_hp=1, player_max_hp=7, health_potion_available=True,
+        )
+        lethal = Candidate("JUBILANTLY", (0,), 10.75, 1.75, None, True, 1.45, 0)
+
+        self.assertTrue(should_use_health_potion(sphinx, lethal))
+
     def test_powerup_potion_is_used_only_when_it_removes_an_attack(self):
         available = replace(
             self.state(1), hp=7, attack_potion_available=True,
         )
         unavailable = replace(available, attack_potion_available=False)
-        converts_to_lethal = Candidate("POWER", (0,), 5, 4, None, False, 0.8, 0)
+        converts_to_lethal = Candidate("POWER", (0,), 6, -1, None, False, 0.8, 0)
         still_nonlethal = replace(converts_to_lethal, damage=3, overkill=-4)
         already_lethal = replace(converts_to_lethal, damage=7, lethal=True)
 
@@ -186,6 +304,18 @@ class ContinuousRunnerTests(unittest.TestCase):
         self.assertFalse(should_use_powerup_potion(available, still_nonlethal))
         self.assertFalse(should_use_powerup_potion(available, already_lethal))
         self.assertFalse(should_use_powerup_potion(unavailable, converts_to_lethal))
+
+    def test_powerup_uses_native_twenty_five_percent_boost(self):
+        circe = replace(
+            self.state(1), enemy="Circe (Boss)", hp=10,
+            attack_potion_available=True,
+        )
+        five_damage = Candidate("IRRELATIVE", (0,), 5, -5, None, False, 1.35, 0)
+        serpent = replace(circe, enemy="Enchanted Serpent", hp=7)
+        serpent_attack = replace(five_damage, damage=6.25, overkill=-0.75)
+
+        self.assertFalse(should_use_powerup_potion(circe, five_damage))
+        self.assertTrue(should_use_powerup_potion(serpent, serpent_attack))
 
     def test_stunned_low_health_heals_even_before_killing_blow(self):
         stunned = replace(
@@ -205,6 +335,29 @@ class ContinuousRunnerTests(unittest.TestCase):
 
         self.assertTrue(should_use_health_potion(petrified, lethal))
 
+    def test_frozen_low_health_heals_even_before_killing_blow(self):
+        frozen = replace(
+            self.state(1), player_hp=3.5, player_max_hp=6,
+            player_frozen=True, health_potion_available=True,
+        )
+        lethal = Candidate("HIT", (0,), 4, 1, None, True, 0.6, 0)
+
+        self.assertTrue(should_use_health_potion(frozen, lethal))
+
+    def test_health_potion_requires_native_consumption_or_hp_confirmation(self):
+        before = replace(
+            self.state(1), player_hp=4, player_max_hp=6,
+            health_potion_available=True,
+        )
+
+        self.assertFalse(health_potion_confirmed(before, before))
+        self.assertTrue(health_potion_confirmed(
+            before, replace(before, health_potion_available=False)
+        ))
+        self.assertTrue(health_potion_confirmed(
+            before, replace(before, player_hp=6)
+        ))
+
     def test_stunned_low_health_does_not_click_missing_potion(self):
         stunned = replace(
             self.state(1), player_hp=3.5, player_max_hp=6,
@@ -212,14 +365,6 @@ class ContinuousRunnerTests(unittest.TestCase):
         )
 
         self.assertFalse(should_use_health_potion(stunned, None))
-
-    def test_live_stun_heals_at_four_with_available_potion(self):
-        stunned = replace(
-            self.state(1), player_hp=4, player_max_hp=6,
-            health_potion_available=True,
-        )
-
-        self.assertTrue(should_heal_during_stun(stunned))
 
     def test_health_potion_does_not_fire_at_early_full_health(self):
         full = replace(self.state(1), player_hp=3, player_max_hp=3)
@@ -233,6 +378,39 @@ class ContinuousRunnerTests(unittest.TestCase):
         )
 
         self.assertTrue(should_use_health_potion(hydra))
+
+    def test_resisted_stun_does_not_force_heal_before_lethal_boss_word(self):
+        cerberus = replace(
+            self.state(1), enemy="Cerberus (Boss)", hp=5.5,
+            player_hp=4, player_max_hp=6, health_potion_available=True,
+            player_stunned=False,
+        )
+        predicted_lethal = Candidate(
+            "HYPERMANIAS", (0,), 5.75, 0.25, None, True, 1.45, 0,
+        )
+
+        self.assertFalse(should_use_health_potion(cerberus, predicted_lethal))
+
+    def test_low_health_ordinary_lethal_attack_preserves_potion(self):
+        manes = replace(
+            self.state(1), enemy="Manes", hp=3,
+            player_hp=2.25, player_max_hp=5, health_potion_available=True,
+        )
+        lethal = Candidate("FEVERWORT", (0,), 4, 1, None, True, 1.25, 0)
+
+        self.assertFalse(should_use_health_potion(manes, lethal))
+
+    def test_hydra_purifies_lingering_status_even_on_lethal_word(self):
+        hydra = replace(
+            self.state(1), enemy="Hydra (Head 3)",
+            player_has_damage_over_time=True,
+        )
+        lethal = Candidate("FINISH", (0,), 5, 1, None, True, 0.8, 0)
+
+        self.assertTrue(should_use_purification_potion(hydra, lethal))
+        self.assertFalse(should_use_purification_potion(
+            replace(hydra, player_has_damage_over_time=False), lethal,
+        ))
 
     def test_book3_chapter10_uses_full_heal_and_purify(self):
         gauntlet = replace(
@@ -260,14 +438,24 @@ class ContinuousRunnerTests(unittest.TestCase):
 
         self.assertFalse(should_use_purification_potion(ordinary))
 
-    def test_lua_confirmed_fire_saves_purify_before_lethal_word(self):
+    def test_damaged_basilisk_does_not_imply_lex_needs_purify(self):
+        basilisk = replace(
+            self.state(1), book=1, chapter=10, enemy="Lesser Basilisk",
+            hp=12, max_hp=25, player_petrified=False,
+            player_has_damage_over_time=False,
+        )
+        attack = Candidate("FIGUREHEAD", (0,), 9.25, -2.75, None, False, 1.35, 0)
+
+        self.assertFalse(should_use_purification_potion(basilisk, attack))
+
+    def test_enyo_lethal_word_does_not_waste_health_or_purify(self):
         burning = replace(
-            self.state(1), enemy="Enyo", player_hp=5, player_max_hp=6,
+            self.state(1), enemy="Enyo", player_hp=5.25, player_max_hp=6,
             health_potion_available=True, player_has_damage_over_time=True,
         )
         lethal = Candidate("FASTENERS", (0,), 7, 0.25, None, True, 1.25, 0)
 
-        self.assertTrue(should_use_health_potion(burning, lethal))
+        self.assertFalse(should_use_health_potion(burning, lethal))
         self.assertFalse(should_use_purification_potion(burning, lethal))
         self.assertTrue(
             should_use_purification_potion(
@@ -331,6 +519,13 @@ class ContinuousRunnerTests(unittest.TestCase):
             )
         )
 
+    def test_completed_snapshot_rearms_an_early_ready(self):
+        state = self.state(80, board="NAEM/DYII/QRDP/OWIQ")
+
+        self.assertTrue(completes_early_ready(state, "NAEM/DYII/QRDP/OWIQ"))
+        self.assertFalse(completes_early_ready(state, "GGII/DNRA/QWIP/OUUQ"))
+        self.assertFalse(completes_early_ready(state, None))
+
     def test_only_fresh_profile_play_board_triggers_tutorial_override(self):
         board = "SFAE/PFUN/RJDY/TLIS"
 
@@ -374,6 +569,12 @@ class ContinuousRunnerTests(unittest.TestCase):
             )
 
             self.assertIsNone(read_screen_blocker(log))
+
+    def test_native_ready_clears_stale_treasure_transition(self):
+        self.assertEqual(
+            clear_stale_treasure_on_ready("treasure", True),
+            (None, False),
+        )
 
     def test_active_levelup_is_recovered_for_retry(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -464,7 +665,22 @@ class ContinuousRunnerTests(unittest.TestCase):
         controller.use_powerup_potion(0)
         controller.use_purification_potion(0)
 
+        # Native inventory order is health (red), Power-Up (green), Purify
+        # (blue). Guard against swapping the adjacent green and blue bottles.
         self.assertEqual(clicks, [(144, 341), (220, 341)])
+
+    def test_incapacitation_overlay_clicks_tile_cleared_before_next_word(self):
+        controller = X11Keyboard.__new__(X11Keyboard)
+        controller.layout = "deluxe"
+        controller.window = 1
+        controller._size = lambda _window: (800, 600)
+        controller.focus = lambda: None
+        clicks = []
+        controller.click = lambda x, y, delay: clicks.append((x, y))
+
+        controller.dismiss_incapacitation_overlay(0)
+
+        self.assertEqual(clicks, [(400, 480)])
 
     def test_sphinx_uses_fixed_answer(self):
         normal = Candidate("PROPELLED", (0,), 9, 0, None, True, 1.2, 0)
@@ -518,18 +734,21 @@ class ContinuousRunnerTests(unittest.TestCase):
         self.assertIsNone(selected)
         self.assertEqual(expected, "WATER")
 
-    def test_sphinx_last_riddle_allows_only_lethal_damage_fallback(self):
+    def test_sphinx_missing_answer_allows_normal_damage_fallback(self):
         nonlethal = Candidate("WAGING", (0,), 2, -7, None, False, 0.9, 0)
         lethal = Candidate("INEBRIATED", (0,), 10, 1, None, True, 1.3, 0)
 
-        self.assertFalse(sphinx_allows_damage_fallback(
+        self.assertTrue(sphinx_allows_damage_fallback(
             "Sphinx (Last Riddle)", nonlethal
         ))
         self.assertTrue(sphinx_allows_damage_fallback(
             "Sphinx (Last Riddle)", lethal
         ))
-        self.assertFalse(sphinx_allows_damage_fallback(
+        self.assertTrue(sphinx_allows_damage_fallback(
             "Sphinx (Riddle 4 of 5)", lethal
+        ))
+        self.assertFalse(sphinx_allows_damage_fallback(
+            "Pharaoh of Old (Boss)", lethal
         ))
 
     def test_new_board_clears_stale_ready_state(self):

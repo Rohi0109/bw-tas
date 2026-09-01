@@ -1,4 +1,50 @@
 function BattleEngine:AutomationDumpDialogs()
+  -- TileEngine stops reaching its board logger while an enemy-owned modal
+  -- overlay has control. In particular, Hydra Head 4 can open with Freezing
+  -- Breath before another actionable board snapshot exists. Report that edge
+  -- from BattleEngine, which continues updating while the Frozen card is up.
+  local livePlayerFrozen = false
+  local freezeFrame = "none"
+  if self.mGridOverlayPAM ~= nil and
+      self.mGridOverlayPAM.mPlayingFrame ~= nil then
+    freezeFrame = tostring(self.mGridOverlayPAM.mPlayingFrame)
+    livePlayerFrozen = freezeFrame == "frozen" or
+      freezeFrame == "frozenloop" or freezeFrame == "breakfrozen"
+  end
+  if gAutomationLivePlayerFrozen == nil then
+    gAutomationLivePlayerFrozen = false
+  end
+  if livePlayerFrozen ~= gAutomationLivePlayerFrozen then
+    gAutomationLivePlayerFrozen = livePlayerFrozen
+    local playerHealth = -1
+    local playerMaxHealth = -1
+    local healthPotionAvailable = false
+    local purifyPotionAvailable = false
+    if self.mPlayerPtr ~= nil then
+      local player = self.mPlayerPtr
+      if player.mHealth ~= nil then playerHealth = player.mHealth end
+      if player.mMaxHealth ~= nil then playerMaxHealth = player.mMaxHealth end
+      if player.HasHealthPotion ~= nil then
+        healthPotionAvailable = player:HasHealthPotion()
+      end
+      if player.HasPurifyPotion ~= nil then
+        purifyPotionAvailable = player:HasPurifyPotion()
+      end
+    end
+    print("AUTOMATION_PLAYER_FROZEN=" ..
+      (livePlayerFrozen and "1" or "0") .. "|" ..
+      playerHealth .. "|" .. playerMaxHealth .. "|" ..
+      (healthPotionAvailable and "1" or "0") .. "|" ..
+      (purifyPotionAvailable and "1" or "0") .. "|E")
+  end
+  if livePlayerFrozen and self.mGridOverlayPAM ~= nil then
+    local overlayState = "frozen|" .. freezeFrame
+    if gAutomationIncapOverlayState ~= overlayState then
+      gAutomationIncapOverlayState = overlayState
+      print("AUTOMATION_INCAP_OVERLAY=" .. overlayState .. "|E")
+    end
+  end
+
   local enemy = self.mEnemyPtr
   if enemy ~= nil and enemy.mName ~= nil then
     local currentEnemyName = enemy.mName

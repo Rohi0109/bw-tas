@@ -1,0 +1,193 @@
+<?xml version="1.0"?>
+
+<ResourceManifest>
+	<Resources id="Init">
+		<SetDefaults path="sounds" idprefix="SOUND_"/>
+
+		<SetDefaults path="fonts" idprefix="FONT_" />		
+		<Font id="SMALL"        		    path="Humanst521BT10.txt"/>
+        <Font id="MEDIUM" 		 			path="Humanst521BT11.txt"/>
+        <Font id="MEDIUM_BOLD"				path="Humanst521BT11Bold.txt"/>
+        <Font id="LARGE"         		   	path="Humanst521BT13Bold.txt"/>
+		<Font id="LARGE_OUTLINE"     	   	path="CooperBlack15.txt"/>
+        <Font id="TILE"            			path="CooperBlack24.txt"/>
+        <Font id="TILE_STATUS"        		path="GillSansMT14Bold.txt"/>
+        <Font id="LARGER"					path="GillSansMT15Bold.txt"/>
+		<Font id="OPTIMA_SMALL"				path="Optima13Bold.txt"/>
+		<Font id="OPTIMA_MEDIUM"			path="Optima16Bold.txt"/>
+		<Font id="SCORE"					path="Optima24Bold.txt"/>
+		
+		<SetDefaults path="images" idprefix="IMAGE_" />
+		<Image id="WAIT_BAR"				path="waitbar"/>
+		<Image id="DIALOG_BANNER_MENU"		path="dialogtitle_menu"/>
+		<Image id="DIALOG_BANNER_UNLOCK"	path="dialogtitle_coderequired"/>
+		<Image id="DIALOG_BANNER_OPTIONS"	path="options_title"/>
+		<Image id="DIALOG_BANNER_RUSURE"	path="title_areyousure"/>
+		<Image id="DIALOG_BANNER_HOWTOPLAY" path="title_howtoplay"/>
+		<Image id="DIALOG_BANNER_LOADING"	path="title_loading"/>
+		<Image id="DIALOG_BANNER_VICTORY"	path="title_victory"/>
+		<Image id="DIALOG_BANNER_GAMEOVER"	path="title_gameover"/>
+		<Image id="DIALOG_BANNER_CODE"		path="title_codeunlocked"/>
+		<Image id="DIALOG_DIVIDER_BOT"		path="dialogbox_divider_bot"/>
+		<Image id="DIALOG_DIVIDER_TOP"		path="dialogbox_divider_top"/>
+		<Image id="DIALOG"					path="dialogbox" />
+		<Image id="DIALOG_BUTTON"			path="dialogbutton" cols="4" />
+		<Image id="DIALOG_CHECKBOX"			path="checkbox" />
+		<Image id="DIALOG_USER_ENTRY"		path="dialog_userentry"/>
+		<Image id="YELLOW_STAR"				path="star_yellow"/>
+		<Image id="ORANGE_STAR"				path="star_orange"/>
+		<Image id="RED_STAR"				path="star_red"/>
+		<Image id="SLIDER_THUMB"			path="sliderthumb" />
+		<Image id="SLIDER_TRACK"			path="slidertrack" />
+		<Image id="SLIDER_TRACK_VERT"		path="slidertrack_vert"/>
+		<Image id="CURTAIN_ANIM"			path="cutscenes/curtain_anim" cols="11"/>
+		<Image id="CURTAIN_TOP"				path="cutscenes/curtain_top"/>
+	</Resources>
+	
+	<Resources id="TitleAndMM">	
+		<SetDefaults path="images\mainmenu\activex" idprefix="IMAGE_AX_"/>
+		<Image id="MM_BG"					path="MM_bg"/>
+		<Image id="MM_BSHADOWS1"			path="MM_buttonshadows1"/>
+		<Image id="MM_BSHADOWS2"			path="MM_buttonshadows2"/>
+		<Image id="MM_CASUAL"				path="MM_casual" cols="3"/>
+		<Image id="MM_CHALLENGE"			path="MM_challenge" cols="3"/>
+		<Image id="MM_DIFF_BANNER"			path="MM_difficultybanner"/>
+		<Image id="MM_EASY"					path="MM_easy" cols="3"/>
+		<Image id="MM_EXTREME"				path="MM_extreme" cols="3"/>
+		<Image id="MM_DELUXE"				path="MM_godeluxe" cols="3"/>
+		<Image id="MM_HOWTOPLAY"			path="MM_howtoplay" cols="3"/>
+		<Image id="MM_LEX"					path="MM_Lex"/>
+		<Image id="MM_LOCK"					path="MM_lock"/>
+		<Image id="MM_LOGO"					path="MM_logo"/>
+		<Image id="MM_GLOW"					path="MM_glow"/>
+		<Image id="MM_MASTER"				path="MM_master" cols="3"/>
+		<Image id="MM_PLAYNOW"				path="MM_playnow" cols="3"/>
+		<Image id="MM_WORDBUBBLE"			path="MM_wordbubble"/>
+		
+		<SetDefaults path="images\HowToPlay\" idprefix="IMAGE_HTP_"/>
+		<Image id="BG"						path="HTP_bg"/>
+		<Image id="CONTINUE"				path="HTP_continue" cols="3"/>
+		
+		<SetDefaults path="images\upsell\" idprefix="IMAGE_UP_"/>
+		<Image id="BG"						path="upsell_bg"/>
+		<Image id="DOWNLOAD"				path="upsell_download" cols="3"/>
+		<Image id="NOTHANKS"				path="upsell_nothanks" cols="3"/>
+		<Image id="0"						path="upsell_0"/>
+		<Image id="1"						path="upsell_1"/>
+		<Image id="2"						path="upsell_2"/>
+		<Image id="3"						path="upsell_3"/>
+		<Image id="4"						path="upsell_4"/>	
+	</Resources>
+	
+	<Resources id="CommonGame">
+		<SetDefaults path="images/arenas/Book1" idprefix="IMAGE_B1A_"/>
+		<Image id="BG1"						path="library-1"/>
+		<Image id="BG2"						path="library-2"/>
+		<Image id="BG3"						path="library-3"/>
+		<Image id="BG4"						path="library-4"/>
+				
+		<SetDefaults path="images" idprefix="IMAGE_"/>	
+		<Image id="GRAYBAR_BG"				path="graybar_bg" />
+		<Image id="HEARTS"					path="board/hearts" cols="5"/>
+		<Image id="HEART_MASK"				path="board/heartmask" cols="5"/>
+		<Image id="HEART_MASK_CC"			path="board/heartmask_cc" cols="5"/>
+		<Image id="HEARTBLINK"				path="board/heartblink_c" cols="16"/>
+		<Image id="HEARTBLINK_CC"			path="board/heartblink_cc" cols="16"/>
+		<Image id="HEARTS_BG"				path="board/hearts_bg"/>
+		<Image id="HEARTS_CC"				path="board/hearts_cc" cols="5"/>
+		<Image id="STATS_BOX"				path="board/statsbox"/>
+		<Image id="MAP_LEX_WARP"			path="sharedui_maplex_warp" cols="20"/>
+		<Image id="MAP_MINIGAME_ANIM"		path="minigames/tent_overlay" cols="20"/>
+		<Image id="MINIGAME_ICON"			path="minigames/bonustent"/>
+		<Image id="BANNER_LARGE"			path="sharedui_banner_lrg" />
+		<Image id="BANNER_SMALL"			path="sharedui_banner_sml" />
+		<Image id="LEX_ICON"				path="sharedui_maplex" cols="5"/>
+		<Image id="MAP_CHECK"				path="checkmark"/>
+		<Image id="RED_SPARKLE"				path="sparkle_large_red" cols="14"/>
+		<Image id="BLUE_SPARKLE"			path="sparkle_large_blue" cols="14"/>
+		<Image id="WP_SPARKLE_SMALL"		path="sparkle_small" cols="14"/>
+		<Image id="WP_SPARKLE_MEDIUM"		path="sparkle_medium" cols="14"/>
+		<Image id="TILE_PIPS"				path="tiles/pips" cols="3"/>
+		<Image id="TILE_BASIC"				path="tiles/tile_basic" cols="2"/>
+		<Image id="WORDPOWER_GLOW_LEFT"			path="tiles/wordpower_glow_left"/>
+		<Image id="WORDPOWER_GLOW_RIGHT"		path="tiles/wordpower_glow_right"/>
+		<Image id="WORDPOWER_GLOW_MIDDLE"		path="tiles/wordpower_glow_middle"/>
+		<Image id="WORDPOWER_GLOW_LEFT_SMALL"	path="tiles/wordpower_glow_left_small"/>
+		<Image id="WORDPOWER_GLOW_MIDDLE_SMALL"	path="tiles/wordpower_glow_middle_small"/>
+		<Image id="WORDPOWER_GLOW_RIGHT_SMALL"	path="tiles/wordpower_glow_right_small"/>
+		<Image id="WORDPOWER_GLOW_INNER_LEFT"	path="tiles/wordpower_glow_innerleft"/>
+		<Image id="WORDPOWER_GLOW_INNER_MID"	path="tiles/wordpower_glow_innermid"/>
+		<Image id="WORDPOWER_GLOW_INNER_RIGHT"	path="tiles/wordpower_glow_innerright"/>
+		<Image id="CP_SKIP"					path="cutscenes/skipbutton" cols="3"/>
+		
+		<SetDefaults path="images\portraits" idprefix="IMAGE_PORTRAIT_"/>
+		<Image id="CODEX"					path="portrait_codex"/>
+		<Image id="HAMLET"					path="portrait_hamlet"/>
+		<Image id="LEX"						path="portrait_lex"/>
+		<Image id="LIBRARIAN"				path="portrait_librarian"/>
+		<Image id="ODIN"					path="portrait_odin"/>
+		<Image id="RATKING"					path="portrait_ratking"/>
+		
+		<SetDefaults path="images/items"	idprefix="IMAGE_ITEM_"/>
+		<Image id="ATTACK"					path="item_attack" cols="3"/>
+		<Image id="ATTACK_NB"				path="item_attack_nobubble"/>
+		<Image id="HEALTH"					path="item_health" cols="3"/>
+		<Image id="HEALTH_NB"				path="item_health_nobubble"/>
+		<Image id="PURIFY"					path="item_purify" cols="3"/>
+		<Image id="PURIFY_NB"				path="item_purify_nobubble"/>
+		
+		<SetDefaults path="images\effects" idprefix="IMAGE_STATUSTEXT_"/>
+		<Image id="FROZEN"					path="statustext_frozen"/>
+		<Image id="POISONED"				path="statustext_poisoned"/>
+		<Image id="POWERDOWN"				path="statustext_powerdown"/>
+		<Image id="POWERUP"					path="statustext_powerup"/>
+		
+		<SetDefaults path="images\characters" idprefix="IMAGE_"/>
+		<Image id="HEART_BITS"				path="heartbits" cols="7"/>
+		<Image id="IMPACT_LARGE"			path="impact_lrg"/>
+		<Image id="IMPACT_SMALL"			path="impact_sml" cols="19"/>
+		<Image id="STATUS_ICONS"			path="status_icons" cols="21"/>
+		
+		<SetDefaults path="images\board" idprefix="IMAGE_" />
+		<Image id="LOW_HEALTH_OUTLINE"		path="grid_lowhealth"/>
+		<Image id="PAUSED_BANNER"			path="pausedbanner"/>
+		<Image id="BUTTON_ATTACK"			path="button_attack" cols="4" />
+		<Image id="BUTTON_MENU"				path="button_menu" cols="3" />
+		<Image id="BUTTON_SCRAMBLE"			path="button_scramble" cols="4" />
+		<Image id="BUTTON_SCRAMBLE_SHADOW"	path="button_scramble_shadow" />
+		<Image id="COMBAT_UI_TOP"			path="ui_top" />
+		<Image id="COMBAT_UI_BOTTOM"		path="ui_bottom" />
+		
+		<!-- SOUNDS -->
+		<SetDefaults path="sounds" idprefix="SOUND_" />
+		<Sound id="TILE_SELECT"					path="tile_select" />
+		<Sound id="CLICK1"						path="click1"/>		
+		<Sound id="CLICK2"						path="click2"/>
+		<Sound id="GEMSPAWN"					path="gemspawn"/>
+		<Sound id="CROWD_CHEER"					path="crowdcheer" volume="10"/>
+		<Sound id="LEX_ATTACK1"					path="BluntImpact_Dry"/>
+		<Sound id="LEX_WOW"						path="lex_wow"/>
+		<Sound id="LEX_ASTONISHING"				path="lex_astonishing"/>
+		<Sound id="LEX_AWESOME"					path="lex_awesome"/>
+		<Sound id="LEX_EXCELLENT"				path="lex_excellent"/>
+		<Sound id="LEX_FANTASTIC"				path="lex_fantastic"/>
+		<Sound id="LEX_GOOD"					path="lex_good"/>
+		<Sound id="LEX_VERYGOOD"				path="lex_verygood"/>
+		<Sound id="LEX_NICE"					path="lex_nice"/>
+		<Sound id="LEX_INCREDIBLE"				path="lex_incredible"/>
+		<Sound id="SCRAMBLE"					path="v_scramble"/>
+		
+		<Sound id="EFFECT_POISON"				path="poison1"/>
+		<Sound id="EFFECT_FROZEN"				path="ice1"/>
+		<Sound id="POTION_HEAL"					path="heal2"/>
+		<Sound id="LOW_HEALTH"					path="low_health"/>
+		<Sound id="WORD_POWER"					path="word_power"/>
+		<Sound id="POISON"						path="poison_attack_01"/>
+		<Sound id="IMPACT_LARGE"				path="largeimpact_01"/>
+		<Sound id="IMPACT_SMALL"				path="smallimpact_01"/>
+		<Sound id="HEAL"						path="healpotionused_02"/>
+		<Sound id="FREEZE"						path="BoardFrozen_01"/>
+		<Sound id="TILELOCK"					path="lockit"/>
+
+	</Resources>
+</ResourceManifest>

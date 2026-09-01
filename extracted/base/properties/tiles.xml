@@ -1,0 +1,24 @@
+<?xml version="1.0"?>
+
+<ResourceManifest>
+
+	<Resources id="Init_DefaultTiles">	
+	<SetDefaults path="images/tiles" idprefix="IMAGE_TILE_"/>
+	
+		<Image id="AMETHYST"			path="tile_amethyst"/>
+		<Image id="AMETHYST_MO"			path="glint_amethyst" rows="15"/>
+		<Image id="AMETHYST_GLOW"		path="glow_amethyst"/>
+		
+		<Image id="EMERALD"				path="tile_emerald"/>
+		<Image id="EMERALD_MO"			path="glint_emerald" rows="15"/>
+		<Image id="EMERALD_GLOW"		path="glow_emerald"/>
+			
+		<Image id="LOCKED"				path="overlay_locked"/>
+		
+		<Image id="SAPPHIRE"			path="tile_saphire"/>
+		<Image id="SAPPHIRE_MO"			path="glint_saphire" rows="15"/>
+		<Image id="SAPPHIRE_GLOW"		path="glow_saphire"/>
+		
+	</Resources>
+</ResourceManifest>
+		

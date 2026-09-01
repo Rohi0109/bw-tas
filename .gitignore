@@ -1,14 +1,8 @@
-__pycache__/
-*.py[cod]
-*.log
-*.exe
-
-# Local game installations, extracted assets, Wine prefixes, and generated PAKs.
+# Generated working copies and local runtime installations are very large.
+# Keep them out of Git discovery (tracked files remain tracked).
+/bookwork_copy/
 /runtime/
-/extracted/
-/BookwormAdventuresModding/
 
-# Local captures and archived browser-emulator binaries.
-/image.png
-/web/boxedwine/*.wasm
-/web/boxedwine/*.zip
+*.zip
+*.wasm
+web/boxedwine/

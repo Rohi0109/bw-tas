@@ -1,0 +1,54 @@
+<Properties>
+	<!-- <String id="PartnerBetaText">some nonsense</String>	-->
+	
+	<!-- Use 60Normal for default, 60Trailer for 60 mins with animated trailer,
+		use Hydra for cutting off after defeating the hydra, use HydraTrailer for the same but
+		to show a trailer. Set to nothing to indicate no marketing mode, i.e. unlocked. -->
+	<String id="MarketingMode"></String>
+	
+	<!-- Not used anymore. Set MarketingMode to an empty value to indicate no marketing mode, i.e. unlocked. -->
+	<!-- <Boolean id="NoReg">false</Boolean> -->
+	
+	<!-- true means fullscreen by default at start, false means windowed by default at start -->
+	<Boolean id="DefaultWindowed">false</Boolean>
+
+	<!-- true means prevent the game from checking for updates -->
+	<Boolean id="DontUpdate">false</Boolean>
+	
+	<!-- You can have any number of partner logos. Enter the number of partner logos below -->
+	<Integer id="NumPartnerLogos">0</Integer>
+	
+	<!-- For each partner logo, specify an image and where on the title screen it should draw.
+		Don't specify the file extension. Obviously, change the 1 to whatever particular partner logo
+		number you are referencing. -->
+	
+	<String id="PartnerLogo1">images/logo1</String>
+	<Integer id="PartnerLogo1X">50</Integer>
+	<Integer id="PartnerLogo1Y">100</Integer>
+
+	<String id="PartnerLogo2">images/logo2</String>
+	<Integer id="PartnerLogo2X">50</Integer>
+	<Integer id="PartnerLogo2Y">100</Integer>
+		
+	<!-- number of frames (100 frames is 1 second) to delay once the PopCap/partner logo fades in before fading OUT -->
+	<Integer id="PopCapLogoTimer">100</Integer>
+	<Integer id="PartnerLogoTimer">100</Integer>
+	
+	<!-- how fast to fade in/out the PopCap logo and partner logos -->
+	<Integer id="PopCapLogoFadeSpeed">2</Integer>
+	<Integer id="PartnerLogoFadeSpeed">2</Integer>
+	
+	<!-- You can set the partner background color here. Values are 0 to 255 -->
+	<Integer id="PartnerBGRed">255</Integer>
+	<Integer id="PartnerBGGreen">0</Integer>
+	<Integer id="PartnerBGBlue">0</Integer>
+	
+	<String id="Offering">0</String>
+	<Integer id="Width">640</Integer>
+	<Integer id="Height">480</Integer>
+	<String id="ProdName">WinBAD</String>
+	<String id="DisplayName">Bookworm Adventures. Not Zuma</String>
+	<String id="RegistryKey">PopCap\WinBAD</String>
+	
+	
+</Properties>

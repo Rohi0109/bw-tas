@@ -307,11 +307,13 @@ class X11Keyboard:
         self.click(int(width * x), int(height * y), delay)
 
     def dismiss_incapacitation_overlay(self, delay: float) -> None:
-        """Click the native Stunned/Petrified card's continuation area."""
+        """Click the native Frozen/Stunned/Petrified continuation card."""
         if self.layout != "deluxe":
             raise RuntimeError("Incapacitation overlay is calibrated only for Deluxe")
         width, height = self._size(self.window)
         self.focus()
+        # The modal card explicitly owns this click. Rack tiles are behind it
+        # and cannot dismiss Frozen's "Click here to continue" state.
         self.click(width // 2, int(height * 0.80), delay)
 
     def open_battle_menu(self, delay: float) -> None:
@@ -355,6 +357,15 @@ class X11Keyboard:
         width, height = self._size(self.window)
         self.focus()
         self.click(int(width * 0.500), int(height * 0.963), delay)
+
+    def resume_lua_runtime(self, delay: float) -> None:
+        """Resume the embedded Lua debugger after its explicit Wait pause."""
+        if self.layout != "deluxe":
+            raise RuntimeError("Lua wait recovery is only supported for Deluxe")
+        self.focus()
+        self.key("F5")
+        self.x11.XFlush(self.display)
+        time.sleep(delay)
 
     def confirm_skip_minigame(self, delay: float) -> None:
         """Choose Yes when chapter entry offers to skip a mini-game."""

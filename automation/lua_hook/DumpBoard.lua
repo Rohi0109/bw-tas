@@ -1,6 +1,19 @@
 TileEngine = {}
 
 function TileEngine:AutomationDumpBoard()
+  -- Count Lua RNG draws after the first complete board hook. The executable's
+  -- MSVCRT stream is deterministic (seed 1), but the initial native setup has
+  -- already consumed an unknown prefix. A relative cursor lets recorded
+  -- transitions align that stream without changing random results.
+  if gAutomationOriginalRandom == nil and math ~= nil and math.random ~= nil then
+    gAutomationOriginalRandom = math.random
+    gAutomationRandomCalls = 0
+    math.random = function(...)
+      local result = gAutomationOriginalRandom(...)
+      gAutomationRandomCalls = gAutomationRandomCalls + 1
+      return result
+    end
+  end
   local snapshot = ""
   local gems = ""
   local powers = ""
@@ -119,10 +132,12 @@ function TileEngine:AutomationDumpBoard()
     postPlayEnemyAdvanced and snapshot ~= fixedPlayBoard and
     complete and anySelectable and settled
   local livePlayerStunned = false
+  local livePlayerFrozen = false
   local livePlayerPetrified = false
   local livePlayerHealth = -1
   local livePlayerMaxHealth = -1
   local liveHealthPotionAvailable = false
+  local livePurifyPotionAvailable = false
   if gBattleEngine ~= nil and gBattleEngine.mPlayerPtr ~= nil then
     local livePlayer = gBattleEngine.mPlayerPtr
     if livePlayer.mHealth ~= nil then livePlayerHealth = livePlayer.mHealth end
@@ -130,10 +145,42 @@ function TileEngine:AutomationDumpBoard()
     if livePlayer.HasHealthPotion ~= nil then
       liveHealthPotionAvailable = livePlayer:HasHealthPotion()
     end
+    if livePlayer.HasPurifyPotion ~= nil then
+      livePurifyPotionAvailable = livePlayer:HasPurifyPotion()
+    end
     if livePlayer.mPAM ~= nil and livePlayer.mPAM.mPlayingFrame ~= nil then
       local frame = livePlayer.mPAM.mPlayingFrame
       livePlayerStunned = frame == "stunned" or frame == "stunnedflinch"
       livePlayerPetrified = frame == "petrify1" or frame == "petrify2"
+    end
+  end
+  -- Freeze does not use the player PAM frames used by stun and petrify.
+  -- Ask BattleEngine's native overlay predicates so all incapacitations are
+  -- reported from the same state MouseUp uses to accept the card click.
+  if gBattleEngine ~= nil then
+    if gBattleEngine.GridOverlayIsStun ~= nil then
+      local nativeStun = gBattleEngine.GridOverlayIsStun(gBattleEngine)
+      livePlayerStunned = livePlayerStunned or nativeStun == 1
+    end
+    if gBattleEngine.GridOverlayIsFreeze ~= nil then
+      local nativeFreeze = gBattleEngine.GridOverlayIsFreeze(gBattleEngine)
+      livePlayerFrozen = nativeFreeze == 1
+    end
+    if gBattleEngine.GridOverlayIsPetrify ~= nil then
+      local nativePetrify = gBattleEngine.GridOverlayIsPetrify(gBattleEngine)
+      livePlayerPetrified = livePlayerPetrified or nativePetrify == 1
+    end
+    -- GridOverlayIsFreeze can drop to zero while the modal animator remains
+    -- on frozenloop. BattleEngine telemetry uses the animator frame because
+    -- that is the actual click owner; keep TileEngine on the same definition
+    -- so the shared edge global cannot oscillate on every update.
+    if gBattleEngine.mGridOverlayPAM ~= nil and
+        gBattleEngine.mGridOverlayPAM.mPlayingFrame ~= nil then
+      local overlayFrame = tostring(
+        gBattleEngine.mGridOverlayPAM.mPlayingFrame
+      )
+      livePlayerFrozen = livePlayerFrozen or overlayFrame == "frozen" or
+        overlayFrame == "frozenloop" or overlayFrame == "breakfrozen"
     end
   end
   if gAutomationLivePlayerStunned == nil then
@@ -144,7 +191,8 @@ function TileEngine:AutomationDumpBoard()
     print("AUTOMATION_PLAYER_STUNNED=" ..
       (livePlayerStunned and "1" or "0") .. "|" ..
       livePlayerHealth .. "|" .. livePlayerMaxHealth .. "|" ..
-      (liveHealthPotionAvailable and "1" or "0") .. "|E")
+      (liveHealthPotionAvailable and "1" or "0") .. "|" ..
+      (livePurifyPotionAvailable and "1" or "0") .. "|E")
   end
   if gAutomationLivePlayerPetrified == nil then
     gAutomationLivePlayerPetrified = false
@@ -154,7 +202,19 @@ function TileEngine:AutomationDumpBoard()
     print("AUTOMATION_PLAYER_PETRIFIED=" ..
       (livePlayerPetrified and "1" or "0") .. "|" ..
       livePlayerHealth .. "|" .. livePlayerMaxHealth .. "|" ..
-      (liveHealthPotionAvailable and "1" or "0") .. "|E")
+      (liveHealthPotionAvailable and "1" or "0") .. "|" ..
+      (livePurifyPotionAvailable and "1" or "0") .. "|E")
+  end
+  if gAutomationLivePlayerFrozen == nil then
+    gAutomationLivePlayerFrozen = false
+  end
+  if livePlayerFrozen ~= gAutomationLivePlayerFrozen then
+    gAutomationLivePlayerFrozen = livePlayerFrozen
+    print("AUTOMATION_PLAYER_FROZEN=" ..
+      (livePlayerFrozen and "1" or "0") .. "|" ..
+      livePlayerHealth .. "|" .. livePlayerMaxHealth .. "|" ..
+      (liveHealthPotionAvailable and "1" or "0") .. "|" ..
+      (livePurifyPotionAvailable and "1" or "0") .. "|E")
   end
   local incapOverlayKind = "none"
   local incapOverlayFrame = "none"
@@ -165,23 +225,42 @@ function TileEngine:AutomationDumpBoard()
     end
     if livePlayerStunned then
       incapOverlayKind = "stunned"
+    elseif livePlayerFrozen then
+      incapOverlayKind = "frozen"
     elseif livePlayerPetrified then
       incapOverlayKind = "petrified"
     end
   end
-  local incapOverlayState = incapOverlayKind .. "|" .. incapOverlayFrame
+  local incapOverlayState = incapOverlayKind .. "|" .. incapOverlayFrame ..
+    "|" .. livePlayerHealth .. "|" .. livePlayerMaxHealth .. "|" ..
+    (liveHealthPotionAvailable and "1" or "0") .. "|" ..
+    (livePurifyPotionAvailable and "1" or "0")
   if gAutomationIncapOverlayState ~= incapOverlayState then
     gAutomationIncapOverlayState = incapOverlayState
     if incapOverlayKind ~= "none" then
       print("AUTOMATION_INCAP_OVERLAY=" .. incapOverlayState .. "|E")
     end
   end
+  -- READY must describe the complete actionable state, not just its letters.
+  -- Enemies can grey/smash tiles or change potion/health state while leaving
+  -- the rack text untouched. Treat those mutations as a new stability epoch.
+  local stabilitySnapshot = snapshot
+  for y = 0, gTilesHigh - 1 do
+    stabilitySnapshot = stabilitySnapshot .. "|" .. selectableRows[y] ..
+      "|" .. zeroDamageRows[y] .. "|" .. powerRows[y]
+  end
+  stabilitySnapshot = stabilitySnapshot .. "|" .. livePlayerHealth ..
+    "|" .. livePlayerMaxHealth .. "|" ..
+    (liveHealthPotionAvailable and "1" or "0") .. "|" ..
+    (livePlayerStunned and "1" or "0") .. "|" ..
+    (livePlayerFrozen and "1" or "0") .. "|" ..
+    (livePlayerPetrified and "1" or "0")
   if complete and settled and not interrupted and
-      gAutomationStableSnapshot == snapshot then
+      gAutomationStableSnapshot == stabilitySnapshot then
     if gAutomationStableTicks == nil then gAutomationStableTicks = 0 end
     gAutomationStableTicks = gAutomationStableTicks + 1
   else
-    gAutomationStableSnapshot = snapshot
+    gAutomationStableSnapshot = stabilitySnapshot
     gAutomationStableTicks = 0
   end
   -- Require a short run of identical, motionless frames. Some enemy/level-up
@@ -200,6 +279,7 @@ function TileEngine:AutomationDumpBoard()
     local playerHealth = -1
     local playerMaxHealth = -1
     local playerStunned = false
+    local playerFrozen = false
     local playerPetrified = false
     local healthPotionAvailable = false
     local attackPotionAvailable = false
@@ -226,6 +306,7 @@ function TileEngine:AutomationDumpBoard()
           playerStunned = frame == "stunned" or frame == "stunnedflinch"
           playerPetrified = frame == "petrify1" or frame == "petrify2"
         end
+        playerFrozen = livePlayerFrozen
         if player.HasHealthPotion ~= nil then
           healthPotionAvailable = player:HasHealthPotion()
         end
@@ -324,7 +405,10 @@ function TileEngine:AutomationDumpBoard()
       (healthPotionAvailable and "1" or "0") .. "|" ..
       (playerHasDamageOverTime and "1" or "0") .. "|" ..
       (playerPetrified and "1" or "0") .. "|" ..
-      (attackPotionAvailable and "1" or "0") .. "|E")
+      (attackPotionAvailable and "1" or "0") .. "|" ..
+      (playerFrozen and "1" or "0") .. "|E")
+    print("AUTOMATION_RNG=" .. gAutomationSequence .. "|" ..
+      (gAutomationRandomCalls or -1) .. "|E")
     print("AUTOMATION_READY_SEQ=" .. gAutomationSequence .. "|E")
     print("AUTOMATION_READY=" .. snapshot)
     if postPlayHandoff then gAutomationSawPlayTutorial = false end

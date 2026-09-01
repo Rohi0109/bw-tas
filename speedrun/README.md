@@ -125,6 +125,29 @@ saves and chapters still select the correct policy. Override it with
 alternatives. Completed attacks append timing samples to
 `runtime/deluxe-modded/tas-timing.jsonl`.
 
+### Book 1 optimization workflow
+
+Use `just book1-report` to compare stored TAS segments with the supplied human
+WR chapter endpoints. The report separates schema-v2 combat samples from the
+remaining chapter time and rejects unmistakably contaminated segments, such as
+the old paused Chapter 1.10 sample.
+
+New timing rows are self-contained transition records: run/book/chapter/stage,
+complete state before and after the attack, chosen word and tile path, Pareto
+candidate frontier, input attempts, and READY-to-READY wall time. They no
+longer require joining ambiguous legacy sequence numbers.
+
+`just tas-book1-lookahead` enables the experimental transition-corpus policy
+for Book 1 Chapters 1–5. A recorded action is admitted only when its rack and
+combat invariants validate, and at least two known actions must exist for the
+exact state before it can override `chapter-aware`. Otherwise it logs the
+coverage miss and safely uses shortest-lethal. This prevents sparse replay
+data from being mistaken for an exact native letter-generation simulator.
+
+The next collection step is to produce clean alternate branches from identical
+fresh seed-1 states. Native rack generation remains the boundary that must be
+reproduced and checked before widening lookahead beyond recorded transitions.
+
 If a board has no playable dictionary word, the runner clicks Scramble and
 waits for a new sequence-tagged Lua snapshot before solving again. Scrambles
 have their own safety limit (`--max-scrambles`, default 10), separate from the
