@@ -1,6 +1,9 @@
 {
-  "version": 1,
-  "source": "(WR)-Bookworm-Adventures-in-37-43-clip-0m16s-0m28s.webm",
+  "version": 2,
+  "source": "YTDown.com_YouTube_WR-Bookworm-Adventures-in-37-43_Media_CQ1QmEx1abM_001_1080p.mp4",
+  "source_url": "https://www.youtube.com/watch?v=CQ1QmEx1abM",
+  "source_duration": "40:40.464",
+  "analysis_note": "The source video is a local benchmark and is intentionally not committed to Git.",
   "segment": "Book 1 Chapter 1, Trojan Warrior transition into War Hound",
   "observations": {
     "war_hound_ready_clock": 19.92,
@@ -20,5 +23,14 @@
     "new_clean_ready_clear_selection": false,
     "estimated_saved_seconds_for_eight_letter_input": 1.46,
     "estimated_savings_formula": "1.14 + 0.04 * word_length"
+  },
+  "full_run_observations": {
+    "chapter_split_endpoint": "The LiveSplit chapter split advances at the boss kill/result transition, before the later Adventure-menu screen.",
+    "chapter_1_boss_active_clock": 47.34,
+    "chapter_1_adventure_menu_clock": 51.37,
+    "chapter_2_split_clock": 121.38,
+    "chapter_2_boss_death_animation_clock": 125.37,
+    "sampling_precision_seconds": 2.0,
+    "comparison_rule": "Compare chapter splits at the native boss/result event; track menu exit and re-entry separately as transition overhead."
   }
 }

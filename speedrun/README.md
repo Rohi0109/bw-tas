@@ -159,6 +159,12 @@ Retries still clear the rack and automatically increase their click delay.
 The measured frame landmarks and old/new controller parameters are recorded in
 `speedrun/wr_clip_analysis.json`.
 
+The full WR recording refines the comparison boundary: its chapter splits fire
+at the boss kill/result transition, before the later Adventure-menu screen.
+Book 1 reports therefore compare the native chapter split directly and treat
+menu exit/re-entry as separate transition overhead. The 931 MiB source video is
+a local analysis input and should not be committed.
+
 If a board has no playable dictionary word, the runner clicks Scramble and
 waits for a new sequence-tagged Lua snapshot before solving again. Scrambles
 have their own safety limit (`--max-scrambles`, default 10), separate from the
