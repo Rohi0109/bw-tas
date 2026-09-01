@@ -71,6 +71,10 @@ book1-report:
 tas-book1-lookahead *args:
     ./run-deluxe-speedrun-auto.sh --strategy book1-lookahead {{args}}
 
+# Replay a fresh seed-1 run with exact state-fingerprint decision overrides.
+tas-book1-experiment decisions *args:
+    ./run-deluxe-speedrun-auto.sh --book1-overrides "{{decisions}}" {{args}}
+
 # Stop the timer and print its final split report.
 timer-finish:
     PYTHONPATH=speedrun python3 speedrun/run_timer.py finish

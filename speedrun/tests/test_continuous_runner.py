@@ -682,6 +682,41 @@ class ContinuousRunnerTests(unittest.TestCase):
 
         self.assertEqual(clicks, [(400, 480)])
 
+    def test_clean_ready_word_skips_defensive_clear(self):
+        controller = X11Keyboard.__new__(X11Keyboard)
+        controller.layout = "deluxe"
+        controller.window = 1
+        controller._size = lambda _window: (800, 600)
+        controller.focus = lambda: None
+        clears = []
+        clicks = []
+        controller.clear_selection = lambda delay: clears.append(delay)
+        controller.click = lambda x, y, delay: clicks.append((x, y))
+
+        controller.play_word(
+            "TEST/AAAA/AAAA/AAAA", "TEST", 0, 0, (0, 1, 2, 3),
+            clear_first=False,
+        )
+
+        self.assertEqual(clears, [])
+        self.assertEqual(len(clicks), 5)  # four tiles plus Attack
+
+    def test_retry_word_retains_defensive_clear(self):
+        controller = X11Keyboard.__new__(X11Keyboard)
+        controller.layout = "deluxe"
+        controller.window = 1
+        controller._size = lambda _window: (800, 600)
+        controller.focus = lambda: None
+        clears = []
+        controller.clear_selection = lambda delay: clears.append(delay)
+        controller.click = lambda x, y, delay: None
+
+        controller.play_word(
+            "TEST/AAAA/AAAA/AAAA", "TEST", 0, 0, (0, 1, 2, 3)
+        )
+
+        self.assertEqual(clears, [0])
+
     def test_sphinx_uses_fixed_answer(self):
         normal = Candidate("PROPELLED", (0,), 9, 0, None, True, 1.2, 0)
         answer = Candidate("SKY", (1, 2, 3), 1, -8, None, False, 0.6, 0)

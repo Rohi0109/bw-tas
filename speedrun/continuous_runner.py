@@ -17,7 +17,7 @@ from deluxe_optimizer import (
     load_metal_words, parse_state, strategy_for_state, validate_chapter1_state,
 )
 from book1_optimizer import (
-    TELEMETRY_SCHEMA_VERSION, TransitionCorpus, candidate_payload,
+    TELEMETRY_SCHEMA_VERSION, DecisionOverrides, TransitionCorpus, candidate_payload,
     choose_recorded_lookahead, pareto_candidates, state_fingerprint,
     state_payload,
 )
@@ -531,14 +531,21 @@ def main() -> None:
         help="validated schema-v2 transitions used by book1-lookahead",
     )
     parser.add_argument(
+        "--book1-overrides", type=Path,
+        help="exact-state JSON decisions for deterministic branch experiments",
+    )
+    parser.add_argument(
         "--timer-state", type=Path, default=DEFAULT_TIMER_STATE,
         help="persistent chapter timer JSON created by new-run",
     )
     parser.add_argument(
-        "--delay", type=float, default=0.10,
+        "--delay", type=float, default=0.06,
         help="delay between tile clicks; retries increase this automatically",
     )
-    parser.add_argument("--settle", type=float, default=0.8)
+    parser.add_argument(
+        "--settle", type=float, default=0.0,
+        help="delay before Attack; Deluxe queues submission during tile animation",
+    )
     parser.add_argument("--poll", type=float, default=0.1)
     parser.add_argument(
         "--input-confirm-timeout", type=float, default=1.5,
@@ -615,6 +622,7 @@ def main() -> None:
         return
 
     controller = X11Keyboard(args.title, args.layout)
+    decision_overrides = DecisionOverrides.load(args.book1_overrides)
     submitted_board = None
     submitted_sequence = None
     submitted_at = None
@@ -920,7 +928,15 @@ def main() -> None:
                         deluxe_state, effective_strategy, ranked
                     )
                     selected, alternatives = choose(ranked, effective_strategy)
-                    if (
+                    experimental = decision_overrides.choose(deluxe_state, ranked)
+                    if experimental is not None:
+                        selected = experimental
+                        effective_strategy = "book1-experiment"
+                        print(
+                            "  experiment: applying exact-state decision "
+                            f"{selected.word}/{selected.path}.", flush=True,
+                        )
+                    elif (
                         requested_strategy == "book1-lookahead"
                         and deluxe_state.book == 1
                         and 1 <= deluxe_state.chapter <= 5
@@ -1047,7 +1063,10 @@ def main() -> None:
                         flush=True,
                     )
                     controller.use_purification_potion(max(0.8, args.delay))
-                controller.play_word(board, word, args.delay, args.settle, path)
+                controller.play_word(
+                    board, word, args.delay, args.settle, path,
+                    clear_first=False,
+                )
                 submitted_board = board
                 submitted_word = word
                 submitted_path = path
@@ -1062,6 +1081,43 @@ def main() -> None:
                     submitted_strategy = effective_strategy
                     submitted_frontier = list(ranked)
                 ready = False
+                deadline = time.monotonic() + args.timeout
+
+            # Incapacitation telemetry can arrive continuously while a modal
+            # animation loops. Run this retry clock before reading the next
+            # line so log traffic cannot starve Purify recovery.
+            if (
+                player_incapacitated
+                and time.monotonic() >= incap_overlay_retry_at
+            ):
+                if incap_purify_pending:
+                    if incap_purify_attempts < 3:
+                        incap_purify_attempts += 1
+                        print(
+                            "Purify is still unconfirmed; retrying the "
+                            f"blue potion ({incap_purify_attempts}/3).",
+                            flush=True,
+                        )
+                        controller.use_purification_potion(
+                            max(0.8, args.delay)
+                        )
+                    else:
+                        print(
+                            "Purify remained unconfirmed after 3 attempts; "
+                            "falling back to lost-turn recovery.",
+                            flush=True,
+                        )
+                        incap_purify_pending = False
+                        incap_purify_failed = True
+                        controller.dismiss_incapacitation_overlay(args.delay)
+                else:
+                    print(
+                        "Native incapacitation overlay is still active; "
+                        "retrying its continuation click.",
+                        flush=True,
+                    )
+                    controller.dismiss_incapacitation_overlay(args.delay)
+                incap_overlay_retry_at = time.monotonic() + 1.0
                 deadline = time.monotonic() + args.timeout
 
             line = log.readline()
@@ -1087,39 +1143,6 @@ def main() -> None:
                     dialog_probe_at = (
                         time.monotonic() + args.dialog_probe_interval
                     )
-                    deadline = time.monotonic() + args.timeout
-                if (
-                    player_incapacitated
-                    and time.monotonic() >= incap_overlay_retry_at
-                ):
-                    if incap_purify_pending:
-                        if incap_purify_attempts < 3:
-                            incap_purify_attempts += 1
-                            print(
-                                "Purify is still unconfirmed; retrying the "
-                                f"blue potion ({incap_purify_attempts}/3).",
-                                flush=True,
-                            )
-                            controller.use_purification_potion(
-                                max(0.8, args.delay)
-                            )
-                        else:
-                            print(
-                                "Purify remained unconfirmed after 3 attempts; "
-                                "falling back to lost-turn recovery.",
-                                flush=True,
-                            )
-                            incap_purify_pending = False
-                            incap_purify_failed = True
-                            controller.dismiss_incapacitation_overlay(args.delay)
-                    else:
-                        print(
-                            "Native incapacitation overlay is still active; "
-                            "retrying its continuation click.",
-                            flush=True,
-                        )
-                        controller.dismiss_incapacitation_overlay(args.delay)
-                    incap_overlay_retry_at = time.monotonic() + 1.0
                     deadline = time.monotonic() + args.timeout
                 if (
                     pending_health_potion_state is not None

@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 
 from book1_optimizer import (
-    TELEMETRY_SCHEMA_VERSION, TransitionCorpus, action_key,
+    TELEMETRY_SCHEMA_VERSION, DecisionOverrides, TransitionCorpus, action_key,
     candidate_payload, choose_recorded_lookahead, pareto_candidates,
     state_fingerprint, state_payload, transition_errors,
 )
@@ -79,6 +79,18 @@ class Book1OptimizerTests(unittest.TestCase):
         fast = candidate(seconds=0.7)
         self.assertEqual(pareto_candidates((slow, fast)), [fast])
         self.assertEqual(action_key("test", (0, 1)), "TEST:0,1")
+
+    def test_exact_state_override_selects_only_legal_action(self):
+        current = state()
+        selected = candidate()
+        overrides = DecisionOverrides({
+            state_fingerprint(current): {
+                "word": selected.word, "path": list(selected.path),
+            }
+        })
+        self.assertIs(overrides.choose(current, [selected]), selected)
+        with self.assertRaisesRegex(RuntimeError, "is not legal"):
+            overrides.choose(current, [candidate("ROAD", (4, 5, 6, 7))])
 
 
 if __name__ == "__main__":

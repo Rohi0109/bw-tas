@@ -60,6 +60,39 @@ def action_key(word: str, path: Iterable[int]) -> str:
     return f"{word.upper()}:{','.join(str(index) for index in path)}"
 
 
+class DecisionOverrides:
+    """Exact-state actions for reproducible seed-1 branch experiments."""
+
+    def __init__(self, values: dict[str, dict] | None = None):
+        self.values = values or {}
+
+    @classmethod
+    def load(cls, path: Path | None) -> "DecisionOverrides":
+        if path is None or not path.exists():
+            return cls()
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        values = raw.get("decisions", raw)
+        if not isinstance(values, dict):
+            raise ValueError("Book 1 decision overrides must be a JSON object")
+        return cls(values)
+
+    def choose(
+        self, state: DeluxeState, candidates: Iterable[Candidate],
+    ) -> Candidate | None:
+        wanted = self.values.get(state_fingerprint(state))
+        if wanted is None:
+            return None
+        word = str(wanted["word"]).upper()
+        path = tuple(int(index) for index in wanted["path"])
+        for candidate in candidates:
+            if candidate.word == word and candidate.path == path:
+                return candidate
+        raise RuntimeError(
+            f"Decision override {word}/{path} is not legal for state "
+            f"{state_fingerprint(state)}"
+        )
+
+
 def preserved_tiles(
     before: DeluxeState, after: DeluxeState, path: Iterable[int],
 ) -> tuple[int, ...]:

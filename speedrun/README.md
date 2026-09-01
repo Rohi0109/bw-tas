@@ -148,6 +148,15 @@ The next collection step is to produce clean alternate branches from identical
 fresh seed-1 states. Native rack generation remains the boundary that must be
 reproduced and checked before widening lookahead beyond recorded transitions.
 
+The supplied 0:16–0:28 human-WR clip establishes the initial input benchmark.
+During War Hound, the Attack control becomes active while the eight selected
+tiles are still animating into `YEASTIER`; the runner therefore does not need a
+pre-Attack settle delay. Clean READY submissions now skip the defensive
+right-click, use a 0.06-second tile cadence, and click Attack immediately.
+Retries still clear the rack and automatically increase their click delay.
+The measured frame landmarks and old/new controller parameters are recorded in
+`speedrun/wr_clip_analysis.json`.
+
 If a board has no playable dictionary word, the runner clicks Scramble and
 waits for a new sequence-tagged Lua snapshot before solving again. Scrambles
 have their own safety limit (`--max-scrambles`, default 10), separate from the

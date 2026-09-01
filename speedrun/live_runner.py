@@ -459,10 +459,14 @@ class X11Keyboard:
         delay: float,
         settle: float,
         path: tuple[int, ...] | None = None,
+        clear_first: bool = True,
     ) -> None:
         self.focus()
-        time.sleep(0.2)
-        self.clear_selection(delay)
+        # READY owns an empty selection, so the continuous runner can skip the
+        # historical focus pause and defensive right-click. Retries retain the
+        # clear-first path explicitly.
+        if clear_first:
+            self.clear_selection(delay)
         board = parse_board(board_text)
         positions: dict[str, list[tuple[int, int]]] = {}
         for row, values in enumerate(board.grid):

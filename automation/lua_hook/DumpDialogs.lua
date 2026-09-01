@@ -14,23 +14,23 @@ function BattleEngine:AutomationDumpDialogs()
   if gAutomationLivePlayerFrozen == nil then
     gAutomationLivePlayerFrozen = false
   end
+  local playerHealth = -1
+  local playerMaxHealth = -1
+  local healthPotionAvailable = false
+  local purifyPotionAvailable = false
+  if self.mPlayerPtr ~= nil then
+    local player = self.mPlayerPtr
+    if player.mHealth ~= nil then playerHealth = player.mHealth end
+    if player.mMaxHealth ~= nil then playerMaxHealth = player.mMaxHealth end
+    if player.HasHealthPotion ~= nil then
+      healthPotionAvailable = player:HasHealthPotion()
+    end
+    if player.HasPurifyPotion ~= nil then
+      purifyPotionAvailable = player:HasPurifyPotion()
+    end
+  end
   if livePlayerFrozen ~= gAutomationLivePlayerFrozen then
     gAutomationLivePlayerFrozen = livePlayerFrozen
-    local playerHealth = -1
-    local playerMaxHealth = -1
-    local healthPotionAvailable = false
-    local purifyPotionAvailable = false
-    if self.mPlayerPtr ~= nil then
-      local player = self.mPlayerPtr
-      if player.mHealth ~= nil then playerHealth = player.mHealth end
-      if player.mMaxHealth ~= nil then playerMaxHealth = player.mMaxHealth end
-      if player.HasHealthPotion ~= nil then
-        healthPotionAvailable = player:HasHealthPotion()
-      end
-      if player.HasPurifyPotion ~= nil then
-        purifyPotionAvailable = player:HasPurifyPotion()
-      end
-    end
     print("AUTOMATION_PLAYER_FROZEN=" ..
       (livePlayerFrozen and "1" or "0") .. "|" ..
       playerHealth .. "|" .. playerMaxHealth .. "|" ..
@@ -38,7 +38,10 @@ function BattleEngine:AutomationDumpDialogs()
       (purifyPotionAvailable and "1" or "0") .. "|E")
   end
   if livePlayerFrozen and self.mGridOverlayPAM ~= nil then
-    local overlayState = "frozen|" .. freezeFrame
+    local overlayState = "frozen|" .. freezeFrame .. "|" ..
+      playerHealth .. "|" .. playerMaxHealth .. "|" ..
+      (healthPotionAvailable and "1" or "0") .. "|" ..
+      (purifyPotionAvailable and "1" or "0")
     if gAutomationIncapOverlayState ~= overlayState then
       gAutomationIncapOverlayState = overlayState
       print("AUTOMATION_INCAP_OVERLAY=" .. overlayState .. "|E")
