@@ -143,6 +143,23 @@ def clear_stale_treasure_on_ready(
     return None, False
 
 
+def telemetry_context(
+    state: DeluxeState, timer_state: dict | None,
+) -> tuple[int, int]:
+    """Recover the chapter omitted by Deluxe and freeze it at submission.
+
+    Most native Deluxe snapshots report chapter ``-1``. The persistent timer
+    has already resolved the chapter from the enemy roster, and must be read
+    when input is submitted (not when the next enemy arrives).
+    """
+    if state.book >= 1 and state.chapter >= 1:
+        return state.book, state.chapter
+    current = timer_state.get("current") if timer_state is not None else None
+    if current is not None:
+        return int(current["book"]), int(current["chapter"])
+    return state.book, state.chapter
+
+
 def lua_runtime_is_waiting(text: str) -> bool:
     """Recognize the debugger pause emitted by the embedded Lua runtime."""
     marker_at = text.rfind(LUA_WAIT_MARKER)
@@ -631,6 +648,8 @@ def main() -> None:
     submitted_state: DeluxeState | None = None
     submitted_strategy: str | None = None
     submitted_frontier: list[Candidate] = []
+    submitted_book = None
+    submitted_chapter = None
     submitted_word: str | None = None
     submitted_path: tuple[int, ...] | None = None
     input_confirmed = True
@@ -1078,6 +1097,9 @@ def main() -> None:
                 input_confirm_at = time.monotonic() + args.input_confirm_timeout
                 if deluxe_state is not None:
                     submitted_sequence = deluxe_state.sequence
+                    submitted_book, submitted_chapter = telemetry_context(
+                        deluxe_state, timer_state,
+                    )
                     submitted_at = attack_started_at
                     submitted_attack_at = attack_clicked_at
                     submitted_candidate = selected
@@ -1891,8 +1913,8 @@ def main() -> None:
                                 timer_state.get("started_at_iso")
                                 if timer_state is not None else None
                             ),
-                            "book": submitted_state.book,
-                            "chapter": submitted_state.chapter,
+                            "book": submitted_book,
+                            "chapter": submitted_chapter,
                             "stage": submitted_state.stage,
                             "clean": input_attempts == 1,
                             "issues": (

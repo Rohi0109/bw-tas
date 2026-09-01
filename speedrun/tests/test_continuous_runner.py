@@ -21,6 +21,7 @@ from continuous_runner import (
     read_latest_dialog, read_screen_blocker,
     read_seed, sphinx_candidate,
     state_is_incapacitated,
+    telemetry_context,
     unresolved_play_tutorial,
     sphinx_allows_damage_fallback,
     is_book3_final_gauntlet, should_use_health_potion,
@@ -700,6 +701,21 @@ class ContinuousRunnerTests(unittest.TestCase):
 
         self.assertEqual(clears, [])
         self.assertEqual(len(clicks), 5)  # four tiles plus Attack
+
+    def test_telemetry_context_uses_timer_when_deluxe_omits_chapter(self):
+        state = DeluxeState(
+            sequence=1, board="TEST/AAAA/AAAA/AAAA", gems=("none",) * 16,
+            tile_powers=(0.0,) * 16, selectable=(True,) * 16,
+            zero_damage=(False,) * 16, offense=1.0, overkill_thresholds=(),
+            book=1, chapter=-1, stage=1, enemy="War Hound", hp=2,
+            max_hp=2, player_hp=3, player_max_hp=3,
+            treasures=(),
+        )
+
+        self.assertEqual(
+            telemetry_context(state, {"current": {"book": 1, "chapter": 1}}),
+            (1, 1),
+        )
 
     def test_retry_word_retains_defensive_clear(self):
         controller = X11Keyboard.__new__(X11Keyboard)
