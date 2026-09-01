@@ -626,6 +626,7 @@ def main() -> None:
     submitted_board = None
     submitted_sequence = None
     submitted_at = None
+    submitted_attack_at = None
     submitted_candidate: Candidate | None = None
     submitted_state: DeluxeState | None = None
     submitted_strategy: str | None = None
@@ -1063,10 +1064,12 @@ def main() -> None:
                         flush=True,
                     )
                     controller.use_purification_potion(max(0.8, args.delay))
+                attack_started_at = time.monotonic()
                 controller.play_word(
                     board, word, args.delay, args.settle, path,
                     clear_first=False,
                 )
+                attack_clicked_at = time.monotonic()
                 submitted_board = board
                 submitted_word = word
                 submitted_path = path
@@ -1075,7 +1078,8 @@ def main() -> None:
                 input_confirm_at = time.monotonic() + args.input_confirm_timeout
                 if deluxe_state is not None:
                     submitted_sequence = deluxe_state.sequence
-                    submitted_at = time.monotonic()
+                    submitted_at = attack_started_at
+                    submitted_attack_at = attack_clicked_at
                     submitted_candidate = selected
                     submitted_state = deluxe_state
                     submitted_strategy = effective_strategy
@@ -1908,6 +1912,14 @@ def main() -> None:
                             "after": state_payload(deluxe_state),
                             "timing": {
                                 "ready_seconds": time.monotonic() - submitted_at,
+                                "input_seconds": (
+                                    submitted_attack_at - submitted_at
+                                    if submitted_attack_at is not None else None
+                                ),
+                                "resolution_seconds": (
+                                    time.monotonic() - submitted_attack_at
+                                    if submitted_attack_at is not None else None
+                                ),
                                 "input_attempts": input_attempts,
                             },
                             # Flat v1-compatible fields remain during migration.
@@ -1936,6 +1948,7 @@ def main() -> None:
                         with args.telemetry.open("a", encoding="utf-8") as output:
                             output.write(json.dumps(sample, sort_keys=True) + "\n")
                         submitted_at = None
+                        submitted_attack_at = None
                         submitted_strategy = None
                         submitted_frontier = []
                     ready = True

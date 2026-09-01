@@ -77,7 +77,7 @@ def build_report(timer: dict, wr: dict, best: dict, samples: list[dict]) -> str:
         "Book 1 optimization report",
         f"Run: {run_id or 'legacy/unknown'}",
         "",
-        "Ch   TAS segment   Human WR   Delta    Combat   Other   Attacks  Status",
+        "Ch   TAS segment   Human WR   Delta    Input  Resolve   Other  Attacks  Status",
     ]
     cumulative_gap = 0.0
     for chapter in range(1, 11):
@@ -96,6 +96,11 @@ def build_report(timer: dict, wr: dict, best: dict, samples: list[dict]) -> str:
             float(sample["timing"]["ready_seconds"])
             for sample in chapter_samples
         )
+        input_time = sum(
+            float(sample["timing"].get("input_seconds") or 0.0)
+            for sample in chapter_samples
+        )
+        resolution = max(0.0, combat - input_time)
         other = max(0.0, elapsed - combat)
         delta = elapsed - wr_segment if wr_segment is not None else 0.0
         if wr_segment is not None:
@@ -104,8 +109,9 @@ def build_report(timer: dict, wr: dict, best: dict, samples: list[dict]) -> str:
         lines.append(
             f"{key:<4} {format_duration(elapsed):>11}   "
             f"{format_duration(wr_segment or 0):>8}   "
-            f"{format_delta(delta):>6}   {format_duration(combat):>6}   "
-            f"{format_duration(other):>5}   {len(chapter_samples):>7}  {status}"
+            f"{format_delta(delta):>6}   {format_duration(input_time):>5}  "
+            f"{format_duration(resolution):>7}   {format_duration(other):>5}  "
+            f"{len(chapter_samples):>7}  {status}"
         )
     lines.extend((
         "",

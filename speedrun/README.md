@@ -136,6 +136,8 @@ New timing rows are self-contained transition records: run/book/chapter/stage,
 complete state before and after the attack, chosen word and tile path, Pareto
 candidate frontier, input attempts, and READY-to-READY wall time. They no
 longer require joining ambiguous legacy sequence numbers.
+The timing payload separates first-input-to-Attack time from Attack-to-READY
+resolution time, so controller speed is not hidden inside transition overhead.
 
 `just tas-book1-lookahead` enables the experimental transition-corpus policy
 for Book 1 Chapters 1–5. A recorded action is admitted only when its rack and

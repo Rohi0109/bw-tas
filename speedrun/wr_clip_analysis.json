@@ -17,6 +17,8 @@
     "old_pre_attack_settle_seconds": 0.8,
     "new_tile_delay_seconds": 0.06,
     "new_pre_attack_settle_seconds": 0.0,
-    "new_clean_ready_clear_selection": false
+    "new_clean_ready_clear_selection": false,
+    "estimated_saved_seconds_for_eight_letter_input": 1.46,
+    "estimated_savings_formula": "1.14 + 0.04 * word_length"
   }
 }
