@@ -153,8 +153,10 @@ reproduced and checked before widening lookahead beyond recorded transitions.
 The supplied 0:16–0:28 human-WR clip establishes the initial input benchmark.
 During War Hound, the Attack control becomes active while the eight selected
 tiles are still animating into `YEASTIER`; the runner therefore does not need a
-pre-Attack settle delay. Clean READY submissions now skip the defensive
-right-click, use a 0.06-second tile cadence, and click Attack immediately.
+long pre-Attack settle delay. Clean READY submissions now skip the defensive
+right-click, use a frame-safe 0.08-second tile cadence, and wait only 0.15
+seconds before Attack. This guard was restored after the 0.06/0.00 experiment
+failed to produce native Attack acknowledgements on Trojan Warrior.
 Retries still clear the rack and automatically increase their click delay.
 The measured frame landmarks and old/new controller parameters are recorded in
 `speedrun/wr_clip_analysis.json`.

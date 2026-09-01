@@ -539,12 +539,12 @@ def main() -> None:
         help="persistent chapter timer JSON created by new-run",
     )
     parser.add_argument(
-        "--delay", type=float, default=0.06,
-        help="delay between tile clicks; retries increase this automatically",
+        "--delay", type=float, default=0.08,
+        help="frame-safe delay between tile clicks; retries increase this automatically",
     )
     parser.add_argument(
-        "--settle", type=float, default=0.0,
-        help="delay before Attack; Deluxe queues submission during tile animation",
+        "--settle", type=float, default=0.15,
+        help="short guard before Attack; Deluxe still submits during tile animation",
     )
     parser.add_argument("--poll", type=float, default=0.1)
     parser.add_argument(
