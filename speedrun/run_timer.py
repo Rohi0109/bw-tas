@@ -26,6 +26,7 @@ CONTEXT_RE = re.compile(
     r"AUTOMATION_CONTEXT=\d+\|(?P<book>-?\d+)\|(?P<chapter>-?\d+)\|"
 )
 ENEMY_RE = re.compile(r"AUTOMATION_ENEMY=\d+\|(?P<enemy>[^|]+)\|E")
+READY_SEQ_RE = re.compile(r"AUTOMATION_READY_SEQ=(?P<sequence>\d+)\|E")
 ROSTER_PATH = ROOT / "BookwormAdventuresModding/bwakit/game/data/enemy_rosters.txt"
 
 
@@ -170,6 +171,20 @@ def mark_current_issue(state: dict, issue: str) -> bool:
     return True
 
 
+def record_first_actionable(state: dict, timestamp: float) -> bool:
+    """Start Chapter 1 at the first rack READY, not profile/intro setup."""
+    if state.get("first_actionable_at") is not None:
+        return False
+    state["first_actionable_at"] = timestamp
+    current = state.get("current")
+    if (
+        current is not None and not state.get("splits")
+        and current.get("book") == 1 and current.get("chapter") == 1
+    ):
+        current["started_at"] = timestamp
+    return True
+
+
 def wr_segment_seconds(wr: dict, book: int, chapter: int) -> float | None:
     current = wr.get("chapters", {}).get(f"{book}.{chapter}")
     if current is None:
@@ -200,6 +215,9 @@ def process_line(state: dict, line: str, timestamp: float) -> bool:
         book = int(state.get("live_book", -1))
         chapter = ENEMY_CHAPTERS.get((book, normalize_enemy(match.group("enemy"))))
         return chapter is not None and record_chapter(state, book, chapter, timestamp)
+    if READY_SEQ_RE.search(line):
+        record_first_actionable(state, timestamp)
+        return False
     return False
 
 
@@ -361,6 +379,9 @@ def watch(log_path: Path, state_path: Path, poll: float = 0.1) -> None:
                         f"at {format_duration(timestamp - state['started_at'])}",
                         flush=True,
                     )
+                elif READY_SEQ_RE.search(line):
+                    save_state(state_path, state)
+                    save_run_history(state)
                 continue
         time.sleep(poll)
 

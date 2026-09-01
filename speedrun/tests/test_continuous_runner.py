@@ -19,6 +19,7 @@ from continuous_runner import (
     latest_unresolved_incapacitation_overlay,
     lua_runtime_is_waiting,
     read_latest_dialog, read_screen_blocker,
+    ready_sequence_is_fresh,
     read_seed, sphinx_candidate,
     state_is_incapacitated,
     telemetry_context,
@@ -716,6 +717,12 @@ class ContinuousRunnerTests(unittest.TestCase):
             telemetry_context(state, {"current": {"book": 1, "chapter": 1}}),
             (1, 1),
         )
+
+    def test_overlay_requires_strictly_newer_ready_sequence(self):
+        self.assertFalse(ready_sequence_is_fresh(42, 42))
+        self.assertFalse(ready_sequence_is_fresh(41, 42))
+        self.assertTrue(ready_sequence_is_fresh(43, 42))
+        self.assertTrue(ready_sequence_is_fresh(42, None))
 
     def test_retry_word_retains_defensive_clear(self):
         controller = X11Keyboard.__new__(X11Keyboard)

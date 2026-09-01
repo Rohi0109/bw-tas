@@ -137,6 +137,16 @@ the old paused Chapter 1.10 sample.
 attempt at each chapter transition, so starting a new profile no longer erases
 the previous run's clean/invalid splits.
 
+Chapter 1 timing is rebased from the early `Book:StartGame` hook to the first
+Lua-confirmed `AUTOMATION_READY_SEQ`, which is the first frame where rack input
+is actionable. Boss-death split behavior is unchanged.
+
+Dialogue and stunned/frozen/petrified overlays revoke rack ownership. If one
+appears during a pending submission, the runner discards that input and will
+not click another tile until Lua publishes a strictly newer READY sequence.
+This prevents continuation clicks or stale selected tiles from becoming the
+first letters of the next word.
+
 New timing rows are self-contained transition records: run/book/chapter/stage,
 complete state before and after the attack, chosen word and tile path, Pareto
 candidate frontier, input attempts, and READY-to-READY wall time. They no

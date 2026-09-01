@@ -3,7 +3,8 @@ import unittest
 from pathlib import Path
 
 from run_timer import (
-    mark_current_issue, process_line, record_chapter, report, run_history_report,
+    mark_current_issue, process_line, record_chapter, record_first_actionable,
+    report, run_history_report,
     save_run_history,
     start_timer,
     update_tas_best,
@@ -27,6 +28,15 @@ class RunTimerTests(unittest.TestCase):
         state = self.state()
         record_chapter(state, 1, 1, 110.0)
         self.assertFalse(record_chapter(state, 1, 1, 120.0))
+
+    def test_first_actionable_ready_rebases_only_initial_chapter(self):
+        state = self.state()
+        record_chapter(state, 1, 1, 101.0)
+
+        self.assertTrue(record_first_actionable(state, 110.0))
+        self.assertEqual(state["current"]["started_at"], 110.0)
+        self.assertFalse(record_first_actionable(state, 120.0))
+        self.assertEqual(state["current"]["started_at"], 110.0)
 
     def test_processes_startgame_and_ignores_missing_context_chapter(self):
         state = self.state()

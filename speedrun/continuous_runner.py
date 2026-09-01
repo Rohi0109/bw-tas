@@ -161,6 +161,11 @@ def telemetry_context(
     return state.book, state.chapter
 
 
+def ready_sequence_is_fresh(sequence: int, required_after: int | None) -> bool:
+    """Only a later native rack may reclaim input after an overlay."""
+    return required_after is None or sequence > required_after
+
+
 def lua_runtime_is_waiting(text: str) -> bool:
     """Recognize the debugger pause emitted by the embedded Lua runtime."""
     marker_at = text.rfind(LUA_WAIT_MARKER)
@@ -651,6 +656,7 @@ def main() -> None:
     submitted_frontier: list[Candidate] = []
     submitted_book = None
     submitted_chapter = None
+    required_ready_after_overlay = None
     submitted_word: str | None = None
     submitted_path: tuple[int, ...] | None = None
     input_confirmed = True
@@ -1330,6 +1336,26 @@ def main() -> None:
                     )
                 ready = False
                 input_confirm_at = float("inf")
+                if deluxe_state is not None:
+                    required_ready_after_overlay = max(
+                        required_ready_after_overlay or -1,
+                        deluxe_state.sequence,
+                    )
+                if not input_confirmed:
+                    print(
+                        "Dialogue interrupted pending tile input; discarding "
+                        "it until a newer READY sequence.", flush=True,
+                    )
+                    submitted_board = None
+                    submitted_word = None
+                    submitted_path = None
+                    submitted_sequence = None
+                    submitted_state = None
+                    submitted_candidate = None
+                    submitted_at = None
+                    submitted_attack_at = None
+                    input_confirmed = True
+                    input_attempts = 0
                 if (
                     not tutorial_play_submitted
                     and is_initial_play_tutorial(
@@ -1363,10 +1389,11 @@ def main() -> None:
                     menu_reentry_attempts = 0
                     menu_reentry_at = time.monotonic() + 2.0
                     deadline = time.monotonic() + args.timeout
-                if not input_confirmed:
-                    input_attempts = 1
-                    input_confirm_at = time.monotonic() + args.input_confirm_timeout
-                    print("Input retry rearmed after dialogue exit.", flush=True)
+                if required_ready_after_overlay is not None:
+                    print(
+                        "Dialogue exited; waiting for a newer native READY "
+                        "sequence before touching the rack.", flush=True,
+                    )
             dialog_pulse = DIALOG_PULSE_RE.search(line)
             if dialog_pulse and args.auto_dialog:
                 source = dialog_pulse.group("source")
@@ -1408,6 +1435,27 @@ def main() -> None:
                 incapacitation = stunned_event.group("kind").casefold()
                 player_incapacitated = True
                 input_confirm_at = float("inf")
+                ready = False
+                if deluxe_state is not None:
+                    required_ready_after_overlay = max(
+                        required_ready_after_overlay or -1,
+                        deluxe_state.sequence,
+                    )
+                if not input_confirmed:
+                    print(
+                        "Incapacitation interrupted pending tile input; "
+                        "discarding it until a newer READY sequence.", flush=True,
+                    )
+                    submitted_board = None
+                    submitted_word = None
+                    submitted_path = None
+                    submitted_sequence = None
+                    submitted_state = None
+                    submitted_candidate = None
+                    submitted_at = None
+                    submitted_attack_at = None
+                    input_confirmed = True
+                    input_attempts = 0
                 purify_available = (
                     stunned_event.group("purify_potion") == "1"
                     if stunned_event.group("purify_potion") is not None
@@ -1476,12 +1524,10 @@ def main() -> None:
                 )
                 controller.dismiss_incapacitation_overlay(args.delay)
                 deadline = time.monotonic() + args.timeout
-                if not input_confirmed:
-                    # Time spent petrified/stunned/frozen is not evidence of a missed
-                    # click. Give the game a fresh acknowledgement window.
-                    input_confirm_at = (
-                        time.monotonic() + args.input_confirm_timeout
-                    )
+                print(
+                    "Incapacitation cleared; waiting for a newer native READY "
+                    "sequence before touching the rack.", flush=True,
+                )
             incap_overlay_event = INCAP_OVERLAY_RE.search(line)
             if incap_overlay_event:
                 if incap_purify_pending:
@@ -1553,6 +1599,9 @@ def main() -> None:
                     f"{timed['chapter']}.",
                     flush=True,
                 )
+            elif timer_state is not None and "AUTOMATION_READY_SEQ=" in line:
+                save_timer_state(args.timer_state, timer_state)
+                save_run_history(timer_state)
             map_event = CHAPTER_MAP_RE.search(line)
             if map_event:
                 selected = int(map_event.group("selected"))
@@ -1903,6 +1952,24 @@ def main() -> None:
                             "transition; input and dialogue pulses rearmed.",
                             flush=True,
                         )
+                    ready_sequence = (
+                        deluxe_state.sequence if deluxe_state is not None else -1
+                    )
+                    if not ready_sequence_is_fresh(
+                        ready_sequence, required_ready_after_overlay,
+                    ):
+                        ready = False
+                        print(
+                            f"Ignoring stale READY sequence {ready_sequence}; "
+                            "an overlay owned the previous rack state.", flush=True,
+                        )
+                        continue
+                    if required_ready_after_overlay is not None:
+                        print(
+                            f"Fresh READY sequence {ready_sequence} confirmed "
+                            "after overlay exit; rack input rearmed.", flush=True,
+                        )
+                        required_ready_after_overlay = None
                     dialog_probe_at = float("inf")
                     dialog_probe_count = 0
                     if (
