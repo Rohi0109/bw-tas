@@ -9,6 +9,7 @@ from continuous_runner import (
     RESET_READY_RE,
     ZERO_HEALTH_RE,
     boss_finish_strategy,
+    attack_state_for_event,
     boss_reset_dialog_recovery_allowed, clear_stale_treasure_on_ready,
     clear_stale_treasure_transition,
     completes_early_ready,
@@ -120,6 +121,16 @@ class ContinuousRunnerTests(unittest.TestCase):
             )
         )
         self.assertFalse(should_arm_boss_reset_on_zero_health(alexander))
+
+    def test_overlay_cancelled_submission_retains_last_attack_route_identity(self):
+        alexander = replace(self.state(7), enemy="Alexander")
+
+        self.assertIs(
+            attack_state_for_event(None, alexander, "Alexander"), alexander,
+        )
+        self.assertIsNone(
+            attack_state_for_event(None, alexander, "Polydamas (Boss)"),
+        )
 
     def test_chapter_boss_zero_health_arms_save_ready_reset(self):
         boss = replace(

@@ -396,6 +396,17 @@ def immediate_defeated_reset_reason(
     return post_victory_reset_reason(state, already_reset, chapter_override)
 
 
+def attack_state_for_event(
+    submitted: DeluxeState | None, last_attack: DeluxeState | None,
+    enemy: str,
+) -> DeluxeState | None:
+    """Keep route identity after an overlay cancels only pending rack input."""
+    for state in (submitted, last_attack):
+        if state is not None and state.enemy == enemy:
+            return state
+    return None
+
+
 def should_arm_boss_reset_on_zero_health(
     state: DeluxeState | None,
 ) -> bool:
@@ -652,6 +663,7 @@ def main() -> None:
     submitted_attack_at = None
     submitted_candidate: Candidate | None = None
     submitted_state: DeluxeState | None = None
+    last_attack_state: DeluxeState | None = None
     submitted_strategy: str | None = None
     submitted_frontier: list[Candidate] = []
     submitted_book = None
@@ -1111,6 +1123,7 @@ def main() -> None:
                     submitted_attack_at = attack_clicked_at
                     submitted_candidate = selected
                     submitted_state = deluxe_state
+                    last_attack_state = deluxe_state
                     submitted_strategy = effective_strategy
                     submitted_frontier = list(ranked)
                 ready = False
@@ -1765,6 +1778,13 @@ def main() -> None:
                         f"Stopped after the safety limit of {args.max_attacks} attacks"
                     )
             zero_health_event = ZERO_HEALTH_RE.search(line)
+            zero_health_state = (
+                attack_state_for_event(
+                    submitted_state, last_attack_state,
+                    zero_health_event.group("enemy"),
+                )
+                if zero_health_event else None
+            )
             if zero_health_event and tutorial_play_submitted:
                 # The scripted PLAY tutorial disables conversation probes while
                 # it owns the rack.  Its first post-victory Cassandra overlay
@@ -1775,12 +1795,12 @@ def main() -> None:
                 dialog_probe_at = time.monotonic() + args.dialog_probe_interval
             if (
                 zero_health_event and args.auto_menu_reset
-                and submitted_state is not None
+                and zero_health_state is not None
                 # Chapter bosses arm on zero health, then exit at the native
                 # reset-ready/save edge to skip their long post-victory
                 # sequence. Route checkpoints use DEFEATED instead.
-                and should_arm_boss_reset_on_zero_health(submitted_state)
-                and encounter_key(submitted_state) not in reset_encounters
+                and should_arm_boss_reset_on_zero_health(zero_health_state)
+                and encounter_key(zero_health_state) not in reset_encounters
                 and boss_reset_state is None
             ):
                 print(
@@ -1788,7 +1808,7 @@ def main() -> None:
                     "waiting for the Lua-confirmed save-ready edge.",
                     flush=True,
                 )
-                boss_reset_state = submitted_state
+                boss_reset_state = zero_health_state
                 dialog_probe_at = float("inf")
                 input_confirmed = True
                 input_confirm_at = float("inf")
@@ -1826,13 +1846,17 @@ def main() -> None:
                 defeated_event and args.auto_menu_reset
                 and boss_reset_state is None
             ):
+                defeated_state = attack_state_for_event(
+                    submitted_state, last_attack_state,
+                    defeated_event.group("enemy"),
+                )
                 reset_reason = immediate_defeated_reset_reason(
-                    submitted_state, defeated_event.group("enemy"),
+                    defeated_state, defeated_event.group("enemy"),
                     reset_encounters, chapter,
                 )
                 if reset_reason is not None:
-                    assert submitted_state is not None
-                    reset_encounters.add(encounter_key(submitted_state))
+                    assert defeated_state is not None
+                    reset_encounters.add(encounter_key(defeated_state))
                     print(
                         f"Lua confirmed {defeated_event.group('enemy')} defeated; "
                         f"menu reset {reset_reason}.",
