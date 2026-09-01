@@ -3,7 +3,10 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-from new_run import last_user, log_suffix_contains, profile_path, recreate_profile
+from new_run import (
+    last_user, log_suffix_contains, profile_path, recreate_profile,
+    skip_intro_until_chapter,
+)
 
 
 class NewRunTests(unittest.TestCase):
@@ -16,6 +19,21 @@ class NewRunTests(unittest.TestCase):
             with log.open("a", encoding="utf-8") as output:
                 output.write("Book:StartGame called fresh\n")
             self.assertTrue(log_suffix_contains(log, offset, "Book:StartGame called"))
+
+    @patch("new_run.time.sleep")
+    def test_intro_accepts_fresh_board_when_startgame_predates_boundary(self, _sleep):
+        with tempfile.TemporaryDirectory() as directory:
+            log = Path(directory) / "lua.log"
+            log.write_text("Book:StartGame called stale\n", encoding="utf-8")
+            offset = log.stat().st_size
+            with log.open("a", encoding="utf-8") as output:
+                output.write("AUTOMATION_BOARD=SFAE/PFUN/RJDY/TLIS\n")
+            controller = Mock()
+
+            skip_intro_until_chapter(controller, log, offset)
+
+        controller.skip_intro.assert_not_called()
+        controller.confirm_skip_intro.assert_not_called()
 
     def test_last_user_reads_wine_registry(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -42,6 +60,7 @@ class NewRunTests(unittest.TestCase):
                 profile_path("Lex10", Path(directory))
 
     @patch("new_run.save_state")
+    @patch("new_run.save_run_history")
     @patch("new_run.record_chapter")
     @patch("new_run.start_timer")
     @patch("new_run.wait_for_profile")
@@ -52,7 +71,7 @@ class NewRunTests(unittest.TestCase):
     @patch("new_run.skip_intro_until_chapter")
     def test_fresh_run_confirms_intro_skip(
         self, intro, _sleep, users, _last_user, profile, wait_for_profile,
-        _start_timer, _record_chapter, _save_state,
+        _start_timer, _record_chapter, _save_history, _save_state,
     ):
         users.glob.return_value = []
         profile.return_value = Path("Lex10.bwa")
@@ -70,6 +89,7 @@ class NewRunTests(unittest.TestCase):
         _record_chapter.assert_called_once_with(
             _start_timer.return_value, 1, 1, 123.5,
         )
+        _save_history.assert_called_once_with(_start_timer.return_value)
         intro.assert_called_once()
 
 

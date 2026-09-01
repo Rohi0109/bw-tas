@@ -43,6 +43,21 @@
         }
       ],
       "finished_at": null
+    },
+    {
+      "version": 2,
+      "started_at": 1788297270.5442724,
+      "started_at_iso": "2026-09-01T21:14:30.544272+00:00",
+      "current": {
+        "book": 1,
+        "chapter": 1,
+        "started_at": 1788297270.5442724,
+        "clean": true,
+        "issues": []
+      },
+      "live_book": 1,
+      "splits": [],
+      "finished_at": null
     }
   ]
 }

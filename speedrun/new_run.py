@@ -10,7 +10,8 @@ from pathlib import Path
 
 from live_runner import X11Keyboard
 from run_timer import (
-    DEFAULT_STATE as DEFAULT_TIMER_STATE, record_chapter, save_state, start_timer,
+    DEFAULT_STATE as DEFAULT_TIMER_STATE, record_chapter, save_run_history,
+    save_state, start_timer,
 )
 
 
@@ -67,13 +68,19 @@ def skip_intro_until_chapter(
     timeout: float = 8.0,
 ) -> None:
     """Pulse only the two intro controls until Lua proves chapter startup."""
+    def chapter_started() -> bool:
+        return any(
+            log_suffix_contains(log_path, offset, marker)
+            for marker in ("Book:StartGame called", "AUTOMATION_BOARD=")
+        )
+
     deadline = time.monotonic() + timeout
     time.sleep(0.35)
     while time.monotonic() < deadline:
-        if log_suffix_contains(log_path, offset, "Book:StartGame called"):
+        if chapter_started():
             return
         controller.skip_intro(0.08)
-        if log_suffix_contains(log_path, offset, "Book:StartGame called"):
+        if chapter_started():
             return
         controller.confirm_skip_intro(0.08)
     raise RuntimeError("Timed out waiting for intro confirmation to start Chapter 1")
@@ -122,6 +129,7 @@ def recreate_profile(
         # on the Return key that confirms this filename.
         record_chapter(timer, 1, 1, timer["started_at"])
         save_state(timer_path, timer)
+        save_run_history(timer)
         print(f"Run timer started: {timer['started_at_iso']}", flush=True)
     if skip_intro:
         # These pre-Lua screens have no engine update hook. Alternate only
