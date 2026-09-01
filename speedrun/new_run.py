@@ -83,14 +83,14 @@ def recreate_profile(
             )
 
     controller.create_new_user(0.4)
-    controller.replace_user_name(name, name, 0.08)
+    confirmed_at = controller.replace_user_name(name, name, 0.08)
     created = wait_for_profile(name, present=True)
     print(f"Created fresh TAS profile: {created}", flush=True)
     if timer_path is not None:
-        timer = start_timer(timer_path)
+        timer = start_timer(timer_path, timestamp=confirmed_at)
         # Deluxe labels the opening tutorial as chapter -1 in Lua.  A profile
-        # created here always begins at Book 1 Chapter 1, so seed that split
-        # at the same character-selection timestamp.
+        # created here always begins at Book 1 Chapter 1. Category timing starts
+        # on the Return key that confirms this filename.
         record_chapter(timer, 1, 1, timer["started_at"])
         save_state(timer_path, timer)
         print(f"Run timer started: {timer['started_at_iso']}", flush=True)

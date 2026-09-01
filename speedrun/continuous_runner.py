@@ -1599,9 +1599,6 @@ def main() -> None:
                     f"{timed['chapter']}.",
                     flush=True,
                 )
-            elif timer_state is not None and "AUTOMATION_READY_SEQ=" in line:
-                save_timer_state(args.timer_state, timer_state)
-                save_run_history(timer_state)
             map_event = CHAPTER_MAP_RE.search(line)
             if map_event:
                 selected = int(map_event.group("selected"))

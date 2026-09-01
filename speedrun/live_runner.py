@@ -423,7 +423,9 @@ class X11Keyboard:
         self.focus()
         self.click(int(width * 0.415), int(height * 0.700), delay)
 
-    def replace_user_name(self, old_name: str, new_name: str, delay: float) -> None:
+    def replace_user_name(
+        self, old_name: str, new_name: str, delay: float,
+    ) -> float:
         """Replace the prefilled deleted name and submit the New User dialog."""
         self.focus()
         for _ in old_name:
@@ -434,9 +436,11 @@ class X11Keyboard:
             self.key(character)
             self.x11.XFlush(self.display)
             time.sleep(delay)
+        confirmed_at = time.time()
         self.key("Return")
         self.x11.XFlush(self.display)
         time.sleep(delay)
+        return confirmed_at
 
     def skip_intro(self, delay: float) -> None:
         """Click the explicit 'Click anywhere to skip' introduction screen."""

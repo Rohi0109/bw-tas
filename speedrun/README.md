@@ -137,9 +137,8 @@ the old paused Chapter 1.10 sample.
 attempt at each chapter transition, so starting a new profile no longer erases
 the previous run's clean/invalid splits.
 
-Chapter 1 timing is rebased from the early `Book:StartGame` hook to the first
-Lua-confirmed `AUTOMATION_READY_SEQ`, which is the first frame where rack input
-is actionable. Boss-death split behavior is unchanged.
+Chapter 1 timing starts on the Return key event that confirms the fresh profile
+filename, matching the category rule. Boss-death split behavior is unchanged.
 
 Dialogue and stunned/frozen/petrified overlays revoke rack ownership. If one
 appears during a pending submission, the runner discards that input and will

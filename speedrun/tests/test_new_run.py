@@ -47,9 +47,18 @@ class NewRunTests(unittest.TestCase):
         profile.return_value = Path("Lex10.bwa")
         wait_for_profile.side_effect = [None, Path("Lex10.bwa")]
         controller = Mock()
+        controller.replace_user_name.return_value = 123.5
+        _start_timer.return_value = {
+            "started_at": 123.5, "started_at_iso": "confirmed",
+        }
+        timer_path = Path("timer.json")
 
-        recreate_profile(controller, "Lex10", timer_path=None)
+        recreate_profile(controller, "Lex10", timer_path=timer_path)
 
+        _start_timer.assert_called_once_with(timer_path, timestamp=123.5)
+        _record_chapter.assert_called_once_with(
+            _start_timer.return_value, 1, 1, 123.5,
+        )
         controller.skip_intro.assert_called_once_with(1.0)
         controller.confirm_skip_intro.assert_called_once_with(0.8)
         self.assertLess(
