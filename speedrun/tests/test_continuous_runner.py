@@ -14,6 +14,7 @@ from continuous_runner import (
     clear_stale_treasure_transition,
     convpanel_supersedes_navigation_transition,
     completes_early_ready,
+    clear_special_transitions_on_chapter_start,
     dialogue_pulse_suppressed,
     enemy_accepts_candidate, health_potion_confirmed, is_initial_play_tutorial,
     is_unchanged_combat_snapshot,
@@ -664,6 +665,20 @@ class ContinuousRunnerTests(unittest.TestCase):
             (False, False, True, False), (False, False, False, True),
         ):
             self.assertTrue(dialogue_pulse_suppressed(*blockers))
+
+    def test_native_chapter_start_clears_stale_special_screen_state(self):
+        stale_boss = object()
+
+        boss, screen, selecting = clear_special_transitions_on_chapter_start(
+            "start-game", stale_boss, "treasure", True,
+        )
+
+        self.assertIsNone(boss)
+        self.assertIsNone(screen)
+        self.assertFalse(selecting)
+        self.assertFalse(dialogue_pulse_suppressed(
+            boss is not None, screen == "treasure" or selecting, False, False,
+        ))
 
     def test_confirmed_boss_reset_can_clear_blocking_result_dialogue(self):
         reset_key = (1, 6, 7, "Cerberus (Boss)")

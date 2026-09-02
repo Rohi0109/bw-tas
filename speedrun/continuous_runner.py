@@ -469,6 +469,16 @@ def dialogue_pulse_suppressed(
     )
 
 
+def clear_special_transitions_on_chapter_start(
+    action: str, boss_reset_state: DeluxeState | None,
+    blocked_screen: str | None, treasure_selection_started: bool,
+) -> tuple[DeluxeState | None, str | None, bool]:
+    """A native start-game action proves every prior transition is finished."""
+    if action == "start-game":
+        return None, None, False
+    return boss_reset_state, blocked_screen, treasure_selection_started
+
+
 def boss_reset_dialog_recovery_allowed(
     source: str, menu_reentry_pending: bool,
     last_boss_reset_key: tuple[int, int, int, str] | None,
@@ -1678,8 +1688,34 @@ def main() -> None:
                     chapter_enter_at = float("inf")
             action_event = CHAPTER_ACTION_RE.search(line)
             if action_event:
+                action = action_event.group("action")
+                old_boss_reset = boss_reset_state
+                old_blocked_screen = blocked_screen
+                old_treasure_selection = treasure_selection_started
+                boss_reset_state, blocked_screen, treasure_selection_started = (
+                    clear_special_transitions_on_chapter_start(
+                        action, boss_reset_state, blocked_screen,
+                        treasure_selection_started,
+                    )
+                )
+                if action == "start-game":
+                    boss_reset_dialog_ready = False
+                    menu_reentry_pending = False
+                    menu_reentry_at = float("inf")
+                    chapter_enter_pending = False
+                    chapter_enter_at = float("inf")
+                    if (
+                        old_boss_reset is not None
+                        or old_blocked_screen is not None
+                        or old_treasure_selection
+                    ):
+                        print(
+                            "Native chapter start cleared stale special-screen "
+                            "transition state; dialogue pulses rearmed.",
+                            flush=True,
+                        )
                 print(
-                    f"Chapter-map action confirmed: {action_event.group('action')}.",
+                    f"Chapter-map action confirmed: {action}.",
                     flush=True,
                 )
                 deadline = time.monotonic() + args.timeout
