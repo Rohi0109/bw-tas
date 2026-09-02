@@ -525,7 +525,7 @@ class X11Keyboard:
             row, column = divmod(index, 4)
             self.click(
                 int(width * tile_x[column]), int(height * tile_y[row]),
-                max(0.20, delay),
+                max(0.35, delay),
             )
         self.click(width // 2, int(height * 0.963), max(0.2, delay))
 

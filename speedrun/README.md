@@ -142,8 +142,8 @@ filename, matching the category rule. Boss-death split behavior is unchanged.
 The intro skipper now alternates only the safe skip and Yes controls, stopping
 as soon as a post-confirmation `Book:StartGame` line proves native chapter
 startup. This replaces the former 4.3 seconds of unconditional sleeps. The
-fixed PLAY lesson uses a capture-calibrated 0.20-second step guard instead of
-0.35 seconds, while retaining its exact P/L/A/Y tile path.
+fixed PLAY lesson uses a capture-calibrated 0.20-second initial guard, while
+retaining the proven 0.35-second per-step guard and exact P/L/A/Y tile path.
 
 Dialogue and stunned/frozen/petrified overlays revoke rack ownership. If one
 appears during a pending submission, the runner discards that input and will
