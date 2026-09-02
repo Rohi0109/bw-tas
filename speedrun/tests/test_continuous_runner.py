@@ -12,6 +12,7 @@ from continuous_runner import (
     attack_state_for_event,
     boss_reset_dialog_recovery_allowed, clear_stale_treasure_on_ready,
     clear_stale_treasure_transition,
+    convpanel_supersedes_navigation_transition,
     completes_early_ready,
     dialogue_pulse_suppressed,
     enemy_accepts_candidate, health_potion_confirmed, is_initial_play_tutorial,
@@ -658,6 +659,10 @@ class ContinuousRunnerTests(unittest.TestCase):
             clear_stale_treasure_transition("checkpoint", "treasure", True),
             ("treasure", True),
         )
+
+    def test_convpanel_ends_stale_menu_and_map_navigation(self):
+        self.assertTrue(convpanel_supersedes_navigation_transition("convpanel"))
+        self.assertFalse(convpanel_supersedes_navigation_transition("interrupt"))
 
     def test_dialogue_click_routing_keeps_fallbacks_above_grid(self):
         controller = X11Keyboard.__new__(X11Keyboard)

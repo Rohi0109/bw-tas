@@ -140,6 +140,16 @@ def clear_stale_treasure_transition(
     return blocked_screen, selection_started
 
 
+def convpanel_supersedes_navigation_transition(source: str) -> bool:
+    """A live conversation proves menu/map navigation has completed.
+
+    Chapter startup can expose its conversation before the first BOARD/READY
+    snapshot that normally clears navigation retries. The conversation itself
+    is then the authoritative MouseUp owner and must not be suppressed.
+    """
+    return source == "convpanel"
+
+
 def clear_stale_treasure_on_ready(
     blocked_screen: str | None, selection_started: bool,
 ) -> tuple[str | None, bool]:
@@ -1329,6 +1339,11 @@ def main() -> None:
             dialog_active = DIALOG_ACTIVE_RE.search(line)
             if dialog_active:
                 active_dialog = dialog_active.group("source")
+                if convpanel_supersedes_navigation_transition(active_dialog):
+                    menu_reentry_pending = False
+                    menu_reentry_at = float("inf")
+                    chapter_enter_pending = False
+                    chapter_enter_at = float("inf")
                 pending_health_potion_state = None
                 pending_health_potion_at = float("inf")
                 pending_health_potion_attempts = 0
