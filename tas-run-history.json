@@ -58,6 +58,38 @@
       "live_book": 1,
       "splits": [],
       "finished_at": null
+    },
+    {
+      "version": 2,
+      "started_at": 1788318963.6452725,
+      "started_at_iso": "2026-09-02T03:16:03.645272+00:00",
+      "current": {
+        "book": 1,
+        "chapter": 1,
+        "started_at": 1788318963.6452725,
+        "clean": true,
+        "issues": []
+      },
+      "live_book": 1,
+      "splits": [],
+      "finished_at": null
+    },
+    {
+      "version": 2,
+      "started_at": 1788318998.7952352,
+      "started_at_iso": "2026-09-02T03:16:38.795235+00:00",
+      "current": {
+        "book": 1,
+        "chapter": 1,
+        "started_at": 1788318998.7952352,
+        "clean": false,
+        "issues": [
+          "tutorial-input-stall"
+        ]
+      },
+      "live_book": 1,
+      "splits": [],
+      "finished_at": null
     }
   ]
 }
