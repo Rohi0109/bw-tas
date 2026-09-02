@@ -1,7 +1,8 @@
 import unittest
 
 from deluxe_optimizer import (
-    DeluxeState, candidates, ceil_quarter, choose, damage_for, floor_quarter,
+    DeluxeState, adjusted_word_length, candidates, ceil_quarter, choose,
+    damage_for, floor_quarter,
     load_chapter1_hp_map, parse_state, strategy_for_state,
     validate_chapter1_state,
 )
@@ -214,6 +215,37 @@ class DeluxeOptimizerTests(unittest.TestCase):
         self.assertEqual(ceil_quarter(0.26), 0.5)
         self.assertEqual(floor_quarter(0.49), 0.25)
         self.assertEqual(floor_quarter(0.5), 0.5)
+
+    def test_native_intrinsic_letter_bonuses_select_integer_damage_tier(self):
+        plain = state(board="VULC/ANIS/MSAA/AAAA", offense=0)
+        path = (0, 1, 2, 3, 4, 5, 6, 7, 8, 9)
+
+        # V (+.5), C (+.25), and M (+.25) raise the integer tier to 11.
+        self.assertEqual(adjusted_word_length(plain, "VULCANISMS", path), 11)
+
+        acid = state(board="ACID/AAAA/AAAA/AAAA", offense=0)
+        self.assertEqual(adjusted_word_length(acid, "ACID", (0, 1, 2, 3)), 4)
+
+        # A disabled Q cannot contribute its intrinsic +1.75 weight.
+        damaged_q = state(
+            board="ALIQ/OTAA/AAAA/AAAA",
+            zero_damage=(False, False, False, True) + (False,) * 12,
+        )
+        self.assertEqual(
+            adjusted_word_length(damaged_q, "ALIQOT", (0, 1, 2, 3, 4, 5)), 6
+        )
+
+    def test_vulcanisms_is_predicted_as_cerberus_finisher(self):
+        cerberus = state(
+            board="NASN/CIUS/MLAA/JUVY", enemy="Cerberus (Boss)",
+            hp=5.5, max_hp=12, offense=0.48994600772858,
+            treasures=frozenset({"bow of zyx", "golden fleece", "icarus sandals"}),
+        )
+        path = (14, 6, 9, 4, 1, 0, 5, 2, 8, 7)
+
+        self.assertGreaterEqual(
+            damage_for(cerberus, "VULCANISMS", path, frozenset()), 5.5
+        )
 
     def test_chimera_tut_hammer_rounding_regression(self):
         chimera = state(

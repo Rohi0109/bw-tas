@@ -64,7 +64,18 @@ GEM_CODE_NAMES = {
 DAMAGE_BY_LENGTH = {
     3: 0.25, 4: 0.5, 5: 0.75, 6: 1.0, 7: 1.5, 8: 2.0,
     9: 2.75, 10: 3.5, 11: 4.5, 12: 5.5, 13: 6.75,
-    14: 8.0, 15: 9.5, 16: 11.0,
+    14: 8.0, 15: 9.5, 16: 11.0, 17: 13.0,
+}
+
+# Extracted from main.luc's native LETTER_BONUSES table. These intrinsic
+# weights are independent of gems and equipped treasures.
+LETTER_BONUSES = {
+    "B": 0.25, "C": 0.25, "F": 0.25, "H": 0.25,
+    "M": 0.25, "P": 0.25,
+    "V": 0.5, "W": 0.5, "Y": 0.5,
+    "J": 0.75, "K": 0.75,
+    "Q": 1.75,
+    "X": 1.0, "Z": 1.0,
 }
 
 GEM_TIER_NAMES = (
@@ -336,6 +347,17 @@ def floor_quarter(value: float) -> float:
     return math.floor((value + 1e-9) * 4.0) / 4.0
 
 
+def adjusted_word_length(
+    state: DeluxeState, word: str, path: tuple[int, ...]
+) -> int:
+    """Return the native damage tier after usable intrinsic letter weights."""
+    value = float(len(word))
+    for letter, index in zip(word, path):
+        if not state.zero_damage[index]:
+            value += LETTER_BONUSES.get(letter, 0.0)
+    return min(max(DAMAGE_BY_LENGTH), math.floor(value + 1e-9))
+
+
 def load_metal_words(path: Path) -> frozenset[str]:
     if not path.is_file():
         return frozenset()
@@ -382,11 +404,9 @@ def _path_for_word(state: DeluxeState, word: str) -> tuple[int, ...] | None:
 def damage_for(
     state: DeluxeState, word: str, path: tuple[int, ...], metal_words: frozenset[str]
 ) -> float:
-    base = DAMAGE_BY_LENGTH[len(word)]
-    # AUTOMATION_POWERS is calculated inside the game from LETTER_BONUSES and
-    # Tile.ApplyBonus. It therefore already includes per-letter treasures such
-    # as Wooden Parrot (R) and Bow/Arch of Xyzzy (X/Y/Z), as well as gems. Do
-    # not add those treasure bonuses again here.
+    base = DAMAGE_BY_LENGTH[adjusted_word_length(state, word, path)]
+    # Tile.ApplyBonus reports bonuses layered on top of the native weighted
+    # length tier, such as gems and treasure effects.
     tile_contributions = []
     for index in path:
         contribution = state.tile_powers[index]
