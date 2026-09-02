@@ -8,8 +8,15 @@ function TileEngine:AutomationDumpBoard()
   if gAutomationOriginalRandom == nil and math ~= nil and math.random ~= nil then
     gAutomationOriginalRandom = math.random
     gAutomationRandomCalls = 0
-    math.random = function(...)
-      local result = gAutomationOriginalRandom(...)
+    math.random = function(first, second)
+      local result = nil
+      if first == nil then
+        result = gAutomationOriginalRandom()
+      elseif second == nil then
+        result = gAutomationOriginalRandom(first)
+      else
+        result = gAutomationOriginalRandom(first, second)
+      end
       gAutomationRandomCalls = gAutomationRandomCalls + 1
       return result
     end

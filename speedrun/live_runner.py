@@ -508,26 +508,22 @@ class X11Keyboard:
         time.sleep(settle)
         self.click(width // 2, int(height * 0.963), delay)
 
-    def play_tutorial_play(self, delay: float) -> None:
-        """Complete the fresh-profile PLAY lesson's step-gated tile sequence."""
+    def play_tutorial_step(self, letter: str, delay: float) -> None:
+        """Click only the tutorial step currently authorized by native Lua."""
         if self.layout != "deluxe":
             raise RuntimeError("PLAY tutorial automation is calibrated only for Deluxe")
         width, height = self._size(self.window)
         tile_x = (0.4050, 0.4710, 0.5340, 0.5960)
         tile_y = (0.5617, 0.6483, 0.7333, 0.8183)
         self.focus()
-        # Lua exposes the lesson just before its first arrow accepts input.
-        # The 0.20 guard is calibrated from the 60 fps Chapter 1 capture.
-        time.sleep(0.20)
-        # The tutorial enables one required tile at a time and animates its
-        # instruction before accepting the next click.
-        for index in (4, 13, 2, 11):
-            row, column = divmod(index, 4)
-            self.click(
-                int(width * tile_x[column]), int(height * tile_y[row]),
-                max(0.35, delay),
-            )
-        self.click(width // 2, int(height * 0.963), max(0.2, delay))
+        if letter == "DONE":
+            self.click(width // 2, int(height * 0.963), delay)
+            return
+        positions = {"P": 4, "L": 13, "A": 2, "Y": 11}
+        if letter not in positions:
+            raise RuntimeError(f"Unexpected PLAY tutorial letter {letter!r}")
+        row, column = divmod(positions[letter], 4)
+        self.click(int(width * tile_x[column]), int(height * tile_y[row]), delay)
 
 
 def best_word(board_text: str) -> tuple[str, float]:

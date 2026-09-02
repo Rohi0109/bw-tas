@@ -5,7 +5,7 @@ from pathlib import Path
 
 from continuous_runner import (
     ATTACK_SUBMITTED_RE, DEFEATED_RE, DIALOG_ACTIVE_RE, DIALOG_PULSE_RE,
-    INCAP_OVERLAY_RE, MINIGAME_PROMPT_RE, PLAYER_STUNNED_RE,
+    INCAP_OVERLAY_RE, MINIGAME_PROMPT_RE, PLAYER_STUNNED_RE, PLAY_READY_RE,
     RESET_READY_RE,
     ZERO_HEALTH_RE,
     boss_finish_strategy,
@@ -28,7 +28,6 @@ from continuous_runner import (
     sphinx_allows_damage_fallback,
     is_book3_final_gauntlet, should_use_health_potion,
     should_use_powerup_potion,
-    should_retry_play_tutorial,
     should_confirm_book_movie_skip,
     immediate_defeated_reset_reason,
     should_arm_boss_reset_on_zero_health,
@@ -551,13 +550,14 @@ class ContinuousRunnerTests(unittest.TestCase):
         self.assertFalse(is_initial_play_tutorial(board, "conversation", None, 0))
         self.assertFalse(is_initial_play_tutorial("PLAY/AAAA/AAAA/AAAA", "interrupt", None, 0))
 
-    def test_play_retries_fixed_path_only_on_bounded_tutorial_pulses(self):
-        board = "SFAE/PFUN/RJDY/TLIS"
-        self.assertFalse(should_retry_play_tutorial("interrupt", 4, True, board))
-        self.assertTrue(should_retry_play_tutorial("interrupt", 5, True, board))
-        self.assertTrue(should_retry_play_tutorial("interrupt", 10, False, board))
-        self.assertFalse(should_retry_play_tutorial("convpanel", 10, True, board))
-        self.assertFalse(should_retry_play_tutorial("interrupt", 10, False, "AAAA/AAAA/AAAA/AAAA"))
+    def test_native_play_ready_event_identifies_one_exact_step(self):
+        event = PLAY_READY_RE.search("AUTOMATION_PLAY_READY=A|2|E")
+        self.assertIsNotNone(event)
+        self.assertEqual(event.group("letter"), "A")
+        self.assertEqual(event.group("pulse"), "2")
+        self.assertIsNotNone(
+            PLAY_READY_RE.search("AUTOMATION_PLAY_READY=DONE|1|E")
+        )
 
     def test_active_play_marker_is_recovered_at_startup(self):
         active = (

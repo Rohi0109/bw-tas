@@ -1,4 +1,59 @@
 function BattleEngine:AutomationDumpDialogs()
+  -- IntroTutorial itself exposes the exact input gate used by TileClicked.
+  -- Authorize only the currently requested letter while state 2 owns input;
+  -- MouseUp changes mNextLetter synchronously, so a retry can never spill into
+  -- the next tutorial step (or the live combat rack).
+  local playLetter = nil
+  if IntroTutorial ~= nil and IntroTutorial.mState == 2 and
+      IntroTutorial.mNextLetter ~= nil then
+    playLetter = tostring(IntroTutorial.mNextLetter)
+  end
+  local playClickable = false
+  if playLetter == "" then
+    -- CanAttack remains false while IntroTutorial owns the interrupt even
+    -- though its final instruction explicitly expects the Attack button.
+    playClickable = true
+  elseif playLetter ~= nil and gTileEngine ~= nil and gBoard ~= nil then
+    local playX = nil
+    local playY = nil
+    if playLetter == "P" then playX = 0; playY = 1 end
+    if playLetter == "L" then playX = 1; playY = 3 end
+    if playLetter == "A" then playX = 2; playY = 0 end
+    if playLetter == "Y" then playX = 3; playY = 2 end
+    if playX ~= nil then
+      local playTileKey = gBoard.GridGetTile(gBoard, playX, playY)
+      local playTile = gTileTable[playTileKey]
+      playClickable = playTile ~= nil and
+        gTileEngine.CanSelect(gTileEngine, playTileKey, playX, playY)
+      if playClickable and playTile.IsMoving ~= nil and
+          playTile.IsMoving(playTile) then
+        playClickable = false
+      end
+      if playClickable and playTile.IsFalling ~= nil and
+          playTile.IsFalling(playTile) then
+        playClickable = false
+      end
+    end
+  end
+  local playAuthorization = playLetter
+  if not playClickable then playAuthorization = nil end
+  if playAuthorization ~= gAutomationPlayLetter then
+    gAutomationPlayLetter = playAuthorization
+    gAutomationPlayReadyUpdates = 0
+    gAutomationPlayReadyPulse = 0
+  end
+  if playAuthorization ~= nil then
+    gAutomationPlayReadyUpdates = gAutomationPlayReadyUpdates + 1
+    if gAutomationPlayReadyUpdates == 1 or
+        (gAutomationPlayReadyUpdates % 15) == 0 then
+      gAutomationPlayReadyPulse = gAutomationPlayReadyPulse + 1
+      local emittedLetter = playAuthorization
+      if emittedLetter == "" then emittedLetter = "DONE" end
+      print("AUTOMATION_PLAY_READY=" .. emittedLetter .. "|" ..
+        gAutomationPlayReadyPulse .. "|E")
+    end
+  end
+
   -- TileEngine stops reaching its board logger while an enemy-owned modal
   -- overlay has control. In particular, Hydra Head 4 can open with Freezing
   -- Breath before another actionable board snapshot exists. Report that edge

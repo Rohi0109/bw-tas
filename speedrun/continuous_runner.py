@@ -56,6 +56,9 @@ DIALOG_PULSE_RE = re.compile(
 )
 DIALOG_INACTIVE_RE = re.compile(r"AUTOMATION_DIALOG_INACTIVE=(?P<sequence>\d+)\|E")
 PLAY_TUTORIAL_RE = re.compile(r"AUTOMATION_PLAY_TUTORIAL=(?P<sequence>\d+)\|E")
+PLAY_READY_RE = re.compile(
+    r"AUTOMATION_PLAY_READY=(?P<letter>P|L|A|Y|DONE)\|(?P<pulse>\d+)\|E"
+)
 LEGACY_SCREEN_RE = re.compile(
     r"AUTOMATION_DIALOG=(?P<kind>treasure|none)\|(?P<sequence>\d+)\|E"
 )
@@ -164,16 +167,6 @@ def telemetry_context(
 def ready_sequence_is_fresh(sequence: int, required_after: int | None) -> bool:
     """Only a later native rack may reclaim input after an overlay."""
     return required_after is None or sequence > required_after
-
-
-def should_retry_play_tutorial(
-    source: str, pulse: int, tutorial_active: bool, board: str | None,
-) -> bool:
-    return bool(
-        source == "interrupt"
-        and (tutorial_active or board == TUTORIAL_PLAY_BOARD)
-        and pulse >= 5 and pulse % 5 == 0
-    )
 
 
 def lua_runtime_is_waiting(text: str) -> bool:
@@ -686,6 +679,7 @@ def main() -> None:
     input_confirm_at = float("inf")
     tutorial_play_submitted = False
     tutorial_interrupt_active = False
+    last_play_letter_clicked: str | None = None
     reset_encounters: set[tuple[int, int, int, str]] = set()
     movie_skip_confirmed: set[tuple[int, int, int, str]] = set()
     map_enter_encounters: set[tuple[int, int, int, str]] = set()
@@ -825,7 +819,6 @@ def main() -> None:
                 "startup marker.",
                 flush=True,
             )
-            controller.play_tutorial_play(args.delay)
             deadline = time.monotonic() + args.timeout
         if refreshed_dialog == "treasure" and not refreshed_ready:
             blocked_screen = "treasure"
@@ -1254,11 +1247,8 @@ def main() -> None:
                 ):
                     tutorial_play_submitted = True
                     print("Completing fixed fresh-profile PLAY tutorial.", flush=True)
-                    controller.play_tutorial_play(args.delay)
-                    # The Lua dialogue marker remains ``levelup`` while the
-                    # lesson hands control back to combat.  Do not let the
-                    # generic recovery probe click tiles out from under the
-                    # fixed tutorial sequence during that handoff.
+                    # Native PLAY_READY events own every tutorial tile. Keep
+                    # generic recovery away from the rack during the handoff.
                     dialog_probe_at = float("inf")
                     deadline = time.monotonic() + args.timeout
                     time.sleep(args.poll)
@@ -1387,7 +1377,6 @@ def main() -> None:
                 ):
                     tutorial_play_submitted = True
                     print("Completing fixed fresh-profile PLAY tutorial.", flush=True)
-                    controller.play_tutorial_play(args.delay)
                     deadline = time.monotonic() + args.timeout
             play_tutorial = PLAY_TUTORIAL_RE.search(line)
             if play_tutorial and not tutorial_play_submitted:
@@ -1395,7 +1384,26 @@ def main() -> None:
                 tutorial_interrupt_active = True
                 active_dialog = "interrupt"
                 print("Completing fixed fresh-profile PLAY tutorial.", flush=True)
-                controller.play_tutorial_play(args.delay)
+                deadline = time.monotonic() + args.timeout
+            play_ready = PLAY_READY_RE.search(line)
+            if play_ready:
+                letter = play_ready.group("letter")
+                pulse = int(play_ready.group("pulse"))
+                tutorial_play_submitted = True
+                # DONE still belongs to IntroTutorial until its interrupt edge
+                # closes; generic dialogue pulses must remain suppressed.
+                tutorial_interrupt_active = True
+                # Tile steps are single-shot once their native selection gate
+                # opens. The final Attack button is different: mNextLetter is
+                # cleared before its button animation accepts MouseUp, so its
+                # retries remain safe (an empty live rack cannot attack).
+                if letter == "DONE" or letter != last_play_letter_clicked:
+                    print(
+                        f"Native PLAY step {letter} ready (attempt {pulse}); "
+                        "clicking it once.", flush=True,
+                    )
+                    controller.play_tutorial_step(letter, args.delay)
+                    last_play_letter_clicked = letter
                 deadline = time.monotonic() + args.timeout
             dialog_inactive = DIALOG_INACTIVE_RE.search(line)
             if dialog_inactive:
@@ -1437,15 +1445,6 @@ def main() -> None:
                     board == TUTORIAL_PLAY_BOARD or tutorial_interrupt_active
                 ):
                     suppress = True
-                if should_retry_play_tutorial(
-                    source, pulse, tutorial_interrupt_active, board,
-                ):
-                    print(
-                        f"PLAY remains active at pulse {pulse}; replaying its "
-                        "fixed tile path to advance the first missing step.",
-                        flush=True,
-                    )
-                    controller.play_tutorial_play(args.delay)
                 if suppress:
                     print(
                         f"Lua dialogue pulse {pulse}: source={source}; "
@@ -1965,7 +1964,6 @@ def main() -> None:
                 ):
                     tutorial_play_submitted = True
                     print("Completing fixed fresh-profile PLAY tutorial.", flush=True)
-                    controller.play_tutorial_play(args.delay)
                     deadline = time.monotonic() + args.timeout
                 menu_reentry_pending = False
                 menu_reentry_at = float("inf")
