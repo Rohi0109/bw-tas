@@ -41,6 +41,13 @@ from live_runner import X11Keyboard
 
 
 class ContinuousRunnerTests(unittest.TestCase):
+    def test_lua_board_hook_never_wraps_engine_random(self):
+        hook = (
+            Path(__file__).resolve().parents[2]
+            / "automation/lua_hook/DumpBoard.lua"
+        ).read_text(encoding="utf-8")
+        self.assertNotIn("math.random =", hook)
+
     def test_lua_runtime_wait_marker_is_detected_near_log_tail(self):
         marker = "Program in waiting. Type go() or press F5 to continue execution."
 
@@ -295,6 +302,32 @@ class ContinuousRunnerTests(unittest.TestCase):
         lethal = Candidate("HIT", (0,), 4, 1, None, True, 0.6, 0)
 
         self.assertFalse(should_use_health_potion(low, lethal))
+
+    def test_health_potion_is_saved_when_powerup_makes_word_lethal(self):
+        phantom = replace(
+            self.state(1), enemy="Phantom", hp=3.25,
+            player_hp=0.25, player_max_hp=5,
+            health_potion_available=True, attack_potion_available=True,
+        )
+        boosted_finisher = Candidate(
+            "VIRILELY", (0,), 2.75, -0.5, None, False, 0.99, 0,
+        )
+
+        self.assertTrue(should_use_powerup_potion(phantom, boosted_finisher))
+        self.assertFalse(should_use_health_potion(phantom, boosted_finisher))
+
+    def test_cerberus_saves_health_potion_for_powerup_finisher(self):
+        cerberus = replace(
+            self.state(1), enemy="Cerberus (Boss)", hp=5.5,
+            player_hp=2.25, player_max_hp=6,
+            health_potion_available=True, attack_potion_available=True,
+        )
+        boosted_finisher = Candidate(
+            "FINISHER", (0,), 4.5, -1, None, False, 1.1, 0,
+        )
+
+        self.assertTrue(should_use_powerup_potion(cerberus, boosted_finisher))
+        self.assertFalse(should_use_health_potion(cerberus, boosted_finisher))
 
     def test_sphinx_low_health_heals_before_fallback_killing_blow(self):
         sphinx = replace(

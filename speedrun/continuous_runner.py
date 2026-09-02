@@ -297,7 +297,17 @@ def should_use_health_potion(
         return True
     if state.enemy.startswith("Hydra (") or is_book3_final_gauntlet(state):
         return state.player_hp < state.player_max_hp
-    return in_danger and (candidate is None or not candidate.lethal)
+    planned_finisher = bool(
+        candidate is not None
+        and (
+            candidate.lethal
+            or (
+                state.attack_potion_available
+                and candidate.damage * 1.25 >= state.hp
+            )
+        )
+    )
+    return in_danger and not planned_finisher
 
 
 def health_potion_confirmed(before: DeluxeState, after: DeluxeState) -> bool:

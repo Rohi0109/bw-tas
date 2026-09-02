@@ -1,26 +1,10 @@
 TileEngine = {}
 
 function TileEngine:AutomationDumpBoard()
-  -- Count Lua RNG draws after the first complete board hook. The executable's
-  -- MSVCRT stream is deterministic (seed 1), but the initial native setup has
-  -- already consumed an unknown prefix. A relative cursor lets recorded
-  -- transitions align that stream without changing random results.
-  if gAutomationOriginalRandom == nil and math ~= nil and math.random ~= nil then
-    gAutomationOriginalRandom = math.random
-    gAutomationRandomCalls = 0
-    math.random = function(first, second)
-      local result = nil
-      if first == nil then
-        result = gAutomationOriginalRandom()
-      elseif second == nil then
-        result = gAutomationOriginalRandom(first)
-      else
-        result = gAutomationOriginalRandom(first, second)
-      end
-      gAutomationRandomCalls = gAutomationRandomCalls + 1
-      return result
-    end
-  end
+  -- Do not replace math.random here. PopCap's Lua dialect has a nonstandard
+  -- call ABI for optional arguments; wrapping it changes zero-argument calls
+  -- used by combat effects. RNG telemetry remains explicitly unavailable (-1)
+  -- until it can be collected below the Lua boundary.
   local snapshot = ""
   local gems = ""
   local powers = ""
@@ -414,8 +398,7 @@ function TileEngine:AutomationDumpBoard()
       (playerPetrified and "1" or "0") .. "|" ..
       (attackPotionAvailable and "1" or "0") .. "|" ..
       (playerFrozen and "1" or "0") .. "|E")
-    print("AUTOMATION_RNG=" .. gAutomationSequence .. "|" ..
-      (gAutomationRandomCalls or -1) .. "|E")
+    print("AUTOMATION_RNG=" .. gAutomationSequence .. "|-1|E")
     print("AUTOMATION_READY_SEQ=" .. gAutomationSequence .. "|E")
     print("AUTOMATION_READY=" .. snapshot)
     if postPlayHandoff then gAutomationSawPlayTutorial = false end
