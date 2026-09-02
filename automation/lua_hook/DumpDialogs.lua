@@ -1,4 +1,18 @@
 function BattleEngine:AutomationDumpDialogs()
+  if gAutomationNativeValuePending and gTileEngine ~= nil and
+      self.mSubmittedTileTables ~= nil then
+    local nativeValue = gTileEngine.GetWordValue(
+      gTileEngine, self.mSubmittedTileTables
+    )
+    local nativeTier = math.round(nativeValue)
+    local enemyName = "unknown"
+    if self.mEnemyPtr ~= nil and self.mEnemyPtr.mName ~= nil then
+      enemyName = self.mEnemyPtr.mName
+    end
+    print("AUTOMATION_NATIVE_WORD_VALUE=" .. gAutomationSubmittedWord .. "|" ..
+      nativeValue .. "|" .. nativeTier .. "|" .. enemyName .. "|E")
+    gAutomationNativeValuePending = false
+  end
   -- IntroTutorial itself exposes the exact input gate used by TileClicked.
   -- Authorize only the currently requested letter while state 2 owns input;
   -- MouseUp changes mNextLetter synchronously, so a retry can never spill into

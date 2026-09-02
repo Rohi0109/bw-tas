@@ -226,6 +226,22 @@ class DeluxeOptimizerTests(unittest.TestCase):
         acid = state(board="ACID/AAAA/AAAA/AAAA", offense=0)
         self.assertEqual(adjusted_word_length(acid, "ACID", (0, 1, 2, 3)), 4)
 
+        # Live BattleEngine probes: 10.5 and 10.75 both round to tier 11.
+        federacies = state(board="FEDE/RACI/ESAA/AAAA", offense=0)
+        self.assertEqual(
+            adjusted_word_length(
+                federacies, "FEDERACIES", tuple(range(10))
+            ),
+            11,
+        )
+        answerable = state(board="ANSW/ERAB/LEAA/AAAA", offense=0)
+        self.assertEqual(
+            adjusted_word_length(
+                answerable, "ANSWERABLE", tuple(range(10))
+            ),
+            11,
+        )
+
         # A disabled Q cannot contribute its intrinsic +1.75 weight.
         damaged_q = state(
             board="ALIQ/OTAA/AAAA/AAAA",

@@ -355,7 +355,9 @@ def adjusted_word_length(
     for letter, index in zip(word, path):
         if not state.zero_damage[index]:
             value += LETTER_BONUSES.get(letter, 0.0)
-    return min(max(DAMAGE_BY_LENGTH), math.floor(value + 1e-9))
+    # BattleEngine passes TileEngine:GetWordValue through math.round before
+    # indexing gDamageByWordLength. PopCap's positive values round .5 upward.
+    return min(max(DAMAGE_BY_LENGTH), math.floor(value + 0.5 + 1e-9))
 
 
 def load_metal_words(path: Path) -> frozenset[str]:

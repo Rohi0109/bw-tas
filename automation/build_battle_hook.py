@@ -51,7 +51,7 @@ def main() -> None:
     )
     submit = chunk.protos[bound_method_proto(chunk, "SubmitTiles")]
     transform.inject_self_call(
-        submit, "AutomationAttackSubmitted", arg_regs=[],
+        submit, "AutomationAttackSubmitted", arg_regs=[2],
         ret_reg=submit.maxstack, at_pc=0,
     )
     # Native widget and battle-state paths use different entry points. Hook
