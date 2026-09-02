@@ -28,6 +28,7 @@ from continuous_runner import (
     sphinx_allows_damage_fallback,
     is_book3_final_gauntlet, should_use_health_potion,
     should_use_powerup_potion,
+    should_retry_play_tutorial,
     should_confirm_book_movie_skip,
     immediate_defeated_reset_reason,
     should_arm_boss_reset_on_zero_health,
@@ -549,6 +550,14 @@ class ContinuousRunnerTests(unittest.TestCase):
         self.assertTrue(is_initial_play_tutorial(board, "interrupt", None, 1))
         self.assertFalse(is_initial_play_tutorial(board, "conversation", None, 0))
         self.assertFalse(is_initial_play_tutorial("PLAY/AAAA/AAAA/AAAA", "interrupt", None, 0))
+
+    def test_play_retries_fixed_path_only_on_bounded_tutorial_pulses(self):
+        board = "SFAE/PFUN/RJDY/TLIS"
+        self.assertFalse(should_retry_play_tutorial("interrupt", 4, True, board))
+        self.assertTrue(should_retry_play_tutorial("interrupt", 5, True, board))
+        self.assertTrue(should_retry_play_tutorial("interrupt", 10, False, board))
+        self.assertFalse(should_retry_play_tutorial("convpanel", 10, True, board))
+        self.assertFalse(should_retry_play_tutorial("interrupt", 10, False, "AAAA/AAAA/AAAA/AAAA"))
 
     def test_active_play_marker_is_recovered_at_startup(self):
         active = (

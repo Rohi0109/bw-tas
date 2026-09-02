@@ -166,6 +166,16 @@ def ready_sequence_is_fresh(sequence: int, required_after: int | None) -> bool:
     return required_after is None or sequence > required_after
 
 
+def should_retry_play_tutorial(
+    source: str, pulse: int, tutorial_active: bool, board: str | None,
+) -> bool:
+    return bool(
+        source == "interrupt"
+        and (tutorial_active or board == TUTORIAL_PLAY_BOARD)
+        and pulse >= 5 and pulse % 5 == 0
+    )
+
+
 def lua_runtime_is_waiting(text: str) -> bool:
     """Recognize the debugger pause emitted by the embedded Lua runtime."""
     marker_at = text.rfind(LUA_WAIT_MARKER)
@@ -1427,6 +1437,15 @@ def main() -> None:
                     board == TUTORIAL_PLAY_BOARD or tutorial_interrupt_active
                 ):
                     suppress = True
+                if should_retry_play_tutorial(
+                    source, pulse, tutorial_interrupt_active, board,
+                ):
+                    print(
+                        f"PLAY remains active at pulse {pulse}; replaying its "
+                        "fixed tile path to advance the first missing step.",
+                        flush=True,
+                    )
+                    controller.play_tutorial_play(args.delay)
                 if suppress:
                     print(
                         f"Lua dialogue pulse {pulse}: source={source}; "

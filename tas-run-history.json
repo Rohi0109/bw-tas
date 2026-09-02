@@ -90,6 +90,23 @@
       "live_book": 1,
       "splits": [],
       "finished_at": null
+    },
+    {
+      "version": 2,
+      "started_at": 1788319117.7954462,
+      "started_at_iso": "2026-09-02T03:18:37.795446+00:00",
+      "current": {
+        "book": 1,
+        "chapter": 1,
+        "started_at": 1788319117.7954462,
+        "clean": false,
+        "issues": [
+          "tutorial-input-stall"
+        ]
+      },
+      "live_book": 1,
+      "splits": [],
+      "finished_at": null
     }
   ]
 }
