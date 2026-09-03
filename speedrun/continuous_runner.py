@@ -67,6 +67,17 @@ ZERO_HEALTH_RE = re.compile(r"AUTOMATION_ZERO_HEALTH=(?P<enemy>[^|]+)\|E")
 ATTACK_SUBMITTED_RE = re.compile(
     r"AUTOMATION_ATTACK_SUBMITTED=(?P<enemy>[^|]+)\|E"
 )
+SELECTION_RE = re.compile(
+    r"AUTOMATION_SELECTION=(?P<count>\d+)\|(?P<value>-?\d+(?:\.\d+)?)\|"
+    r"(?P<valid>[01])\|E"
+)
+ATTACK_READY_RE = re.compile(
+    r"AUTOMATION_ATTACK_READY=(?P<count>\d+)\|"
+    r"(?P<value>-?\d+(?:\.\d+)?)\|E"
+)
+POWERUP_STATE_RE = re.compile(
+    r"AUTOMATION_POWERUP_STATE=(?P<active>[01])\|(?P<input_ready>[01])\|E"
+)
 RESET_READY_RE = re.compile(
     r"AUTOMATION_BOSS_RESET_READY=(?P<enemy>[^|]+)\|E"
 )
@@ -337,6 +348,7 @@ def should_use_powerup_potion(
     return bool(
         candidate is not None
         and state.attack_potion_available
+        and not state.player_powered_up
         and not candidate.lethal
         and candidate.damage * 1.25 >= state.hp
     )
@@ -467,6 +479,67 @@ def dialogue_pulse_suppressed(
         boss_reset_pending or treasure_active
         or chapter_transition or menu_transition
     )
+
+
+def select_and_attack_when_native_ready(
+    controller: X11Keyboard, log_path: Path, board: str, word: str,
+    delay: float, path: tuple[int, ...] | None, timeout: float = 8.0,
+) -> bool:
+    """Click Attack only after Deluxe owns the complete intended selection."""
+    if log_path.exists():
+        existing = list(SELECTION_RE.finditer(
+            log_path.read_text(encoding="utf-8", errors="replace")[-8192:]
+        ))
+        if existing and int(existing[-1].group("count")) != 0:
+            controller.clear_selection(delay)
+            time.sleep(delay)
+    start = log_path.stat().st_size if log_path.exists() else 0
+    controller.select_word(board, word, delay, path, clear_first=False)
+    deadline = time.monotonic() + timeout
+    with log_path.open("r", encoding="utf-8", errors="replace") as log:
+        log.seek(start)
+        while time.monotonic() < deadline:
+            text = log.read()
+            matches = list(ATTACK_READY_RE.finditer(text))
+            if matches:
+                latest = matches[-1]
+                if int(latest.group("count")) == len(path or word):
+                    controller.click_attack(delay)
+                    return True
+            # Long-word presentation owns BattleEngine's generic interrupt.
+            # Its Lua-authorized safe-point pulses advance the animation; the
+            # rack remains untouched until ATTACK_READY arrives afterward.
+            for pulse in DIALOG_PULSE_RE.finditer(text):
+                if pulse.group("source") == "interrupt":
+                    controller.advance_dialog("interrupt", delay)
+            if INCAP_OVERLAY_RE.search(text):
+                return False
+            time.sleep(0.01)
+    return False
+
+
+def activate_powerup_when_native_ready(
+    controller: X11Keyboard, log_path: Path, delay: float,
+    timeout: float = 3.0,
+) -> bool:
+    """Use Power-Up and wait until its native effect yields input ownership."""
+    controller.clear_selection(delay)
+    start = log_path.stat().st_size if log_path.exists() else 0
+    controller.use_powerup_potion(max(0.8, delay))
+    deadline = time.monotonic() + timeout
+    with log_path.open("r", encoding="utf-8", errors="replace") as log:
+        log.seek(start)
+        while time.monotonic() < deadline:
+            matches = list(POWERUP_STATE_RE.finditer(log.read()))
+            if matches:
+                latest = matches[-1]
+                if (
+                    latest.group("active") == "1"
+                    and latest.group("input_ready") == "1"
+                ):
+                    return True
+            time.sleep(0.01)
+    return False
 
 
 def clear_special_transitions_on_chapter_start(
@@ -705,6 +778,7 @@ def main() -> None:
     submitted_word: str | None = None
     submitted_path: tuple[int, ...] | None = None
     input_confirmed = True
+    word_presentation_active = False
     input_attempts = 0
     input_confirm_at = float("inf")
     tutorial_play_submitted = False
@@ -1119,7 +1193,22 @@ def main() -> None:
                         "one-shot; activating it.",
                         flush=True,
                     )
-                    controller.use_powerup_potion(max(0.8, args.delay))
+                    if not activate_powerup_when_native_ready(
+                        controller, log_path, args.delay,
+                    ):
+                        print(
+                            "Power-Up did not reach its native input-ready "
+                            "state; leaving the rack untouched.", flush=True,
+                        )
+                        submitted_board = board
+                        submitted_sequence = deluxe_state.sequence
+                        ready = False
+                        deadline = time.monotonic() + args.timeout
+                        continue
+                    print(
+                        "Native Power-Up activation confirmed; selecting the "
+                        "finishing word.", flush=True,
+                    )
                 if (
                     args.layout == "deluxe" and deluxe_state is not None
                     and should_use_purification_potion(deluxe_state, selected)
@@ -1136,11 +1225,22 @@ def main() -> None:
                     )
                     controller.use_purification_potion(max(0.8, args.delay))
                 attack_started_at = time.monotonic()
-                controller.play_word(
-                    board, word, args.delay, args.settle, path,
-                    clear_first=False,
-                )
-                attack_clicked_at = time.monotonic()
+                if args.layout == "deluxe":
+                    native_ready = select_and_attack_when_native_ready(
+                        controller, log_path, board, word, args.delay, path,
+                    )
+                    attack_clicked_at = time.monotonic() if native_ready else None
+                    if not native_ready:
+                        print(
+                            "Native selection did not reach the complete valid "
+                            "word; Attack was not clicked.", flush=True,
+                        )
+                else:
+                    controller.play_word(
+                        board, word, args.delay, args.settle, path,
+                        clear_first=False,
+                    )
+                    attack_clicked_at = time.monotonic()
                 submitted_board = board
                 submitted_word = word
                 submitted_path = path
@@ -1326,10 +1426,23 @@ def main() -> None:
                     )
                     controller.dismiss_invalid_word_dialog(args.delay)
                     retry_delay = args.delay * input_attempts
-                    controller.play_word(
-                        submitted_board, submitted_word, retry_delay, args.settle,
-                        submitted_path,
-                    )
+                    if args.layout == "deluxe":
+                        native_ready = select_and_attack_when_native_ready(
+                            controller, log_path, submitted_board,
+                            submitted_word, retry_delay, submitted_path,
+                        )
+                        if native_ready:
+                            submitted_attack_at = time.monotonic()
+                        else:
+                            print(
+                                "Native selection did not reach the complete "
+                                "valid word; Attack was not clicked.", flush=True,
+                            )
+                    else:
+                        controller.play_word(
+                            submitted_board, submitted_word, retry_delay,
+                            args.settle, submitted_path,
+                        )
                     input_confirm_at = time.monotonic() + args.input_confirm_timeout
                 if args.layout == "deluxe":
                     polled_state = parse_state(
@@ -1359,6 +1472,17 @@ def main() -> None:
             dialog_active = DIALOG_ACTIVE_RE.search(line)
             if dialog_active:
                 active_dialog = dialog_active.group("source")
+                word_presentation_active = bool(
+                    active_dialog == "interrupt"
+                    and not input_confirmed
+                    and submitted_attack_at is not None
+                )
+                if word_presentation_active:
+                    print(
+                        "Ignoring completed-word presentation interrupt; "
+                        "awaiting native ATTACK acknowledgement.", flush=True,
+                    )
+                    continue
                 if convpanel_supersedes_navigation_transition(active_dialog):
                     menu_reentry_pending = False
                     menu_reentry_at = float("inf")
@@ -1444,6 +1568,7 @@ def main() -> None:
             if dialog_inactive:
                 active_dialog = None
                 tutorial_interrupt_active = False
+                word_presentation_active = False
                 if menu_reset_dialog_seen and menu_reentry_pending:
                     print(
                         "Post-boss result overlay closed after blocking the "
@@ -1479,6 +1604,8 @@ def main() -> None:
                 if source == "interrupt" and (
                     board == TUTORIAL_PLAY_BOARD or tutorial_interrupt_active
                 ):
+                    suppress = True
+                if word_presentation_active:
                     suppress = True
                 if suppress:
                     print(

@@ -401,9 +401,10 @@ class X11Keyboard:
             raise RuntimeError("Profile automation is calibrated only for Deluxe")
         width, height = self._size(self.window)
         self.focus()
-        # At 800x600 the underlined link is centered around client y=216.
-        # 0.340 lands in the blank welcome panel just above it.
-        self.click(int(width * 0.500), int(height * 0.360), delay)
+        # XTranslateCoordinates resolves the actual 800x600 game child, whose
+        # underlined link is centered at y=210. Points below it hit the welcome
+        # panel and enter Adventure instead of opening Select a User.
+        self.click(int(width * 0.500), int(height * 0.350), delay)
 
     def delete_selected_user(self, delay: float) -> None:
         """Click Delete for the currently selected user."""
@@ -506,6 +507,47 @@ class X11Keyboard:
                 row, column = choices.pop(0)
             self.click(int(width * tile_x[column]), int(height * tile_y[row]), delay)
         time.sleep(settle)
+        self.click_attack(delay)
+
+    def select_word(
+        self, board_text: str, word: str, delay: float,
+        path: tuple[int, ...] | None = None, clear_first: bool = True,
+    ) -> None:
+        """Select a word without clicking Attack."""
+        self.focus()
+        if clear_first:
+            self.clear_selection(delay)
+        board = parse_board(board_text)
+        positions: dict[str, list[tuple[int, int]]] = {}
+        for row, values in enumerate(board.grid):
+            for column, letter in enumerate(values):
+                positions.setdefault(letter, []).append((row, column))
+        width, height = self._size(self.window)
+        tile_x = (
+            (0.4050, 0.4710, 0.5340, 0.5960) if self.layout == "deluxe"
+            else (0.3815, 0.4610, 0.5430, 0.6220)
+        )
+        tile_y = (
+            (0.5617, 0.6483, 0.7333, 0.8183) if self.layout == "deluxe"
+            else (0.5060, 0.6200, 0.7310, 0.8420)
+        )
+        for offset, letter in enumerate(word.upper()):
+            if path is not None:
+                row, column = divmod(path[offset], 4)
+                if board.grid[row][column] != letter:
+                    raise RuntimeError(
+                        f"Optimizer path points at {board.grid[row][column]}, expected {letter}"
+                    )
+            else:
+                choices = positions.get(letter)
+                if not choices:
+                    raise RuntimeError(f"No unused {letter} tile for {word.upper()}")
+                row, column = choices.pop(0)
+            self.click(int(width * tile_x[column]), int(height * tile_y[row]), delay)
+
+    def click_attack(self, delay: float) -> None:
+        width, height = self._size(self.window)
+        self.focus()
         self.click(width // 2, int(height * 0.963), delay)
 
     def play_tutorial_step(self, letter: str, delay: float) -> None:

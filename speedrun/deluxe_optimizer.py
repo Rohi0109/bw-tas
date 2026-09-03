@@ -26,7 +26,7 @@ PLAYER_STATUS_RE = re.compile(
     r"AUTOMATION_PLAYER_STATUS=(?P<seq>\d+)\|(?P<stunned>[01])\|"
     r"(?P<health_potion>[01])(?:\|(?P<damage_over_time>[01]))?"
     r"(?:\|(?P<petrified>[01]))?(?:\|(?P<attack_potion>[01]))?"
-    r"(?:\|(?P<frozen>[01]))?\|E"
+    r"(?:\|(?P<frozen>[01]))?(?:\|(?P<powered_up>[01]))?\|E"
 )
 LETTERS_RE = re.compile(
     r"AUTOMATION_LETTERS=(?P<seq>\d+)\|(?P<row>[0-3])\|(?P<value>[A-Z]{4})\|E"
@@ -210,6 +210,7 @@ class DeluxeState:
     player_petrified: bool = False
     health_potion_available: bool = False
     attack_potion_available: bool = False
+    player_powered_up: bool = False
     player_has_damage_over_time: bool = False
     zero_damage: tuple[bool, ...] = (False,) * 16
     rng_calls: int = -1
@@ -318,6 +319,11 @@ def parse_state(text: str) -> DeluxeState | None:
         attack_potion_available=(
             player_statuses[-1].group("attack_potion") == "1"
             if player_statuses and player_statuses[-1].group("attack_potion")
+            else False
+        ),
+        player_powered_up=(
+            player_statuses[-1].group("powered_up") == "1"
+            if player_statuses and player_statuses[-1].group("powered_up")
             else False
         ),
         player_has_damage_over_time=(

@@ -1,4 +1,62 @@
 function BattleEngine:AutomationDumpDialogs()
+  local playerPoweredUp = false
+  if self.mPlayerPtr ~= nil and self.mPlayerPtr.mStatusEffects ~= nil then
+    for effectKey, effectValue in pairs(self.mPlayerPtr.mStatusEffects) do
+      local effect = effectValue
+      if type(effect) ~= "table" and type(effectKey) == "table" then
+        effect = effectKey
+      end
+      if type(effect) == "table" and
+          (effect.mClassName == "DamageMultiplierEffect" or
+           effect.classname == "DamageMultiplierEffect" or
+           effect.mEffectPAMName == "powerup") then
+        playerPoweredUp = true
+      end
+    end
+  end
+  local powerupInputClear = playerPoweredUp and
+    not self.mInterruptState and self.mLevelupEffect == nil and
+    self.mGridOverlayPAM == nil and
+    not (convpanel ~= nil and convpanel.Active ~= nil and convpanel.Active())
+  if powerupInputClear then
+    if gAutomationPowerupReadyUpdates == nil then
+      gAutomationPowerupReadyUpdates = 0
+    end
+    gAutomationPowerupReadyUpdates = gAutomationPowerupReadyUpdates + 1
+  else
+    gAutomationPowerupReadyUpdates = 0
+  end
+  -- AttackItem installs the effect before its visual handoff has settled.
+  -- Require one second of native 100 Hz updates with uninterrupted ownership.
+  local powerupInputReady = powerupInputClear and
+    gAutomationPowerupReadyUpdates >= 100
+  local powerupSignature = (playerPoweredUp and "1" or "0") .. "|" ..
+    (powerupInputReady and "1" or "0")
+  if gAutomationPowerupSignature ~= powerupSignature then
+    gAutomationPowerupSignature = powerupSignature
+    print("AUTOMATION_POWERUP_STATE=" .. powerupSignature .. "|E")
+  end
+  local selectedCount = 0
+  local selectedValue = 0
+  local selectedValid = 0
+  if gTileEngine ~= nil and gTileTable ~= nil then
+    local selectedTiles = {}
+    for _, tile in pairs(gTileTable) do
+      if tile.mCObj ~= nil and tile.mCObj.IsSelected ~= nil and
+          tile.mCObj.IsSelected(tile.mCObj) then
+        selectedCount = selectedCount + 1
+        table.insert(selectedTiles, tile)
+      end
+    end
+    selectedValue = gTileEngine.GetWordValue(gTileEngine, selectedTiles)
+    if gTileEngine.mHaveValidWord then selectedValid = 1 end
+    local selectedSignature = selectedCount .. "|" .. selectedValue .. "|" ..
+      selectedValid
+    if gAutomationSelectionSignature ~= selectedSignature then
+      gAutomationSelectionSignature = selectedSignature
+      print("AUTOMATION_SELECTION=" .. selectedSignature .. "|E")
+    end
+  end
   if gAutomationNativeValuePending and gTileEngine ~= nil and
       self.mSubmittedTileTables ~= nil then
     local nativeValue = gTileEngine.GetWordValue(
@@ -203,6 +261,28 @@ function BattleEngine:AutomationDumpDialogs()
       gAutomationDialogPulse = gAutomationDialogPulse + 1
       print("AUTOMATION_DIALOG_PULSE=" .. dialogSource .. "|" ..
         gAutomationDialogSequence .. "|" .. gAutomationDialogPulse .. "|E")
+    end
+  end
+
+  local attackInputClear = selectedCount > 0 and selectedValid == 1 and
+    dialogSource == nil and self.mGridOverlayPAM == nil
+  if attackInputClear then
+    if gAutomationAttackReadyUpdates == nil then
+      gAutomationAttackReadyUpdates = 0
+    end
+    gAutomationAttackReadyUpdates = gAutomationAttackReadyUpdates + 1
+  else
+    gAutomationAttackReadyUpdates = 0
+    gAutomationAttackReadySignature = nil
+  end
+  -- The lit Attack button can still reject MouseUp for a few updates after a
+  -- long-word presentation closes. Fifteen clean updates matches the hook's
+  -- existing native retry cadence and eliminates that post-animation race.
+  if attackInputClear and gAutomationAttackReadyUpdates >= 15 then
+    local attackReadySignature = selectedCount .. "|" .. selectedValue
+    if gAutomationAttackReadySignature ~= attackReadySignature then
+      gAutomationAttackReadySignature = attackReadySignature
+      print("AUTOMATION_ATTACK_READY=" .. attackReadySignature .. "|E")
     end
   end
 

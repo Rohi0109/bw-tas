@@ -4,6 +4,7 @@ from dataclasses import replace
 from pathlib import Path
 
 from continuous_runner import (
+    activate_powerup_when_native_ready,
     ATTACK_SUBMITTED_RE, DEFEATED_RE, DIALOG_ACTIVE_RE, DIALOG_PULSE_RE,
     INCAP_OVERLAY_RE, MINIGAME_PROMPT_RE, PLAYER_STUNNED_RE, PLAY_READY_RE,
     RESET_READY_RE,
@@ -24,6 +25,7 @@ from continuous_runner import (
     read_latest_dialog, read_screen_blocker,
     ready_sequence_is_fresh,
     read_seed, sphinx_candidate,
+    select_and_attack_when_native_ready,
     state_is_incapacitated,
     telemetry_context,
     unresolved_play_tutorial,
@@ -42,12 +44,154 @@ from live_runner import X11Keyboard
 
 
 class ContinuousRunnerTests(unittest.TestCase):
+    def test_powerup_waits_for_native_effect_and_input_ownership(self):
+        with tempfile.TemporaryDirectory() as directory:
+            log_path = Path(directory) / "lua.log"
+            log_path.write_text("", encoding="utf-8")
+
+            class Controller:
+                def clear_selection(self, _delay):
+                    pass
+
+                def use_powerup_potion(self, _delay):
+                    with log_path.open("a", encoding="utf-8") as log:
+                        log.write("AUTOMATION_POWERUP_STATE=1|1|E\n")
+
+            self.assertTrue(activate_powerup_when_native_ready(
+                Controller(), log_path, 0.01, timeout=0.05,
+            ))
+
+    def test_powerup_does_not_select_during_native_interrupt(self):
+        with tempfile.TemporaryDirectory() as directory:
+            log_path = Path(directory) / "lua.log"
+            log_path.write_text("", encoding="utf-8")
+
+            class Controller:
+                def clear_selection(self, _delay):
+                    pass
+
+                def use_powerup_potion(self, _delay):
+                    with log_path.open("a", encoding="utf-8") as log:
+                        log.write("AUTOMATION_POWERUP_STATE=1|0|E\n")
+
+            self.assertFalse(activate_powerup_when_native_ready(
+                Controller(), log_path, 0.01, timeout=0.02,
+            ))
+
+    def test_attack_waits_for_complete_native_selection(self):
+        with tempfile.TemporaryDirectory() as directory:
+            log_path = Path(directory) / "lua.log"
+            log_path.write_text("", encoding="utf-8")
+            attacks = []
+
+            class Controller:
+                def select_word(self, *_args, **_kwargs):
+                    log_path.write_text(
+                        "AUTOMATION_ATTACK_READY=8|8.0|E\n", encoding="utf-8"
+                    )
+
+                def click_attack(self, delay):
+                    attacks.append(delay)
+
+            self.assertTrue(select_and_attack_when_native_ready(
+                Controller(), log_path, "AAAA/AAAA/AAAA/AAAA", "FANJETS",
+                0.08, tuple(range(8)), timeout=0.05,
+            ))
+            self.assertEqual(attacks, [0.08])
+
+    def test_attack_is_not_clicked_for_partial_native_selection(self):
+        with tempfile.TemporaryDirectory() as directory:
+            log_path = Path(directory) / "lua.log"
+            log_path.write_text("", encoding="utf-8")
+            attacks = []
+
+            class Controller:
+                def select_word(self, *_args, **_kwargs):
+                    log_path.write_text(
+                        "AUTOMATION_SELECTION=7|7.0|1|E\n", encoding="utf-8"
+                    )
+
+                def click_attack(self, delay):
+                    attacks.append(delay)
+
+            self.assertFalse(select_and_attack_when_native_ready(
+                Controller(), log_path, "AAAA/AAAA/AAAA/AAAA", "FANJETS",
+                0.08, tuple(range(8)), timeout=0.02,
+            ))
+            self.assertEqual(attacks, [])
+
+    def test_complete_long_word_beats_generic_interrupt_fallback(self):
+        with tempfile.TemporaryDirectory() as directory:
+            log_path = Path(directory) / "lua.log"
+            log_path.write_text("", encoding="utf-8")
+            attacks = []
+
+            class Controller:
+                def select_word(self, *_args, **_kwargs):
+                    log_path.write_text(
+                        "AUTOMATION_SELECTION=10|12.5|1|E\n"
+                        "AUTOMATION_DIALOG_ACTIVE=interrupt|3|E\n"
+                        "AUTOMATION_DIALOG_INACTIVE=3|E\n"
+                        "AUTOMATION_ATTACK_READY=10|12.5|E\n",
+                        encoding="utf-8",
+                    )
+
+                def click_attack(self, delay):
+                    attacks.append(delay)
+
+            self.assertTrue(select_and_attack_when_native_ready(
+                Controller(), log_path, "AAAA/AAAA/AAAA/AAAA", "ZIDOVUDINE",
+                0.08, tuple(range(10)), timeout=0.05,
+            ))
+            self.assertEqual(attacks, [0.08])
+
+    def test_partial_selection_waits_through_generic_interrupt(self):
+        with tempfile.TemporaryDirectory() as directory:
+            log_path = Path(directory) / "lua.log"
+            log_path.write_text("", encoding="utf-8")
+            attacks = []
+
+            class Controller:
+                def select_word(self, *_args, **_kwargs):
+                    log_path.write_text(
+                        "AUTOMATION_SELECTION=9|11.5|0|E\n"
+                        "AUTOMATION_DIALOG_ACTIVE=interrupt|3|E\n",
+                        encoding="utf-8",
+                    )
+
+                def click_attack(self, delay):
+                    attacks.append(delay)
+
+            self.assertFalse(select_and_attack_when_native_ready(
+                Controller(), log_path, "AAAA/AAAA/AAAA/AAAA", "ZIDOVUDINE",
+                0.08, tuple(range(10)), timeout=0.02,
+            ))
+            self.assertEqual(attacks, [])
+
     def test_lua_board_hook_never_wraps_engine_random(self):
         hook = (
             Path(__file__).resolve().parents[2]
             / "automation/lua_hook/DumpBoard.lua"
         ).read_text(encoding="utf-8")
         self.assertNotIn("math.random =", hook)
+
+    def test_powerup_hook_requires_stable_native_updates_before_rack_release(self):
+        hook = (
+            Path(__file__).resolve().parents[2]
+            / "automation/lua_hook/DumpDialogs.lua"
+        ).read_text(encoding="utf-8")
+        self.assertIn("gAutomationPowerupReadyUpdates >= 100", hook)
+        self.assertIn(
+            "local powerupInputClear = playerPoweredUp and",
+            hook,
+        )
+
+    def test_attack_hook_requires_post_presentation_stability(self):
+        hook = (
+            Path(__file__).resolve().parents[2]
+            / "automation/lua_hook/DumpDialogs.lua"
+        ).read_text(encoding="utf-8")
+        self.assertIn("gAutomationAttackReadyUpdates >= 15", hook)
 
     def test_lua_runtime_wait_marker_is_detected_near_log_tail(self):
         marker = "Program in waiting. Type go() or press F5 to continue execution."

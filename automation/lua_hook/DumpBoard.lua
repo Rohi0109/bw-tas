@@ -274,6 +274,7 @@ function TileEngine:AutomationDumpBoard()
     local playerPetrified = false
     local healthPotionAvailable = false
     local attackPotionAvailable = false
+    local playerPoweredUp = false
     local playerHasDamageOverTime = false
     local offense = 0
     local treasures = "none"
@@ -305,13 +306,24 @@ function TileEngine:AutomationDumpBoard()
           attackPotionAvailable = player:HasAttackPotion()
         end
         if player.mStatusEffects ~= nil then
-          for _, effect in pairs(player.mStatusEffects) do
+          for effectKey, effectValue in pairs(player.mStatusEffects) do
+            local effect = effectValue
+            -- Creature stores effects as a set in some builds: the effect is
+            -- the table key and the value is only a marker/count.
+            if type(effect) ~= "table" and type(effectKey) == "table" then
+              effect = effectKey
+            end
             if type(effect) == "table" then
               local className = effect.mClassName
               local pamName = effect.mEffectPAMName
               if className == "FireAilment" or className == "PoisonAilment" or
                   pamName == "burning" or pamName == "poison" then
                 playerHasDamageOverTime = true
+              end
+              if className == "DamageMultiplierEffect" or
+                  effect.classname == "DamageMultiplierEffect" or
+                  pamName == "powerup" then
+                playerPoweredUp = true
               end
             end
           end
@@ -397,7 +409,8 @@ function TileEngine:AutomationDumpBoard()
       (playerHasDamageOverTime and "1" or "0") .. "|" ..
       (playerPetrified and "1" or "0") .. "|" ..
       (attackPotionAvailable and "1" or "0") .. "|" ..
-      (playerFrozen and "1" or "0") .. "|E")
+      (playerFrozen and "1" or "0") .. "|" ..
+      (playerPoweredUp and "1" or "0") .. "|E")
     print("AUTOMATION_RNG=" .. gAutomationSequence .. "|-1|E")
     print("AUTOMATION_READY_SEQ=" .. gAutomationSequence .. "|E")
     print("AUTOMATION_READY=" .. snapshot)
