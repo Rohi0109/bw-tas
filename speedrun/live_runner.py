@@ -401,6 +401,10 @@ class X11Keyboard:
             raise RuntimeError("Profile automation is calibrated only for Deluxe")
         width, height = self._size(self.window)
         self.focus()
+        # The profile command is normally launched from a focused terminal.
+        # Let Wine receive the focus transition before the first menu click;
+        # otherwise Mutter can consume it as window activation only.
+        time.sleep(0.25)
         # XTranslateCoordinates resolves the actual 800x600 game child, whose
         # underlined link is centered at y=210. Points below it hit the welcome
         # panel and enter Adventure instead of opening Select a User.
