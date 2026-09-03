@@ -1,7 +1,5 @@
 things to do -
-the entire chapter select is complelty broken i would just start over and test that specifially as well as skipping dialgouge IN the chapter select
-also need to be able to skip custcens from book 1 and 2
-do some research on how to beat the petrify meahcianc considsnrtly on the web maybe powerups to reduce turns on thesse ones?
-sotimes the tiles miss the rety is great but i was wondering if we could fix lowest priority
-when Lex is Lua-confirmed stunned, click a selectable tile to skip/shorten the stun animation before choosing the turn; verify the click cannot accidentally submit or corrupt the next word
-build chapter timing into the TAS telemetry: start on Lua-confirmed chapter gameplay entry and stop only on a confirmed native main-menu exit after the chapter boss; persist fastest chapter times as high scores and overwrite a record only when the new time is lower
+the enter strat has broken it a little im not sure why the input is getting swallower/is slower if the click is faster we coud do
+we gotta update the tas logs to logging because i have no clue what is going on
+have logs for clikcing enter and stuff so its a lot easier to debpg
+we gotta remove this lua dialogue pulse i think its the source of our issue

@@ -1,0 +1,132 @@
+things to add
+we can auto have a scramble for ch4 as its the only time that we need to scramble so we can save a second or 2
+we need to fix/understnad why the eneigne misses the rack and has to rery as its a run killer
+Board ready: ASUT/IBEO/NROE/SGEO
+Board update: NMDA/EHAI/EIUR/SGOO
+State 17: Sea Serpent HP 6/6; treasures=bow of zyx,golden fleece
+  chose ENTEROBIASES damage=6.00 overkill=0.00 tier=None strategy=shortest-lethal time=1.31s; shortest=ENTEROBIASES; max=SUBROGATIONS
+Attack 16: ASUT/IBEO/NROE/SGEO -> ENTEROBIASES (6.00 estimated damage)
+No READY event after board update; probing the safe dialogue point (1).
+No ATTACK acknowledgement; clearing and retrying ENTEROBIASES (2/3).
+No READY event after board update; probing the safe dialogue point (2).
+No READY event after board update; probing the safe dialogue point (3).
+No ATTACK acknowledgement; clearing and retrying ENTEROBIASES (3/3).
+Complete state 18 recovered from log.
+State 18: Siren HP 5/5; treasures=bow of zyx,golden fleece
+
+
+ READY event after board update; probing the safe dialogue point (1).
+No READY event after board update; probing the safe dialogue point (2).
+Lua confirmed Lex is frozen and Purify is available; cancelling the lost-turn status.
+Native incapacitation overlay remains active while Purify confirmation is pending; continuation click suppressed.
+Native incapacitation overlay remains active while Purify confirmation is pending; continuation click suppressed.
+Purify is still unconfirmed; retrying the blue potion (2/3).
+Native incapacitation overlay remains active while Purify confirmation is pending; continuation click suppressed.
+Fresh READY sequence 69 confirmed after overlay exit; rack input rearmed.
+Board ready: INER/OTHL/NGUE/ENUU
+Lua confirmed incapacitation ended; clicking the final native continuation card once UI ownership has returned.
+Incapacitation cleared; waiting for a newer native READY sequence before touching the rack.
+State 69: Hydra (Head 4) HP 4/4; treasures=boots of theseus,bow of zyx,heph's hammer
+  chose ENLIGHTEN damage=5.25 overkill=1.25 tier=None strategy=shortest-lethal time=1.07s; shortest=ENLIGHTEN; max=UNRELENTING
+Health potion required at 4.25/5; waiting for native consumption confirmation before attacking.
+Board ready: INER/OTHL/NGUE/ENUU
+Native health-potion consumption confirmed: HP 4.25 -> 5; potion_available=1.
+Board ready: INER/OTHL/NGUE/ENUU
+State 71: Hydra (Head 4) HP 4/4; treasures=boots of theseus,bow of zyx,heph's hammer
+  chose ENLIGHTEN damage=5.25 overkill=1.25 tier=None strategy=shortest-lethal time=1.07s; shortest=ENLIGHTEN; max=UNRELENTING
+Attack 63: INER/OTHL/NGUE/ENUU -> ENLIGHTEN (5.25 estimated damage)
+No ATTACK acknowledgement; clearing and retrying ENLIGHTEN (2/3).
+No ATTACK acknowledgement; clearing and retrying ENLIGHTEN (3/3).
+like the pruify worked but it hit like b before enlgihted
+
+DY event after board update; probing the safe dialogue point (3).
+No READY event after board update; probing the safe dialogue point (4).
+No READY event after board update; probing the safe dialogue point (5).
+No READY event after board update; probing the safe dialogue point (6).
+No READY event after board update; probing the safe dialogue point (7).
+Fresh READY sequence 77 confirmed after overlay exit; rack input rearmed.
+Board ready: AERR/LSIN/ONUW/EOUF
+State 77: Hydra (Main Head) HP 7/7; treasures=boots of theseus,bow of zyx,heph's hammer
+  chose FORESWEAR damage=7.00 overkill=0.00 tier=None strategy=shortest-lethal time=1.17s; shortest=FORESWEAR; max=IRONWARES
+Attack 66: AERR/LSIN/ONUW/EOUF -> FORESWEAR (7.00 estimated damage)
+No ATTACK acknowledgement; clearing and retrying FORESWEAR (2/3).
+No ATTACK acknowledgement; clearing and retrying FORESWEAR (3/3).
+Dialogue interrupted pending tile input; discarding it until a newer READY sequence.
+Lua dialogue pulse 1: source=interrupt; clicking safe arena point.
+Lua dialogue pulse 2: source=interrupt; clicking safe arena point.
+Lua dialogue pulse 3: source=interrupt; clicking safe arena point.
+Lua dialogue pulse 4: source=interrupt; clicking safe arena point.
+Board update: ETDI/ONIE/LTUO/ONUN
+Lua dialogue pulse 5: source=interrupt; clicking safe arena point.
+Lua dialogue pulse 6: source=interrupt; clicking safe arena point.
+Dialogue exited; waiting for a newer native READY sequence before touching the rack.
+Lua confirmed Hydra (Main Head) reached zero HP; waiting for the Lua
+
+for the nemean lion we missed the exit before when beating steel stymoaina
+ttack 75: EIAL/SOER/WALM/WTNI -> WATERMELONS (11.00 estimated damage)
+No READY event after board update; probing the safe dialogue point (1).
+No ATTACK acknowledgement; clearing and retrying WATERMELONS (2/3).
+Lua confirmed Steel Stymphalian defeated; menu reset after Steel Stymphalian, before boss entrance.
+Lua dialogue pulse 1: source=levelup; suppressed during special-screen transition.
+Lua dialogue pulse 2: source=levelup; suppressed during special-screen transition.
+Lua dialogue pulse 3: source=levelup; suppressed during special-screen transition.
+Lua dialogue pulse 4: source=levelup; suppressed during special-screen transition.
+Lua dialogue pulse 5: source=levelup; suppressed during special-screen transition.
+Lua dialogue pulse 6: source=levelup; suppressed during special-screen transition.
+missed again on nemian
+mplete state 97 recovered from log.
+State 97: Limniad HP 7/18; treasures=arch of xyzzy,boots of theseus,hand of hercules
+  chose BEDRAPING damage=8.50 overkill=1.50 tier=None strategy=overkill-tier time=1.07s; shortest=BEDRAPING; max=BEDRAPING
+Attack 85: OAAN/ABGP/IDGI/IREI -> BEDRAPING (8.50 estimated damage)
+Board ready: OAAN/ABGP/IDGI/IREI
+No ATTACK acknowledgement; clearing and retrying BEDRAPING (2/3).
+No ATTACK acknowledgement; clearing and retrying BEDRAPING (3/3).
+Dialogue interrupted pending tile input; discarding it until a newer READY sequence.
+Lua dialogue pulse 1: source=interrupt; clicking safe arena point.
+Lua dialogue pulse 2: source=interrupt; clicking safe arena point.
+we need to speed up the book 1 to book 2 trnastion and book 2 to book 3 trasntion
+it appears gems ACTUALLY do trnaslte between chapters if im not mistaken so we might need to change our boss final stargey but i would like a test
+also this mgiht fix the edge case of bosses being immune to 3 letter wr like here
+rd ready: AUSR/NADR/VUUI/HJWO
+State 119: Medusa (Boss) HP 16.25/30; treasures=arch of xyzzy,boots of theseus,hand of hercules
+  chose RAINWASH damage=8.50 overkill=-7.75 tier=None strategy=overkill-tier time=1.09s; shortest=none; max=RAINWASH
+Health potion required at 1/6; waiting for native consumption confirmation before attacking.
+Native health-potion consumption confirmed: HP 1 -> 3; potion_available=1.
+Board ready: AUSR/NADR/VUUI/HJWO
+State 120: Medusa (Boss) HP 16.25/30; treasures=arch of xyzzy,boots of theseus,hand of hercules
+  chose RAINWASH damage=8.50 overkill=-7.75 tier=None strategy=overkill-tier time=1.09s; shortest=none; max=RAINWASH
+Health potion required at 3/6; waiting for native consumption confirmation before attacking.
+Native health-potion consumption confirmed: HP 3 -> 5; potion_available=1.
+Board ready: AUSR/NADR/VUUI/HJWO
+State 121: Medusa (Boss) HP 16.25/30; treasures=arch of xyzzy,boots of theseus,hand of hercules
+  chose RAINWASH damage=8.50 overkill=-7.75 tier=None strategy=overkill-tier time=1.09s; shortest=none; max=RAINWASH
+Attack 106: AUSR/NADR/VUUI/HJWO -> RAINWASH (8.50 estimated damage)
+Dialogue interrupted pending tile input; discarding it until a newer READY sequence.
+Lua dialogue pulse 1: source=interrupt; clicking safe arena point.
+Lua dialogue pulse 2: source=interrupt; clicking safe arena point.
+Lua dialogue pulse 3: source=interrupt; clicking safe arena point.
+Board update: IIYI/DUAN/NUDR/VJUO
+Lua dialogue pulse 4: source=interrupt; clicking safe arena point.
+Dialogue exited; waiting for a newer native READY sequence before touching the rack.
+No READY event after board update; probing the safe dialogue point (1).
+No READY event after board update; probing the safe dialogue point (2).
+Fresh READY sequence 122 confirmed after overlay exit; rack input rearmed.
+Board ready: IIYI/DUAN/NUDR/VJUO
+State 122: Medusa (Boss) HP 1.75/30; treasures=arch of xyzzy,boots of theseus,hand of hercules
+  chose AVO damage=2.25 overkill=0.50 tier=None strategy=shortest-lethal time=0.59s; shortest=AVO; max=NONDAIRY
+Attack 107: IIYI/DUAN/NUDR/VJUO -> AVO (2.25 estimated damage)
+No ATTACK acknowledgement; clearing and retrying AVO (2/3).
+No ATTACK acknowledgement; clearing and retrying AVO (3/3).
+Blacklisting unacknowledged word AVO after 3 attempts; trying the next candidate.
+State 122: Medusa (Boss) HP 1.75/30; treasures=arch of xyzzy,boots of theseus,hand of hercules
+  chose JAR damage=2.25 overkill=0.50 tier=None strategy=shortest-lethal time=0.59s; shortest=JAR; max=NONDAIRY
+Attack 108: IIYI/DUAN/NUDR/VJUO -> JAR (2.25 estimated damage)
+No ATTACK acknowledgement; clearing and retrying JAR (2/3).
+No ATTACK acknowledgement; clearing and retrying JAR (3/3).
+Blacklisting unacknowledged word JAR after 3 attempts; trying the next candidate.
+State 122: Medusa (Boss) HP 1.75/30; treasures=arch of xyzzy,boots of theseus,hand of hercules
+WATCHDOG_STALL: lua log unchanged for 20 seconds
+Failure packet: /home/rnadgir/Bookworm-google/runtime/incidents/stall-20260902T053803.854443Z.json
+Stall screenshot: /home/rnadgir/Bookworm-google/runtime/incidents/stall-20260902T053803.854443Z.png
+AUTO_REPAIR: launching Codex for /home/rnadgir/Bookworm-google/runtime/incidents/stall-20260902T053803.854443Z.json
+OpenAI Codex v0.150.1

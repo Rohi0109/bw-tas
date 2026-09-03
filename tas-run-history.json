@@ -107,6 +107,419 @@
       "live_book": 1,
       "splits": [],
       "finished_at": null
+    },
+    {
+      "version": 2,
+      "started_at": 1788319309.6183221,
+      "started_at_iso": "2026-09-02T03:21:49.618322+00:00",
+      "current": {
+        "book": 1,
+        "chapter": 1,
+        "started_at": 1788319309.6183221,
+        "clean": true,
+        "issues": []
+      },
+      "live_book": 1,
+      "splits": [],
+      "finished_at": null
+    },
+    {
+      "version": 2,
+      "started_at": 1788320185.6466255,
+      "started_at_iso": "2026-09-02T03:36:25.646626+00:00",
+      "current": {
+        "book": 1,
+        "chapter": 1,
+        "started_at": 1788320185.6466255,
+        "clean": true,
+        "issues": []
+      },
+      "live_book": 1,
+      "splits": [],
+      "finished_at": null
+    },
+    {
+      "version": 2,
+      "started_at": 1788324007.6375299,
+      "started_at_iso": "2026-09-02T04:40:07.637530+00:00",
+      "current": {
+        "book": 1,
+        "chapter": 6,
+        "started_at": 1788324832.720221,
+        "clean": true,
+        "issues": []
+      },
+      "live_book": 1,
+      "splits": [
+        {
+          "book": 1,
+          "chapter": 1,
+          "started_at": 1788324007.6375299,
+          "clean": true,
+          "issues": [],
+          "ended_at": 1788324208.667768,
+          "elapsed": 201.0302381515503
+        },
+        {
+          "book": 1,
+          "chapter": 2,
+          "started_at": 1788324208.667768,
+          "clean": true,
+          "issues": [],
+          "ended_at": 1788324284.2188697,
+          "elapsed": 75.55110168457031
+        },
+        {
+          "book": 1,
+          "chapter": 3,
+          "started_at": 1788324284.2188697,
+          "clean": true,
+          "issues": [],
+          "ended_at": 1788324383.88939,
+          "elapsed": 99.67052030563354
+        },
+        {
+          "book": 1,
+          "chapter": 4,
+          "started_at": 1788324383.88939,
+          "clean": true,
+          "issues": [],
+          "ended_at": 1788324504.481278,
+          "elapsed": 120.59188795089722
+        },
+        {
+          "book": 1,
+          "chapter": 5,
+          "started_at": 1788324504.481278,
+          "clean": true,
+          "issues": [],
+          "ended_at": 1788324832.720221,
+          "elapsed": 328.2389430999756
+        }
+      ],
+      "finished_at": null
+    },
+    {
+      "version": 2,
+      "started_at": 1788325943.8387673,
+      "started_at_iso": "2026-09-02T05:12:23.838767+00:00",
+      "current": {
+        "book": 1,
+        "chapter": 1,
+        "started_at": 1788325943.8387673,
+        "clean": false,
+        "issues": [
+          "input-retry:FANJETS",
+          "input-retry:AUDITORIES"
+        ]
+      },
+      "live_book": 1,
+      "splits": [],
+      "finished_at": null
+    },
+    {
+      "version": 2,
+      "started_at": 1788326397.8949418,
+      "started_at_iso": "2026-09-02T05:19:57.894942+00:00",
+      "current": {
+        "book": 2,
+        "chapter": 2,
+        "started_at": 1788414466.2016366,
+        "clean": false,
+        "issues": [
+          "input-retry:HOSANNAHS",
+          "input-retry:BAROQELY"
+        ]
+      },
+      "live_book": 2,
+      "splits": [
+        {
+          "book": 1,
+          "chapter": 1,
+          "started_at": 1788326397.8949418,
+          "clean": true,
+          "issues": [],
+          "ended_at": 1788326466.9533658,
+          "elapsed": 69.05842399597168
+        },
+        {
+          "book": 1,
+          "chapter": 2,
+          "started_at": 1788326466.9533658,
+          "clean": false,
+          "issues": [
+            "input-retry:DESPITEFUL"
+          ],
+          "ended_at": 1788326545.6798315,
+          "elapsed": 78.72646570205688
+        },
+        {
+          "book": 1,
+          "chapter": 3,
+          "started_at": 1788326545.6798315,
+          "clean": false,
+          "issues": [
+            "input-retry:ENTEROBIASES",
+            "input-retry:ADMONISHER"
+          ],
+          "ended_at": 1788326650.2343624,
+          "elapsed": 104.55453085899353
+        },
+        {
+          "book": 1,
+          "chapter": 4,
+          "started_at": 1788326650.2343624,
+          "clean": true,
+          "issues": [],
+          "ended_at": 1788326747.9274347,
+          "elapsed": 97.69307231903076
+        },
+        {
+          "book": 1,
+          "chapter": 5,
+          "started_at": 1788326747.9274347,
+          "clean": true,
+          "issues": [],
+          "ended_at": 1788326860.0438263,
+          "elapsed": 112.11639165878296
+        },
+        {
+          "book": 1,
+          "chapter": 6,
+          "started_at": 1788326860.0438263,
+          "clean": false,
+          "issues": [
+            "input-retry:HARDHEADED",
+            "input-retry:BENEVOLENT",
+            "input-retry:VISUALIZER"
+          ],
+          "ended_at": 1788326961.776024,
+          "elapsed": 101.73219776153564
+        },
+        {
+          "book": 1,
+          "chapter": 7,
+          "started_at": 1788326961.776024,
+          "clean": false,
+          "issues": [
+            "input-retry:ENLIGHTEN",
+            "input-retry:FORESWEAR"
+          ],
+          "ended_at": 1788327066.6712713,
+          "elapsed": 104.89524722099304
+        },
+        {
+          "book": 1,
+          "chapter": 8,
+          "started_at": 1788327066.6712713,
+          "clean": false,
+          "issues": [
+            "input-retry:REUNIFYING",
+            "input-retry:UNDERQALIFIED",
+            "input-retry:WATERMELONS"
+          ],
+          "ended_at": 1788327171.8545074,
+          "elapsed": 105.18323612213135
+        },
+        {
+          "book": 1,
+          "chapter": 9,
+          "started_at": 1788327171.8545074,
+          "clean": false,
+          "issues": [
+            "input-retry:FASHIONED",
+            "input-retry:FLAGELLUM",
+            "input-retry:FORECLOSE",
+            "input-retry:BEDRAPING"
+          ],
+          "ended_at": 1788327327.3823922,
+          "elapsed": 155.52788472175598
+        },
+        {
+          "book": 1,
+          "chapter": 10,
+          "started_at": 1788327327.3823922,
+          "clean": false,
+          "issues": [
+            "input-retry:AUDIOVISUAL",
+            "input-retry:MYOPATHY",
+            "input-retry:FORAMINOUS",
+            "input-retry:OVERMANAGE",
+            "input-retry:SEMIDOMED",
+            "input-retry:AVO",
+            "input-retry:JAR"
+          ],
+          "ended_at": 1788413021.2446067,
+          "elapsed": 85693.86221456528
+        },
+        {
+          "book": 2,
+          "chapter": 1,
+          "started_at": 1788413021.2446067,
+          "clean": false,
+          "issues": [
+            "input-retry:ZIDOVUDINE",
+            "input-retry:PERICRANIA",
+            "input-retry:UNJUSTIFIED",
+            "input-retry:EUDAEMONISTIC",
+            "input-retry:TANGIBILITY",
+            "input-retry:UNSUSPECTED"
+          ],
+          "ended_at": 1788414466.2016366,
+          "elapsed": 1444.9570298194885
+        }
+      ],
+      "finished_at": null
+    },
+    {
+      "version": 2,
+      "started_at": 1788414705.6596584,
+      "started_at_iso": "2026-09-03T05:51:45.659658+00:00",
+      "current": {
+        "book": 1,
+        "chapter": 2,
+        "started_at": 1788414792.6535506,
+        "clean": false,
+        "issues": [
+          "input-retry:INTERSTRAIN"
+        ]
+      },
+      "live_book": 1,
+      "splits": [
+        {
+          "book": 1,
+          "chapter": 1,
+          "started_at": 1788414705.6596584,
+          "clean": true,
+          "issues": [],
+          "ended_at": 1788414792.6535506,
+          "elapsed": 86.99389219284058
+        }
+      ],
+      "finished_at": null
+    },
+    {
+      "version": 2,
+      "started_at": 1788414964.296139,
+      "started_at_iso": "2026-09-03T05:56:04.296139+00:00",
+      "current": {
+        "book": 1,
+        "chapter": 5,
+        "started_at": 1788445496.364417,
+        "clean": false,
+        "issues": [
+          "input-retry:FURANOSIDES",
+          "input-retry:EVE"
+        ]
+      },
+      "live_book": 1,
+      "splits": [
+        {
+          "book": 1,
+          "chapter": 1,
+          "started_at": 1788414964.296139,
+          "clean": true,
+          "issues": [],
+          "ended_at": 1788415047.7335272,
+          "elapsed": 83.4373881816864
+        },
+        {
+          "book": 1,
+          "chapter": 2,
+          "started_at": 1788415047.7335272,
+          "clean": true,
+          "issues": [],
+          "ended_at": 1788415138.2797728,
+          "elapsed": 90.54624557495117
+        },
+        {
+          "book": 1,
+          "chapter": 3,
+          "started_at": 1788415138.2797728,
+          "clean": false,
+          "issues": [
+            "input-retry:ABY",
+            "input-retry:HIGH",
+            "input-retry:ARVO"
+          ],
+          "ended_at": 1788445370.2463553,
+          "elapsed": 30231.966582536697
+        },
+        {
+          "book": 1,
+          "chapter": 4,
+          "started_at": 1788445370.2463553,
+          "clean": false,
+          "issues": [
+            "input-retry:AFTERMATHS",
+            "input-retry:ABHORRED"
+          ],
+          "ended_at": 1788445496.364417,
+          "elapsed": 126.11806178092957
+        }
+      ],
+      "finished_at": null
+    },
+    {
+      "version": 2,
+      "started_at": 1788446710.3755972,
+      "started_at_iso": "2026-09-03T14:45:10.375597+00:00",
+      "current": {
+        "book": 1,
+        "chapter": 1,
+        "started_at": 1788446710.3755972,
+        "clean": true,
+        "issues": []
+      },
+      "live_book": 1,
+      "splits": [],
+      "finished_at": null
+    },
+    {
+      "version": 2,
+      "started_at": 1788447248.995243,
+      "started_at_iso": "2026-09-03T14:54:08.995243+00:00",
+      "current": {
+        "book": 1,
+        "chapter": 4,
+        "started_at": 1788447540.068582,
+        "clean": true,
+        "issues": []
+      },
+      "live_book": 1,
+      "splits": [
+        {
+          "book": 1,
+          "chapter": 1,
+          "started_at": 1788447248.995243,
+          "clean": true,
+          "issues": [],
+          "ended_at": 1788447326.3594172,
+          "elapsed": 77.36417412757874
+        },
+        {
+          "book": 1,
+          "chapter": 2,
+          "started_at": 1788447326.3594172,
+          "clean": true,
+          "issues": [],
+          "ended_at": 1788447422.849656,
+          "elapsed": 96.490238904953
+        },
+        {
+          "book": 1,
+          "chapter": 3,
+          "started_at": 1788447422.849656,
+          "clean": false,
+          "issues": [
+            "input-retry:AVA",
+            "input-retry:ARVO"
+          ],
+          "ended_at": 1788447540.068582,
+          "elapsed": 117.21892595291138
+        }
+      ],
+      "finished_at": null
     }
   ]
 }
