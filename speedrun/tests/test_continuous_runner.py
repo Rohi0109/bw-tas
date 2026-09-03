@@ -916,8 +916,12 @@ class ContinuousRunnerTests(unittest.TestCase):
         controller.focus = lambda: None
         clears = []
         clicks = []
+        keys = []
         controller.clear_selection = lambda delay: clears.append(delay)
         controller.click = lambda x, y, delay: clicks.append((x, y))
+        controller.key = lambda name: keys.append(name)
+        controller.x11 = type("X11", (), {"XFlush": lambda *_args: None})()
+        controller.display = None
 
         controller.play_word(
             "TEST/AAAA/AAAA/AAAA", "TEST", 0, 0, (0, 1, 2, 3),
@@ -925,7 +929,8 @@ class ContinuousRunnerTests(unittest.TestCase):
         )
 
         self.assertEqual(clears, [])
-        self.assertEqual(len(clicks), 5)  # four tiles plus Attack
+        self.assertEqual(len(clicks), 4)
+        self.assertEqual(keys, ["Return"])
 
     def test_telemetry_context_uses_timer_when_deluxe_omits_chapter(self):
         state = DeluxeState(
@@ -957,6 +962,9 @@ class ContinuousRunnerTests(unittest.TestCase):
         clears = []
         controller.clear_selection = lambda delay: clears.append(delay)
         controller.click = lambda x, y, delay: None
+        controller.key = lambda _name: None
+        controller.x11 = type("X11", (), {"XFlush": lambda *_args: None})()
+        controller.display = None
 
         controller.play_word(
             "TEST/AAAA/AAAA/AAAA", "TEST", 0, 0, (0, 1, 2, 3)

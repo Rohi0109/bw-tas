@@ -550,9 +550,13 @@ class X11Keyboard:
             self.click(int(width * tile_x[column]), int(height * tile_y[row]), delay)
 
     def click_attack(self, delay: float) -> None:
-        width, height = self._size(self.window)
-        self.focus()
-        self.click(width // 2, int(height * 0.963), delay)
+        """Submit the selected word through Deluxe's keyboard action."""
+        # Selection already focused the Wine client. Refocusing here creates an
+        # asynchronous X11 focus transition at the exact native-ready edge and
+        # can make Return land outside the game even though every tile landed.
+        self.key("Return")
+        self.x11.XFlush(self.display)
+        time.sleep(delay)
 
     def play_tutorial_step(self, letter: str, delay: float) -> None:
         """Click only the tutorial step currently authorized by native Lua."""
