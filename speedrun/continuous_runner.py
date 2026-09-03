@@ -487,7 +487,7 @@ def boss_reset_dialog_recovery_allowed(
     return bool(
         menu_reentry_pending
         and last_boss_reset_key is not None
-        and source in {"interrupt", "convpanel"}
+        and source in {"interrupt", "convpanel", "levelup"}
     )
 
 
@@ -1584,11 +1584,10 @@ def main() -> None:
                 incap_health_submitted = False
                 incap_overlay_retry_at = float("inf")
                 print(
-                    "Lua confirmed incapacitation ended; clicking the final "
-                    "native continuation card once UI ownership has returned.",
+                    "Lua confirmed incapacitation ended; no further overlay "
+                    "click is safe after UI ownership returns to the rack.",
                     flush=True,
                 )
-                controller.dismiss_incapacitation_overlay(args.delay)
                 deadline = time.monotonic() + args.timeout
                 print(
                     "Incapacitation cleared; waiting for a newer native READY "

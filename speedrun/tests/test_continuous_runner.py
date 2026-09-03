@@ -688,7 +688,7 @@ class ContinuousRunnerTests(unittest.TestCase):
         self.assertTrue(
             boss_reset_dialog_recovery_allowed("convpanel", True, reset_key)
         )
-        self.assertFalse(
+        self.assertTrue(
             boss_reset_dialog_recovery_allowed("levelup", True, reset_key)
         )
         self.assertFalse(
@@ -756,6 +756,13 @@ class ContinuousRunnerTests(unittest.TestCase):
         controller.dismiss_incapacitation_overlay(0)
 
         self.assertEqual(clicks, [(400, 480)])
+
+    def test_post_reset_levelup_can_unblock_menu_exit(self):
+        reset_key = (1, 7, 5, "steelstymphalian")
+
+        self.assertTrue(boss_reset_dialog_recovery_allowed(
+            "levelup", True, reset_key,
+        ))
 
     def test_clean_ready_word_skips_defensive_clear(self):
         controller = X11Keyboard.__new__(X11Keyboard)
