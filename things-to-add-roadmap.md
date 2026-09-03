@@ -5,7 +5,7 @@ native acceptance check passes; a Python unit test alone is not sufficient.
 
 | Priority | Issue | Current finding | Fix | Acceptance check |
 |---|---|---|---|---|
-| P0 | Rack/Attack misses and retries | Open. The failed Sea Serpent, Hydra, Limniad, and Medusa inputs did not consistently produce `AUTOMATION_ATTACK_SUBMITTED`. | Emit the native selected-word/count state after every tile click. Split selection from Attack and click Attack only after Lua confirms the intended complete word. Retain timeout recovery, but stop using a fixed settle delay as the primary gate. | A fresh Book 1 run has zero missing submission acknowledgements and zero input retries; intentionally invalid words are reported separately. |
+| P0 | Rack/Attack misses and retries | **Fixed and Book 1 accepted.** Lua now emits selection state and `AUTOMATION_ATTACK_READY` only after a complete valid word survives the long-word interrupt plus 15 clean native updates. The fresh acceptance run recorded exactly one native submission for every Chapter 1 enemy, including Trojan Captain, with no missing acknowledgement timeout. | Keep selection separate from Attack; advance only Lua-authorized long-word pulses and click Attack exclusively on `AUTOMATION_ATTACK_READY`. | Passed for fresh Chapter 1. Continue watching later status/potion encounters for regressions; intentionally invalid words remain a separate result. |
 | P0 | Purify recovery selects a stray tile | Code-fixed, live verification pending. The runner clicked `(400, 480)` after Lua had already reported incapacitation inactive, when that coordinate belonged to the rack again. | Never click the former overlay after the inactive edge. Click only while the native overlay predicate is active, then require a newer READY sequence. | Force petrify/freeze, Purify, and confirm the first subsequent native submitted word exactly matches the solver word/path with no extra selected letter. |
 | P0 | Steel Stymphalian → Nemean Lion reset blocked by level-up | Code-fixed, live verification pending. `levelup` was excluded from the post-reset recovery allowlist. | Allow a genuine level-up Continue pulse to clear the blocker, then replay the full menu-reset sequence. | Kill Steel Stymphalian while leveling up; observe Continue, a repeated reset, and Nemean Lion READY without manual input. |
 | P1 | Chapter 4 proactive Scramble | Open; trigger is underspecified. Current code scrambles only when there is no playable word. | Record the exact Book/chapter/enemy and compare attack-now versus Scramble from the same deterministic state before adding a route-specific action. | Two same-seed branches show the forced Scramble saves time and does not worsen the following rack; then add an exact-state or exact-encounter rule. |
@@ -20,4 +20,9 @@ native acceptance check passes; a Python unit test alone is not sufficient.
   flooring; the optimizer was corrected in commit `8e22e0d`.
 - A native `start-game` action now clears stale boss/menu/treasure transition
   blockers, preventing the Chapter 2 Cassandra suppression loop (`0dff893`).
-
+- Power-Up is now detected from the native status-effect set. The runner waits
+  for the effect and input ownership to remain stable before selecting the
+  finishing word, and it will not consume health potions first (`a8a91a7`).
+- Fresh-profile creation now lets Wine finish receiving focus before its first
+  main-menu click; `just new-run` passed from the normal welcome screen
+  (`921e587`).
