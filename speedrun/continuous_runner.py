@@ -225,6 +225,15 @@ def convpanel_supersedes_navigation_transition(source: str) -> bool:
     return source == "convpanel"
 
 
+def post_treasure_convpanel_supersedes_boss_reset(
+    source: str, blocked_screen: str | None, treasure_selection_started: bool,
+) -> bool:
+    """A post-treasure conversation proves the prior boss reset is complete."""
+    return source == "convpanel" and (
+        blocked_screen == "treasure" or treasure_selection_started
+    )
+
+
 def clear_stale_treasure_on_ready(
     blocked_screen: str | None, selection_started: bool,
 ) -> tuple[str | None, bool]:
@@ -1670,6 +1679,12 @@ def main() -> None:
             dialog_active = DIALOG_ACTIVE_RE.search(line)
             if dialog_active:
                 active_dialog = dialog_active.group("source")
+                conversation_after_treasure = (
+                    post_treasure_convpanel_supersedes_boss_reset(
+                        active_dialog, blocked_screen,
+                        treasure_selection_started,
+                    )
+                )
                 word_presentation_active = bool(
                     active_dialog == "interrupt"
                     and not input_confirmed
@@ -1687,6 +1702,14 @@ def main() -> None:
                     menu_reentry_at = float("inf")
                     chapter_enter_pending = False
                     chapter_enter_at = float("inf")
+                if conversation_after_treasure and boss_reset_state is not None:
+                    log_message(
+                        "Native post-treasure conversation superseded stale "
+                        "boss-reset suppression; dialogue pulses rearmed.",
+                        flush=True,
+                    )
+                    boss_reset_state = None
+                    boss_reset_dialog_ready = False
                 pending_health_potion_state = None
                 pending_health_potion_at = float("inf")
                 pending_health_potion_attempts = 0

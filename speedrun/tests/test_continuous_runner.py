@@ -10,6 +10,7 @@ from continuous_runner import (
     ATTACK_SUBMITTED_RE, DEFEATED_RE, DIALOG_ACTIVE_RE, DIALOG_PULSE_RE,
     INCAP_OVERLAY_RE, MINIGAME_PROMPT_RE, PLAYER_STUNNED_RE, PLAY_READY_RE,
     RESET_READY_RE,
+    post_treasure_convpanel_supersedes_boss_reset,
     ZERO_HEALTH_RE,
     boss_finish_strategy,
     attack_state_for_event,
@@ -972,6 +973,20 @@ class ContinuousRunnerTests(unittest.TestCase):
     def test_convpanel_ends_stale_menu_and_map_navigation(self):
         self.assertTrue(convpanel_supersedes_navigation_transition("convpanel"))
         self.assertFalse(convpanel_supersedes_navigation_transition("interrupt"))
+
+    def test_post_treasure_convpanel_clears_stale_boss_reset(self):
+        self.assertTrue(post_treasure_convpanel_supersedes_boss_reset(
+            "convpanel", "treasure", False,
+        ))
+        self.assertTrue(post_treasure_convpanel_supersedes_boss_reset(
+            "convpanel", None, True,
+        ))
+        self.assertFalse(post_treasure_convpanel_supersedes_boss_reset(
+            "convpanel", None, False,
+        ))
+        self.assertFalse(post_treasure_convpanel_supersedes_boss_reset(
+            "interrupt", "treasure", True,
+        ))
 
     def test_dialogue_click_routing_keeps_fallbacks_above_grid(self):
         controller = X11Keyboard.__new__(X11Keyboard)
