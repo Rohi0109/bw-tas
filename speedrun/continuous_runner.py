@@ -527,7 +527,8 @@ def should_arm_boss_reset_on_zero_health(
 
 def enemy_accepts_candidate(state: DeluxeState, candidate: Candidate) -> bool:
     """Apply known enemy word immunities before strategy ranking."""
-    if state.enemy.casefold().startswith("mama roc"):
+    enemy = state.enemy.casefold()
+    if enemy.startswith("mama roc") or enemy.startswith("medusa"):
         return len(candidate.word) > 3
     return True
 

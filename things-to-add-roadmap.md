@@ -18,7 +18,7 @@ latencies.
 | P1 | Evaluate Hydra per-head menu skips | The route does not deliberately reset after every Hydra head and may overkill heads. | Compare same-seed normal progression with a main-menu reset after each head; constrain head attacks to the cheapest safe lethal word. | The alternate route saves total chapter time repeatedly without losing progress or corrupting phases. |
 | P1 | Chapter 4 proactive Scramble | The proposed trigger remains underspecified; current code scrambles only when no word is playable. | Capture an exact encounter/state and simulate attack-now versus Scramble from the same seed. | Two same-seed branches show a repeatable net chapter gain before an exact-state rule is added. |
 | P2 | Verify gem persistence across chapters | Enemy-to-enemy persistence is known; chapter-boundary persistence is not proven. | Log gem identity and position before the boss, after it, and on the next chapter's first READY. | At least two controlled boundaries preserve the same gem state. |
-| P2 | Verify suspected three-letter boss immunity | Mama Roc is modeled. Other historical failures were contaminated by attack-submission races. | Compare accepted native three-letter submissions and HP deltas with four-plus-letter controls, or identify the native rule directly. | Each suspected boss has native evidence and a regression fixture. |
+| P2 | Verify any remaining boss word-length immunities | Mama Roc and Medusa are modeled. Do not generalize their rule to every boss without native evidence. | For any new suspect, compare exact native selection validity for three-letter words with a four-plus-letter control, or identify the native creature rule directly. | Each additional boss has native evidence and a regression fixture before its candidates are filtered. |
 | P2 | Build deterministic strategy simulations | The live solver is locally greedy and does not plan saved letters, gems, treasures, future enemies, or survival across a chapter. | Start with Book 1 deterministic replay and compare candidate objectives before changing the live default. | Simulations predict live outcomes and improve held-out-seed splits. |
 
 ## Full-run acceptance
@@ -49,6 +49,10 @@ latencies.
   capture, and single-runner locking are implemented.
 - Native weighted length, intrinsic letter tiers, and half-up damage rounding
   are modeled.
+- Medusa's minimum-four-letter rule is now proven by native telemetry: six
+  different three-letter paths reached exactly three selected tiles but all
+  remained invalid and emitted no Attack-ready edge. Medusa now shares Mama
+  Roc's candidate filter.
 
 ## Lower-priority strategy inventory
 

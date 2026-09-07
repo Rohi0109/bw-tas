@@ -508,6 +508,14 @@ class ContinuousRunnerTests(unittest.TestCase):
         self.assertFalse(enemy_accepts_candidate(mama, short))
         self.assertTrue(enemy_accepts_candidate(mama, long))
 
+    def test_medusa_rejects_three_letter_candidates(self):
+        medusa = replace(self.state(1), enemy="Medusa (Boss)")
+        short = Candidate("AIR", (0,), 2, 1, None, True, 0.6, 0)
+        long = Candidate("AIRS", (0,), 3, 2, None, True, 0.7, 0)
+
+        self.assertFalse(enemy_accepts_candidate(medusa, short))
+        self.assertTrue(enemy_accepts_candidate(medusa, long))
+
     def test_book_movie_skip_only_arms_after_chapter10_boss_stall(self):
         final_boss = replace(
             self.state(1), chapter=10, enemy="Medusa (Boss)"
