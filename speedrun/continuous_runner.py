@@ -750,7 +750,11 @@ def main() -> None:
     )
     parser.add_argument(
         "--delay", type=float, default=0.08,
-        help="frame-safe delay between tile clicks; retries increase this automatically",
+        help="delay for non-rack UI actions",
+    )
+    parser.add_argument(
+        "--tile-delay", type=float, default=0.02,
+        help="delay between rack tile events (default: 20 ms)",
     )
     parser.add_argument(
         "--settle", type=float, default=0.15,
@@ -1310,7 +1314,7 @@ def main() -> None:
                 native_attack_authorized = False
                 if args.layout == "deluxe":
                     native_ready = select_and_attack_when_native_ready(
-                        controller, log_path, board, word, args.delay, path,
+                        controller, log_path, board, word, args.tile_delay, path,
                     )
                     native_attack_authorized = native_ready
                     attack_clicked_at = time.monotonic() if native_ready else None
@@ -1509,7 +1513,7 @@ def main() -> None:
                         flush=True,
                     )
                     controller.dismiss_invalid_word_dialog(args.delay)
-                    retry_delay = args.delay * input_attempts
+                    retry_delay = args.tile_delay * input_attempts
                     if args.layout == "deluxe":
                         native_ready = select_and_attack_when_native_ready(
                             controller, log_path, submitted_board,
