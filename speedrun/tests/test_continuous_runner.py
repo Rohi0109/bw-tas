@@ -60,6 +60,13 @@ class ContinuousRunnerTests(unittest.TestCase):
                 handler.close()
             LOGGER.handlers.clear()
 
+    def test_logging_refactor_preserves_fingerprint_function_name(self):
+        source = (
+            Path(__file__).resolve().parents[1] / "continuous_runner.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn("state_fingerprint(submitted_state)", source)
+        self.assertNotIn("state_fingerlog_message", source)
+
     def test_powerup_waits_for_native_effect_and_input_ownership(self):
         with tempfile.TemporaryDirectory() as directory:
             log_path = Path(directory) / "lua.log"

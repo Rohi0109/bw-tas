@@ -2268,7 +2268,7 @@ def main() -> None:
                                 else [f"input-attempts:{input_attempts}"]
                             ),
                             "strategy": submitted_strategy,
-                            "state_fingerprint": state_fingerlog_message(submitted_state),
+                            "state_fingerprint": state_fingerprint(submitted_state),
                             "before": state_payload(submitted_state),
                             "action": candidate_payload(submitted_candidate),
                             "frontier": [
@@ -2338,3 +2338,6 @@ if __name__ == "__main__":
     except (KeyboardInterrupt, RuntimeError, TimeoutError) as error:
         log_message(f"continuous runner stopped: {error}", file=sys.stderr)
         raise SystemExit(1)
+    except Exception:
+        LOGGER.exception("continuous runner crashed with an unexpected exception")
+        raise
