@@ -12,6 +12,7 @@ fi
 export PYTHONPATH="$repo_dir/speedrun${PYTHONPATH:+:$PYTHONPATH}"
 exec python3 "$repo_dir/speedrun/continuous_runner.py" \
   --log "$log_path" \
+  --log-file "$repo_dir/runtime/diagnostics/tas-live.log" \
   --title "Bookworm Adventures Deluxe" \
   --layout deluxe \
   "$@"

@@ -38,12 +38,28 @@ from continuous_runner import (
     incapacitation_recovery_action,
     should_use_purification_potion,
     treasure_slots_after, treasure_slots_for_context, treasure_slots_for_state,
+    configure_logging, log_message, LOGGER,
 )
 from deluxe_optimizer import Candidate, DeluxeState
 from live_runner import X11Keyboard
 
 
 class ContinuousRunnerTests(unittest.TestCase):
+    def test_logging_keeps_pulse_noise_in_detailed_file(self):
+        with tempfile.TemporaryDirectory() as directory:
+            log_path = Path(directory) / "tas.log"
+            configure_logging("INFO", log_path)
+            log_message("Lua dialogue pulse 1: source=interrupt")
+            log_message("Attack 1: TEST")
+            for handler in LOGGER.handlers:
+                handler.flush()
+            output = log_path.read_text(encoding="utf-8")
+            self.assertIn("DEBUG Lua dialogue pulse 1", output)
+            self.assertIn("INFO Attack 1: TEST", output)
+            for handler in LOGGER.handlers:
+                handler.close()
+            LOGGER.handlers.clear()
+
     def test_powerup_waits_for_native_effect_and_input_ownership(self):
         with tempfile.TemporaryDirectory() as directory:
             log_path = Path(directory) / "lua.log"

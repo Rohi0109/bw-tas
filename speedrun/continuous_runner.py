@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import os
 import re
 import sys
@@ -35,6 +36,46 @@ from run_timer import (
     save_state as save_timer_state,
     update_tas_best,
 )
+
+
+LOGGER = logging.getLogger("bookworm.tas")
+
+
+def configure_logging(level: str, log_file: Path | None) -> None:
+    """Keep concise progress on stdout and detailed diagnostics on disk."""
+    LOGGER.handlers.clear()
+    LOGGER.setLevel(logging.DEBUG)
+    LOGGER.propagate = False
+    formatter = logging.Formatter(
+        "%(asctime)s %(levelname)s %(message)s", datefmt="%H:%M:%S"
+    )
+    console = logging.StreamHandler(sys.stdout)
+    console.setLevel(getattr(logging, level))
+    console.setFormatter(formatter)
+    LOGGER.addHandler(console)
+    if log_file is not None:
+        log_file.parent.mkdir(parents=True, exist_ok=True)
+        detailed = logging.FileHandler(log_file, mode="w", encoding="utf-8")
+        detailed.setLevel(logging.DEBUG)
+        detailed.setFormatter(formatter)
+        LOGGER.addHandler(detailed)
+
+
+def log_message(*values: object, sep: str = " ", end: str = "\n",
+                file: object | None = None, flush: bool = False) -> None:
+    """Compatibility formatter while routing all runner output through logging."""
+    del end, flush
+    message = sep.join(str(value) for value in values)
+    if file is sys.stderr:
+        LOGGER.error(message)
+    elif message.startswith(("Lua dialogue pulse ", "Ignoring unchanged READY ")):
+        LOGGER.debug(message)
+    elif message.startswith(("No READY event ", "Board ready: ", "Board update: ")):
+        LOGGER.debug(message)
+    elif " warning:" in message.casefold() or message.startswith("No ATTACK acknowledgement"):
+        LOGGER.warning(message)
+    else:
+        LOGGER.info(message)
 
 
 BOARD_PREFIX = "AUTOMATION_BOARD="
@@ -721,13 +762,23 @@ def main() -> None:
         help="stop after this many no-word Scramble fallbacks",
     )
     parser.add_argument("--timeout", type=float, default=180.0)
+    parser.add_argument(
+        "--log-level", choices=("DEBUG", "INFO", "WARNING", "ERROR"),
+        default=os.environ.get("BWA_TAS_LOG_LEVEL", "INFO").upper(),
+        help="runner console verbosity (or set BWA_TAS_LOG_LEVEL)",
+    )
+    parser.add_argument(
+        "--log-file", type=Path,
+        help="write a complete DEBUG log for later diagnosis",
+    )
     args = parser.parse_args()
+    configure_logging(args.log_level, args.log_file)
 
     log_path = args.log.resolve()
     timer_state = None
     if args.timer_state is not None and args.timer_state.exists():
         timer_state = load_timer_state(args.timer_state)
-        print(f"Chapter timing enabled: {args.timer_state}", flush=True)
+        log_message(f"Chapter timing enabled: {args.timer_state}", flush=True)
     board, ready, done, chapter = read_seed(log_path)
     latest_dialog = read_latest_dialog(log_path)
     blocked_screen = latest_dialog if latest_dialog == "treasure" else None
@@ -737,7 +788,7 @@ def main() -> None:
             clear_stale_treasure_on_ready(blocked_screen, False)
         )
         latest_dialog = None
-        print(
+        log_message(
             "Startup combat READY superseded stale treasure transition.",
             flush=True,
         )
@@ -758,7 +809,7 @@ def main() -> None:
         deluxe_state = parse_state(initial_log_text)
     if done:
         label = f"Chapter {chapter}" if chapter is not None else "Current chapter"
-        print(f"{label} is already complete.", flush=True)
+        log_message(f"{label} is already complete.", flush=True)
         return
 
     controller = X11Keyboard(args.title, args.layout)
@@ -828,7 +879,7 @@ def main() -> None:
                 player_max_hp=float(startup_incap.group("max_hp")),
             )
         if startup_recovery == "purify":
-            print(
+            log_message(
                 "Startup incapacitation telemetry confirms Purify is "
                 "available; cancelling the lost-turn status.",
                 flush=True,
@@ -838,7 +889,7 @@ def main() -> None:
             incap_purify_attempts = 1
             incap_overlay_retry_at = time.monotonic() + 1.0
         elif startup_recovery == "heal_then_continue":
-            print(
+            log_message(
                 "Startup incapacitation telemetry confirms low health and no "
                 "Purify; healing before accepting the lost turn.",
                 flush=True,
@@ -847,7 +898,7 @@ def main() -> None:
             incap_health_submitted = True
             incap_overlay_retry_at = time.monotonic() + 1.0
         else:
-            print(
+            log_message(
                 "Startup snapshot reports an active incapacitation; "
                 "resuming native overlay continuation clicks.",
                 flush=True,
@@ -856,7 +907,7 @@ def main() -> None:
         # The native status predicate clears before the final petrify/freeze
         # card disappears. Recover that last visible continuation separately
         # instead of mistaking the cleared predicate for actionable combat.
-        print(
+        log_message(
             "Startup log contains an unresolved native "
             f"{startup_overlay.group('kind')} overlay "
             f"(frame {startup_overlay.group('frame')}); clicking its final "
@@ -905,7 +956,7 @@ def main() -> None:
         # read_seed() but before this cursor is established.
         startup_text = log_path.read_text(encoding="utf-8", errors="replace")
         if lua_runtime_is_waiting(startup_text):
-            print("Recovering paused Lua runtime with F5.", flush=True)
+            log_message("Recovering paused Lua runtime with F5.", flush=True)
             controller.resume_lua_runtime(args.delay)
             deadline = time.monotonic() + args.timeout
         _, refreshed_ready, _, _ = read_seed(log_path)
@@ -918,7 +969,7 @@ def main() -> None:
             tutorial_play_submitted = True
             tutorial_interrupt_active = True
             active_dialog = "interrupt"
-            print(
+            log_message(
                 "Recovering fixed fresh-profile PLAY tutorial from active "
                 "startup marker.",
                 flush=True,
@@ -942,7 +993,7 @@ def main() -> None:
                         int(contexts[-1].group("selected")),
                     )
             if slots is not None:
-                print(
+                log_message(
                     f"Recovering startup treasure screen with slots {slots}.",
                     flush=True,
                 )
@@ -961,7 +1012,7 @@ def main() -> None:
             or prompt_matches[-1].start() > callback_positions[-1]
         )
         if unresolved_prompt:
-            print(
+            log_message(
                 "Recovering Lua-confirmed mini-game prompt; choosing Yes to skip it.",
                 flush=True,
             )
@@ -973,7 +1024,7 @@ def main() -> None:
             deadline = time.monotonic() + args.timeout
         elif map_matches and map_matches[-1].group("enabled") == "true":
             selected = int(map_matches[-1].group("selected"))
-            print(
+            log_message(
                 f"Recovering ready chapter map for Chapter {selected}; entering.",
                 flush=True,
             )
@@ -999,7 +1050,7 @@ def main() -> None:
                         )
                         if recovered is not None and recovered.board == board:
                             deluxe_state = recovered
-                            print(
+                            log_message(
                                 f"Complete state {recovered.sequence} recovered "
                                 "for early READY event.",
                                 flush=True,
@@ -1007,14 +1058,14 @@ def main() -> None:
                         else:
                             early_ready_board = board
                             ready = False
-                            print(
+                            log_message(
                                 "READY arrived before its complete Deluxe snapshot; "
                                 "waiting for state recovery.",
                                 flush=True,
                             )
                             continue
                     if is_unchanged_combat_snapshot(deluxe_state, submitted_state):
-                        print(
+                        log_message(
                             f"Ignoring unchanged READY snapshot "
                             f"{deluxe_state.sequence} for {deluxe_state.enemy}.",
                             flush=True,
@@ -1036,7 +1087,7 @@ def main() -> None:
                         # rotating board; let Lua publish the next board
                         # instead of spending a scramble on a temporary miss.
                         if SPHINX_ANSWERS.get(deluxe_state.enemy) is not None:
-                            print(
+                            log_message(
                                 f"Sphinx answer {SPHINX_ANSWERS[deluxe_state.enemy]} "
                                 "not on this board; waiting for Lua board rotation.",
                                 flush=True,
@@ -1051,7 +1102,7 @@ def main() -> None:
                                 f"Stopped after the safety limit of {args.max_scrambles} scrambles"
                             )
                         scrambles += 1
-                        print(
+                        log_message(
                             f"State {deluxe_state.sequence}: no playable word; "
                             f"Scramble {scrambles}/{args.max_scrambles}.",
                             flush=True,
@@ -1078,7 +1129,7 @@ def main() -> None:
                     if experimental is not None:
                         selected = experimental
                         effective_strategy = "book1-experiment"
-                        print(
+                        log_message(
                             "  experiment: applying exact-state decision "
                             f"{selected.word}/{selected.path}.", flush=True,
                         )
@@ -1091,7 +1142,7 @@ def main() -> None:
                             deluxe_state, ranked, transition_corpus
                         )
                         if lookahead is None:
-                            print(
+                            log_message(
                                 "  lookahead: fewer than two validated branches; "
                                 f"falling back to {effective_strategy}.",
                                 flush=True,
@@ -1099,7 +1150,7 @@ def main() -> None:
                         else:
                             selected = lookahead
                             effective_strategy = "book1-lookahead"
-                            print(
+                            log_message(
                                 "  lookahead: selected from validated recorded "
                                 "successors.", flush=True,
                             )
@@ -1108,7 +1159,7 @@ def main() -> None:
                     )
                     if riddle_candidate is not None:
                         selected = riddle_candidate
-                        print(
+                        log_message(
                             f"  Sphinx override: using fixed answer {riddle_answer}.",
                             flush=True,
                         )
@@ -1116,7 +1167,7 @@ def main() -> None:
                         if sphinx_allows_damage_fallback(
                             deluxe_state.enemy, selected
                         ):
-                            print(
+                            log_message(
                                 f"  Sphinx answer {riddle_answer} is absent; "
                                 f"using normal combat word {selected.word}.",
                                 flush=True,
@@ -1125,7 +1176,7 @@ def main() -> None:
                                 selected.word, selected.damage, selected.path
                             )
                         else:
-                            print(
+                            log_message(
                                 f"  Sphinx answer {riddle_answer} is not playable; "
                                 "waiting for Lua puzzle-board rotation.",
                                 flush=True,
@@ -1138,7 +1189,7 @@ def main() -> None:
                     word, damage, path = selected.word, selected.damage, selected.path
                     shortest = alternatives.get("shortest_lethal")
                     maximum = alternatives["max_damage"]
-                    print(
+                    log_message(
                         f"State {deluxe_state.sequence}: {deluxe_state.enemy} "
                         f"HP {deluxe_state.hp:g}/{deluxe_state.max_hp:g}; "
                         f"treasures={','.join(sorted(deluxe_state.treasures)) or 'none'}",
@@ -1146,8 +1197,8 @@ def main() -> None:
                     )
                     warning = validate_chapter1_state(deluxe_state, chapter1_hp)
                     if warning:
-                        print(f"  state warning: {warning}", flush=True)
-                    print(
+                        log_message(f"  state warning: {warning}", flush=True)
+                    log_message(
                         f"  chose {word} damage={damage:.2f} "
                         f"overkill={selected.overkill:.2f} tier={selected.tier} "
                         f"strategy={effective_strategy} "
@@ -1162,7 +1213,7 @@ def main() -> None:
                     args.layout == "deluxe" and deluxe_state is not None
                     and should_use_health_potion(deluxe_state, selected)
                 ):
-                    print(
+                    log_message(
                         f"Health potion required at "
                         f"{deluxe_state.player_hp:g}/"
                         f"{deluxe_state.player_max_hp:g}; waiting for native "
@@ -1179,7 +1230,7 @@ def main() -> None:
                     deadline = time.monotonic() + args.timeout
                     continue
                 attacks += 1
-                print(
+                log_message(
                     f"Attack {attacks}: {board} -> {word.upper()} "
                     f"({damage:.2f} estimated damage)",
                     flush=True,
@@ -1188,7 +1239,7 @@ def main() -> None:
                     args.layout == "deluxe" and deluxe_state is not None
                     and should_use_powerup_potion(deluxe_state, selected)
                 ):
-                    print(
+                    log_message(
                         "Power-Up converts the selected attack into a predicted "
                         "one-shot; activating it.",
                         flush=True,
@@ -1196,7 +1247,7 @@ def main() -> None:
                     if not activate_powerup_when_native_ready(
                         controller, log_path, args.delay,
                     ):
-                        print(
+                        log_message(
                             "Power-Up did not reach its native input-ready "
                             "state; leaving the rack untouched.", flush=True,
                         )
@@ -1205,7 +1256,7 @@ def main() -> None:
                         ready = False
                         deadline = time.monotonic() + args.timeout
                         continue
-                    print(
+                    log_message(
                         "Native Power-Up activation confirmed; selecting the "
                         "finishing word.", flush=True,
                     )
@@ -1215,7 +1266,7 @@ def main() -> None:
                 ):
                     # Petrify can end an encounter with Lex still at full
                     # health. Cleanse it before submitting the next word.
-                    print(
+                    log_message(
                         "Purify required before attack: "
                         f"enemy={deluxe_state.enemy}; "
                         f"petrified={int(deluxe_state.player_petrified)}; "
@@ -1231,7 +1282,7 @@ def main() -> None:
                     )
                     attack_clicked_at = time.monotonic() if native_ready else None
                     if not native_ready:
-                        print(
+                        log_message(
                             "Native selection did not reach the complete valid "
                             "word; Attack was not clicked.", flush=True,
                         )
@@ -1272,7 +1323,7 @@ def main() -> None:
                 if incap_purify_pending:
                     if incap_purify_attempts < 3:
                         incap_purify_attempts += 1
-                        print(
+                        log_message(
                             "Purify is still unconfirmed; retrying the "
                             f"blue potion ({incap_purify_attempts}/3).",
                             flush=True,
@@ -1281,7 +1332,7 @@ def main() -> None:
                             max(0.8, args.delay)
                         )
                     else:
-                        print(
+                        log_message(
                             "Purify remained unconfirmed after 3 attempts; "
                             "falling back to lost-turn recovery.",
                             flush=True,
@@ -1290,7 +1341,7 @@ def main() -> None:
                         incap_purify_failed = True
                         controller.dismiss_incapacitation_overlay(args.delay)
                 else:
-                    print(
+                    log_message(
                         "Native incapacitation overlay is still active; "
                         "retrying its continuation click.",
                         flush=True,
@@ -1313,7 +1364,7 @@ def main() -> None:
                     and time.monotonic() >= dialog_probe_at
                 ):
                     dialog_probe_count += 1
-                    print(
+                    log_message(
                         "No READY event after board update; probing the safe "
                         f"dialogue point ({dialog_probe_count}).",
                         flush=True,
@@ -1333,7 +1384,7 @@ def main() -> None:
                             "refusing to submit the attack"
                         )
                     pending_health_potion_attempts += 1
-                    print(
+                    log_message(
                         "No native health-potion confirmation; retrying "
                         f"({pending_health_potion_attempts}/3).",
                         flush=True,
@@ -1343,7 +1394,7 @@ def main() -> None:
                     deadline = time.monotonic() + args.timeout
                 if menu_reentry_pending and time.monotonic() >= menu_reentry_at:
                     menu_reentry_attempts += 1
-                    print(
+                    log_message(
                         "Retrying Adventure after a blocked menu re-entry "
                         f"({menu_reentry_attempts}).",
                         flush=True,
@@ -1353,7 +1404,7 @@ def main() -> None:
                     deadline = time.monotonic() + args.timeout
                 if chapter_enter_pending and time.monotonic() >= chapter_enter_at:
                     chapter_enter_attempts += 1
-                    print(
+                    log_message(
                         "Entering the next chapter from the chapter map "
                         f"(attempt {chapter_enter_attempts}/20).",
                         flush=True,
@@ -1376,7 +1427,7 @@ def main() -> None:
                     )
                 ):
                     tutorial_play_submitted = True
-                    print("Completing fixed fresh-profile PLAY tutorial.", flush=True)
+                    log_message("Completing fixed fresh-profile PLAY tutorial.", flush=True)
                     # Native PLAY_READY events own every tutorial tile. Keep
                     # generic recovery away from the rack during the handoff.
                     dialog_probe_at = float("inf")
@@ -1393,7 +1444,7 @@ def main() -> None:
                     if input_attempts >= args.max_input_attempts:
                         assert submitted_word is not None
                         rejected_words.add(submitted_word)
-                        print(
+                        log_message(
                             f"Blacklisting unacknowledged word "
                             f"{submitted_word.upper()} after {input_attempts} attempts; "
                             "trying the next candidate.",
@@ -1419,7 +1470,7 @@ def main() -> None:
                         )
                         save_timer_state(args.timer_state, timer_state)
                         save_run_history(timer_state)
-                    print(
+                    log_message(
                         f"No ATTACK acknowledgement; clearing and retrying "
                         f"{submitted_word.upper()} ({input_attempts}/{args.max_input_attempts}).",
                         flush=True,
@@ -1434,7 +1485,7 @@ def main() -> None:
                         if native_ready:
                             submitted_attack_at = time.monotonic()
                         else:
-                            print(
+                            log_message(
                                 "Native selection did not reach the complete "
                                 "valid word; Attack was not clicked.", flush=True,
                             )
@@ -1459,7 +1510,7 @@ def main() -> None:
                         board = polled_state.board
                         ready = True
                         ready_at = time.monotonic() + args.ready_delay
-                        print(
+                        log_message(
                             f"Complete state {polled_state.sequence} recovered from log.",
                             flush=True,
                         )
@@ -1478,7 +1529,7 @@ def main() -> None:
                     and submitted_attack_at is not None
                 )
                 if word_presentation_active:
-                    print(
+                    log_message(
                         "Ignoring completed-word presentation interrupt; "
                         "awaiting native ATTACK acknowledgement.", flush=True,
                     )
@@ -1501,7 +1552,7 @@ def main() -> None:
                 if (
                     old_blocked_screen == "treasure" or old_treasure_selection
                 ) and blocked_screen is None and not treasure_selection_started:
-                    print(
+                    log_message(
                         "Native conversation superseded stale treasure "
                         "transition; dialogue pulses rearmed.",
                         flush=True,
@@ -1514,7 +1565,7 @@ def main() -> None:
                         deluxe_state.sequence,
                     )
                 if not input_confirmed:
-                    print(
+                    log_message(
                         "Dialogue interrupted pending tile input; discarding "
                         "it until a newer READY sequence.", flush=True,
                     )
@@ -1535,14 +1586,14 @@ def main() -> None:
                     )
                 ):
                     tutorial_play_submitted = True
-                    print("Completing fixed fresh-profile PLAY tutorial.", flush=True)
+                    log_message("Completing fixed fresh-profile PLAY tutorial.", flush=True)
                     deadline = time.monotonic() + args.timeout
             play_tutorial = PLAY_TUTORIAL_RE.search(line)
             if play_tutorial and not tutorial_play_submitted:
                 tutorial_play_submitted = True
                 tutorial_interrupt_active = True
                 active_dialog = "interrupt"
-                print("Completing fixed fresh-profile PLAY tutorial.", flush=True)
+                log_message("Completing fixed fresh-profile PLAY tutorial.", flush=True)
                 deadline = time.monotonic() + args.timeout
             play_ready = PLAY_READY_RE.search(line)
             if play_ready:
@@ -1557,7 +1608,7 @@ def main() -> None:
                 # cleared before its button animation accepts MouseUp, so its
                 # retries remain safe (an empty live rack cannot attack).
                 if letter == "DONE" or letter != last_play_letter_clicked:
-                    print(
+                    log_message(
                         f"Native PLAY step {letter} ready (attempt {pulse}); "
                         "clicking it once.", flush=True,
                     )
@@ -1570,7 +1621,7 @@ def main() -> None:
                 tutorial_interrupt_active = False
                 word_presentation_active = False
                 if menu_reset_dialog_seen and menu_reentry_pending:
-                    print(
+                    log_message(
                         "Post-boss result overlay closed after blocking the "
                         "menu exit; retrying the full battle-menu reset.",
                         flush=True,
@@ -1581,7 +1632,7 @@ def main() -> None:
                     menu_reentry_at = time.monotonic() + 2.0
                     deadline = time.monotonic() + args.timeout
                 if required_ready_after_overlay is not None:
-                    print(
+                    log_message(
                         "Dialogue exited; waiting for a newer native READY "
                         "sequence before touching the rack.", flush=True,
                     )
@@ -1608,7 +1659,7 @@ def main() -> None:
                 if word_presentation_active:
                     suppress = True
                 if suppress:
-                    print(
+                    log_message(
                         f"Lua dialogue pulse {pulse}: source={source}; "
                         "suppressed during special-screen transition.", flush=True,
                     )
@@ -1618,7 +1669,7 @@ def main() -> None:
                     destination = (
                         "Continue" if source == "levelup" else "safe arena point"
                     )
-                    print(
+                    log_message(
                         f"Lua dialogue pulse {pulse}: source={source}; "
                         f"clicking {destination}.", flush=True,
                     )
@@ -1635,7 +1686,7 @@ def main() -> None:
                         deluxe_state.sequence,
                     )
                 if not input_confirmed:
-                    print(
+                    log_message(
                         "Incapacitation interrupted pending tile input; "
                         "discarding it until a newer READY sequence.", flush=True,
                     )
@@ -1677,7 +1728,7 @@ def main() -> None:
                     recovery == "purify" and not incap_purify_pending
                     and not incap_purify_failed
                 ):
-                    print(
+                    log_message(
                         f"Lua confirmed Lex is {incapacitation} and Purify is "
                         "available; cancelling the lost-turn status.",
                         flush=True,
@@ -1687,7 +1738,7 @@ def main() -> None:
                     incap_purify_attempts = 1
                     incap_overlay_retry_at = time.monotonic() + 1.0
                 elif recovery == "heal_then_continue" and not incap_health_submitted:
-                    print(
+                    log_message(
                         f"Purify unavailable and Lex is at {live_hp:g}/"
                         f"{live_max_hp:g}; using a confirmed health potion "
                         "before accepting the lost turn.",
@@ -1696,7 +1747,7 @@ def main() -> None:
                     controller.use_health_potion(max(0.8, args.delay))
                     incap_health_submitted = True
                 elif not incap_purify_pending:
-                    print(
+                    log_message(
                         f"Lua confirmed Lex is {incapacitation}; Purify is "
                         "unavailable, waiting for the native grid overlay.",
                         flush=True,
@@ -1710,13 +1761,13 @@ def main() -> None:
                 incap_purify_failed = False
                 incap_health_submitted = False
                 incap_overlay_retry_at = float("inf")
-                print(
+                log_message(
                     "Lua confirmed incapacitation ended; no further overlay "
                     "click is safe after UI ownership returns to the rack.",
                     flush=True,
                 )
                 deadline = time.monotonic() + args.timeout
-                print(
+                log_message(
                     "Incapacitation cleared; waiting for a newer native READY "
                     "sequence before touching the rack.", flush=True,
                 )
@@ -1726,7 +1777,7 @@ def main() -> None:
                     frame = incap_overlay_event.group("frame")
                     if frame.endswith("done") and incap_purify_attempts < 3:
                         incap_purify_attempts += 1
-                        print(
+                        log_message(
                             f"Native {frame} frame is stable and Purify is "
                             f"unconfirmed; retrying the blue potion "
                             f"({incap_purify_attempts}/3).",
@@ -1737,7 +1788,7 @@ def main() -> None:
                         )
                         incap_overlay_retry_at = time.monotonic() + 1.0
                     else:
-                        print(
+                        log_message(
                             "Native incapacitation overlay remains active while "
                             "Purify confirmation is pending; continuation click "
                             "suppressed.",
@@ -1759,7 +1810,7 @@ def main() -> None:
                         and not incap_health_submitted
                     )
                     if must_heal:
-                        print(
+                        log_message(
                             f"Purify failed and Lex fell to {overlay_hp:g}/"
                             f"{overlay_max_hp:g}; healing before accepting "
                             "the next lost turn.",
@@ -1767,7 +1818,7 @@ def main() -> None:
                         )
                         controller.use_health_potion(max(0.8, args.delay))
                         incap_health_submitted = True
-                    print(
+                    log_message(
                         "Lua confirmed the native "
                         f"{incap_overlay_event.group('kind')} overlay is active "
                         f"(frame {incap_overlay_event.group('frame')}); "
@@ -1786,7 +1837,7 @@ def main() -> None:
                 save_run_history(timer_state)
                 update_tas_best(timer_state)
                 timed = timer_state["current"]
-                print(
+                log_message(
                     f"Timer entered Book {timed['book']} Chapter "
                     f"{timed['chapter']}.",
                     flush=True,
@@ -1797,7 +1848,7 @@ def main() -> None:
                 if map_event.group("enabled") == "true":
                     chapter = selected if selected >= 1 else chapter
                     chapter_enter_attempts += 1
-                    print(
+                    log_message(
                         f"Chapter map ready for Chapter {selected}; entering "
                         f"(event {chapter_enter_attempts}).",
                         flush=True,
@@ -1806,7 +1857,7 @@ def main() -> None:
                     dialog_probe_at = float("inf")
                     deadline = time.monotonic() + args.timeout
                 else:
-                    print(
+                    log_message(
                         f"Chapter {selected} Enter accepted; waiting for its next screen.",
                         flush=True,
                     )
@@ -1835,18 +1886,18 @@ def main() -> None:
                         or old_blocked_screen is not None
                         or old_treasure_selection
                     ):
-                        print(
+                        log_message(
                             "Native chapter start cleared stale special-screen "
                             "transition state; dialogue pulses rearmed.",
                             flush=True,
                         )
-                print(
+                log_message(
                     f"Chapter-map action confirmed: {action}.",
                     flush=True,
                 )
                 deadline = time.monotonic() + args.timeout
             if LUA_WAIT_MARKER in line:
-                print("Lua runtime entered its explicit wait; resuming with F5.", flush=True)
+                log_message("Lua runtime entered its explicit wait; resuming with F5.", flush=True)
                 controller.resume_lua_runtime(args.delay)
                 deadline = time.monotonic() + args.timeout
             treasure_context = TREASURE_CONTEXT_RE.search(line)
@@ -1860,7 +1911,7 @@ def main() -> None:
                     int(treasure_context.group("selected")),
                 )
                 if slots is not None:
-                    print(
+                    log_message(
                         f"Selecting route treasure slots {slots} from live "
                         "chapter context.",
                         flush=True,
@@ -1873,7 +1924,7 @@ def main() -> None:
                 and int(minigame_prompt.group("sequence"))
                 not in handled_minigame_prompts
             ):
-                print(
+                log_message(
                     "Lua-confirmed mini-game prompt; choosing Yes to skip it.",
                     flush=True,
                 )
@@ -1899,21 +1950,21 @@ def main() -> None:
                     input_confirm_at = (
                         time.monotonic() + args.input_confirm_timeout
                     )
-                    print(
+                    log_message(
                         "Input retry rearmed after dialogue exit.",
                         flush=True,
                     )
                 if was_blocked and not ready:
                     dialog_probe_at = time.monotonic() + args.dialog_stall_delay
                     dialog_probe_count = 0
-                    print(
+                    log_message(
                         "Treasure screen exited; dialogue fallback rearmed.",
                         flush=True,
                     )
                 if boss_reset_state is not None and boss_reset_dialog_ready:
                     last_boss_reset_key = encounter_key(boss_reset_state)
                     reset_encounters.add(last_boss_reset_key)
-                    print(
+                    log_message(
                         f"Lua confirmed the post-defeat overlay for "
                         f"{boss_reset_state.enemy} closed; resetting through "
                         "the main menu.",
@@ -1951,7 +2002,7 @@ def main() -> None:
                 input_confirmed = True
                 input_confirm_at = float("inf")
                 dialog_probe_at = float("inf")
-                print(
+                log_message(
                     "Treasure screen detected; automatic dialogue clicks paused.",
                     flush=True,
                 )
@@ -1962,7 +2013,7 @@ def main() -> None:
                     assert treasure_state is not None
                     slots = treasure_slots_for_state(treasure_state)
                     if slots is not None:
-                        print(
+                        log_message(
                             f"Selecting route treasure slots {slots} after "
                             f"{treasure_state.enemy}.",
                             flush=True,
@@ -1974,7 +2025,7 @@ def main() -> None:
                 input_confirmed = True
                 input_confirm_at = float("inf")
                 if input_attempts > 1:
-                    print(
+                    log_message(
                         f"ATTACK acknowledged after {input_attempts} input attempts.",
                         flush=True,
                     )
@@ -2008,7 +2059,7 @@ def main() -> None:
                 and encounter_key(zero_health_state) not in reset_encounters
                 and boss_reset_state is None
             ):
-                print(
+                log_message(
                     f"Lua confirmed {zero_health_event.group('enemy')} reached zero HP; "
                     "waiting for the Lua-confirmed save-ready edge.",
                     flush=True,
@@ -2023,7 +2074,7 @@ def main() -> None:
             if reset_ready_event and boss_reset_state is not None:
                 last_boss_reset_key = encounter_key(boss_reset_state)
                 reset_encounters.add(last_boss_reset_key)
-                print(
+                log_message(
                     f"Lua confirmed {reset_ready_event.group('enemy')} death animation "
                     "settled before the result interrupt; immediate reset "
                     "through the main menu.",
@@ -2062,7 +2113,7 @@ def main() -> None:
                 if reset_reason is not None:
                     assert defeated_state is not None
                     reset_encounters.add(encounter_key(defeated_state))
-                    print(
+                    log_message(
                         f"Lua confirmed {defeated_event.group('enemy')} defeated; "
                         f"menu reset {reset_reason}.",
                         flush=True,
@@ -2090,7 +2141,7 @@ def main() -> None:
                 if pending_health_potion_state is not None and health_potion_confirmed(
                     pending_health_potion_state, new_state
                 ):
-                    print(
+                    log_message(
                         "Native health-potion consumption confirmed: "
                         f"HP {pending_health_potion_state.player_hp:g} -> "
                         f"{new_state.player_hp:g}; potion_available="
@@ -2108,7 +2159,7 @@ def main() -> None:
                     # Re-entering the same full-health boss means the exit beat
                     # the save commit. Allow one replay instead of deadlocking
                     # behind the at-most-once reset and unchanged-state guards.
-                    print(
+                    log_message(
                         f"Boss reset replayed {new_state.enemy}; clearing reset guard.",
                         flush=True,
                     )
@@ -2122,7 +2173,7 @@ def main() -> None:
                     ready = True
                     ready_at = time.monotonic() + args.ready_delay
                     early_ready_board = None
-                    print(
+                    log_message(
                         f"Complete state {new_state.sequence} recovered for "
                         "early READY event.",
                         flush=True,
@@ -2138,7 +2189,7 @@ def main() -> None:
                 chapter_enter_at = float("inf")
                 submitted_board = None
                 ready = False
-                print(f"Entered Chapter {chapter}.", flush=True)
+                log_message(f"Entered Chapter {chapter}.", flush=True)
             for event in BOARD_EVENT_RE.finditer(line):
                 if chapter_enter_attempts and submitted_state is not None:
                     map_enter_encounters.add(encounter_key(submitted_state))
@@ -2150,7 +2201,7 @@ def main() -> None:
                     )
                 ):
                     tutorial_play_submitted = True
-                    print("Completing fixed fresh-profile PLAY tutorial.", flush=True)
+                    log_message("Completing fixed fresh-profile PLAY tutorial.", flush=True)
                     deadline = time.monotonic() + args.timeout
                 menu_reentry_pending = False
                 menu_reentry_at = float("inf")
@@ -2172,7 +2223,7 @@ def main() -> None:
                                 blocked_screen, treasure_selection_started
                             )
                         )
-                        print(
+                        log_message(
                             "Native combat READY superseded stale treasure "
                             "transition; input and dialogue pulses rearmed.",
                             flush=True,
@@ -2184,13 +2235,13 @@ def main() -> None:
                         ready_sequence, required_ready_after_overlay,
                     ):
                         ready = False
-                        print(
+                        log_message(
                             f"Ignoring stale READY sequence {ready_sequence}; "
                             "an overlay owned the previous rack state.", flush=True,
                         )
                         continue
                     if required_ready_after_overlay is not None:
-                        print(
+                        log_message(
                             f"Fresh READY sequence {ready_sequence} confirmed "
                             "after overlay exit; rack input rearmed.", flush=True,
                         )
@@ -2217,7 +2268,7 @@ def main() -> None:
                                 else [f"input-attempts:{input_attempts}"]
                             ),
                             "strategy": submitted_strategy,
-                            "state_fingerprint": state_fingerprint(submitted_state),
+                            "state_fingerprint": state_fingerlog_message(submitted_state),
                             "before": state_payload(submitted_state),
                             "action": candidate_payload(submitted_candidate),
                             "frontier": [
@@ -2270,14 +2321,14 @@ def main() -> None:
                         submitted_frontier = []
                     ready = True
                     ready_at = time.monotonic() + args.ready_delay
-                    print(f"Board ready: {board}", flush=True)
+                    log_message(f"Board ready: {board}", flush=True)
                 else:
                     dialog_probe_at = time.monotonic() + args.dialog_stall_delay
                     dialog_probe_count = 0
-                    print(f"Board update: {board}", flush=True)
+                    log_message(f"Board update: {board}", flush=True)
             if DONE_MARKER in line:
                 label = f"Chapter {chapter}" if chapter is not None else "Chapter"
-                print(f"{label} complete after {attacks} automated attacks.", flush=True)
+                log_message(f"{label} complete after {attacks} automated attacks.", flush=True)
                 return
 
 
@@ -2285,5 +2336,5 @@ if __name__ == "__main__":
     try:
         main()
     except (KeyboardInterrupt, RuntimeError, TimeoutError) as error:
-        print(f"continuous runner stopped: {error}", file=sys.stderr)
+        log_message(f"continuous runner stopped: {error}", file=sys.stderr)
         raise SystemExit(1)
