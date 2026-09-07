@@ -3,7 +3,8 @@ import unittest
 from pathlib import Path
 
 from run_timer import (
-    mark_current_issue, process_line, record_chapter, report, run_history_report,
+    finish_run, mark_current_issue, process_line, record_chapter, report,
+    run_history_report,
     save_run_history,
     start_timer,
     update_tas_best,
@@ -46,6 +47,21 @@ class RunTimerTests(unittest.TestCase):
             state, "AUTOMATION_ENEMY=4|Angry Mountain Goat|E", 111.0
         ))
         self.assertEqual(state["current"]["chapter"], 2)
+
+    def test_codex_zero_health_finishes_run_at_native_lethal_edge(self):
+        state = self.state()
+        record_chapter(state, 3, 10, 110.0)
+
+        self.assertTrue(process_line(
+            state,
+            "AUTOMATION_ZERO_HEALTH=Codex (Final Boss)|E",
+            150.0,
+        ))
+        self.assertEqual(state["finished_at"], 150.0)
+        self.assertIsNone(state["current"])
+        self.assertEqual(state["splits"][-1]["elapsed"], 40.0)
+        self.assertFalse(finish_run(state, 160.0))
+        self.assertEqual(state["finished_at"], 150.0)
 
     def test_report_has_chapter_book_and_total(self):
         state = self.state()

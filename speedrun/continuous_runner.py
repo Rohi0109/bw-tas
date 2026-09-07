@@ -2066,11 +2066,17 @@ def main() -> None:
                 save_run_history(timer_state)
                 update_tas_best(timer_state)
                 timed = timer_state["current"]
-                log_message(
-                    f"Timer entered Book {timed['book']} Chapter "
-                    f"{timed['chapter']}.",
-                    flush=True,
-                )
+                if timed is None and timer_state.get("finished_at") is not None:
+                    log_message(
+                        "Run timer finished at Codex's native zero-HP edge.",
+                        flush=True,
+                    )
+                else:
+                    log_message(
+                        f"Timer entered Book {timed['book']} Chapter "
+                        f"{timed['chapter']}.",
+                        flush=True,
+                    )
             map_event = CHAPTER_MAP_RE.search(line)
             if map_event:
                 selected = int(map_event.group("selected"))
@@ -2289,6 +2295,16 @@ def main() -> None:
                 )
                 if zero_health_event else None
             )
+            if (
+                zero_health_event
+                and zero_health_event.group("enemy") == "Codex (Final Boss)"
+            ):
+                log_message(
+                    f"Codex reached zero HP after {attacks} automated attacks; "
+                    "campaign complete.",
+                    flush=True,
+                )
+                return
             if zero_health_event and tutorial_play_submitted:
                 # The scripted PLAY tutorial disables conversation probes while
                 # it owns the rack.  Its first post-victory Cassandra overlay

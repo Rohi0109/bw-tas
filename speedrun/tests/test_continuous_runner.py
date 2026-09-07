@@ -855,6 +855,18 @@ class ContinuousRunnerTests(unittest.TestCase):
         self.assertIsNotNone(match)
         self.assertEqual(match.group("enemy"), "Polyphemus (Boss)")
 
+    def test_codex_zero_health_is_the_terminal_runner_edge(self):
+        source = (
+            Path(__file__).resolve().parents[1] / "continuous_runner.py"
+        ).read_text(encoding="utf-8")
+        handler = source[
+            source.index("zero_health_state = ("):
+            source.index("if zero_health_event and tutorial_play_submitted:")
+        ]
+        self.assertIn('== "Codex (Final Boss)"', handler)
+        self.assertIn('"campaign complete."', handler)
+        self.assertIn("return", handler)
+
     def test_boss_zero_health_path_arms_safe_reset(self):
         source = (
             Path(__file__).resolve().parents[1] / "continuous_runner.py"

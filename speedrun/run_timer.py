@@ -26,6 +26,9 @@ CONTEXT_RE = re.compile(
     r"AUTOMATION_CONTEXT=\d+\|(?P<book>-?\d+)\|(?P<chapter>-?\d+)\|"
 )
 ENEMY_RE = re.compile(r"AUTOMATION_ENEMY=\d+\|(?P<enemy>[^|]+)\|E")
+FINAL_BOSS_ZERO_RE = re.compile(
+    r"AUTOMATION_ZERO_HEALTH=Codex \(Final Boss\)\|E"
+)
 ROSTER_PATH = ROOT / "BookwormAdventuresModding/bwakit/game/data/enemy_rosters.txt"
 
 
@@ -170,6 +173,22 @@ def mark_current_issue(state: dict, issue: str) -> bool:
     return True
 
 
+def finish_run(state: dict, timestamp: float) -> bool:
+    """Close the active split and run at the native final-boss lethal edge."""
+    if state.get("finished_at") is not None:
+        return False
+    current = state.get("current")
+    if current is not None:
+        state["splits"].append({
+            **current,
+            "ended_at": timestamp,
+            "elapsed": timestamp - current["started_at"],
+        })
+        state["current"] = None
+    state["finished_at"] = timestamp
+    return True
+
+
 def wr_segment_seconds(wr: dict, book: int, chapter: int) -> float | None:
     current = wr.get("chapters", {}).get(f"{book}.{chapter}")
     if current is None:
@@ -184,6 +203,8 @@ def wr_segment_seconds(wr: dict, book: int, chapter: int) -> float | None:
 
 
 def process_line(state: dict, line: str, timestamp: float) -> bool:
+    if FINAL_BOSS_ZERO_RE.search(line):
+        return finish_run(state, timestamp)
     match = CHAPTER_RE.search(line)
     if match:
         return record_chapter(
@@ -356,11 +377,18 @@ def watch(log_path: Path, state_path: Path, poll: float = 0.1) -> None:
                     save_run_history(state)
                     update_tas_best(state)
                     current = state["current"]
-                    print(
-                        f"Split: Book {current['book']} Chapter {current['chapter']} "
-                        f"at {format_duration(timestamp - state['started_at'])}",
-                        flush=True,
-                    )
+                    if current is None and state.get("finished_at") is not None:
+                        print(
+                            "Finish: Codex reached zero HP at "
+                            f"{format_duration(timestamp - state['started_at'])}",
+                            flush=True,
+                        )
+                    else:
+                        print(
+                            f"Split: Book {current['book']} Chapter {current['chapter']} "
+                            f"at {format_duration(timestamp - state['started_at'])}",
+                            flush=True,
+                        )
                 continue
         time.sleep(poll)
 
@@ -385,14 +413,7 @@ def main() -> None:
     elif args.action == "finish":
         state = load_state(args.state)
         now = time.time()
-        current = state.get("current")
-        if current is not None:
-            state["splits"].append({
-                **current, "ended_at": now,
-                "elapsed": now - current["started_at"],
-            })
-            state["current"] = None
-        state["finished_at"] = now
+        finish_run(state, now)
         save_state(args.state, state)
         save_run_history(state)
         update_tas_best(state)
