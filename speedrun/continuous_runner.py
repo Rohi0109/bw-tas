@@ -16,7 +16,8 @@ from pathlib import Path
 from live_runner import X11Keyboard, best_word
 from deluxe_optimizer import (
     Candidate, DeluxeState, candidates, choose, load_chapter1_hp_map,
-    load_metal_words, parse_state, strategy_for_state, validate_chapter1_state,
+    index_words, load_metal_words, parse_state, strategy_for_state,
+    validate_chapter1_state,
 )
 from book1_optimizer import (
     TELEMETRY_SCHEMA_VERSION, DecisionOverrides, TransitionCorpus, candidate_payload,
@@ -1033,14 +1034,14 @@ def main() -> None:
     last_boss_reset_key: tuple[int, int, int, str] | None = None
     treasure_selection_started = False
     handled_minigame_prompts: set[int] = set()
-    deluxe_words: list[str] = []
+    deluxe_words = []
     metal_words = frozenset()
     chapter1_hp = {}
     if args.layout == "deluxe":
         root = Path(__file__).resolve().parent
-        deluxe_words = list(json.loads(
+        deluxe_words = index_words(list(json.loads(
             (root / "word_dict.json").read_text(encoding="utf-8")
-        ))
+        )))
         metal_words = load_metal_words(
             root.parent / "runtime/deluxe-modded/.tas-data/metals.luc"
         )

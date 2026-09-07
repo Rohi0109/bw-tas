@@ -228,6 +228,28 @@ class Candidate:
     gem_count: int
 
 
+@dataclass(frozen=True)
+class WordSpec:
+    word: str
+    letter_mask: int
+    requirements: tuple[tuple[str, int], ...]
+
+
+def index_words(words: list[str]) -> list[WordSpec]:
+    """Precompute immutable letter requirements outside the READY hot path."""
+    indexed = []
+    for raw_word in words:
+        word = raw_word.upper()
+        if len(word) not in DAMAGE_BY_LENGTH:
+            continue
+        counts = Counter(word)
+        mask = 0
+        for letter in counts:
+            mask = mask | (1 << (ord(letter) - ord("A")))
+        indexed.append(WordSpec(word, mask, tuple(sorted(counts.items()))))
+    return indexed
+
+
 def parse_state(text: str) -> DeluxeState | None:
     ready_sequences = [int(match.group("seq")) for match in READY_SEQ_RE.finditer(text)]
     for sequence in reversed(ready_sequences):
@@ -450,7 +472,7 @@ def overkill_tier(overkill: float, thresholds: tuple[float, ...]) -> str | None:
 
 def candidates(
     state: DeluxeState,
-    words: list[str],
+    words: list[str] | list[WordSpec],
     metal_words: frozenset[str],
     click_delay: float,
 ) -> list[Candidate]:
@@ -462,9 +484,26 @@ def candidates(
     dangerous = {name for name in unknown if "damage" in name or "attack" in name}
     if dangerous:
         raise RuntimeError(f"Unmodelled active damage treasure(s): {sorted(dangerous)}")
+    available = Counter(
+        letter for index, letter in enumerate(state.board.replace("/", ""))
+        if state.selectable[index]
+    )
+    available_mask = 0
+    for letter in available:
+        available_mask = available_mask | (1 << (ord(letter) - ord("A")))
     result = []
     for raw_word in words:
-        word = raw_word.upper()
+        if isinstance(raw_word, WordSpec):
+            if raw_word.letter_mask & ~available_mask:
+                continue
+            if any(
+                available.get(letter, 0) < count
+                for letter, count in raw_word.requirements
+            ):
+                continue
+            word = raw_word.word
+        else:
+            word = raw_word.upper()
         if len(word) not in DAMAGE_BY_LENGTH:
             continue
         path = _path_for_word(state, word)

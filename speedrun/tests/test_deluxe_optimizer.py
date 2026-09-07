@@ -3,7 +3,7 @@ import unittest
 from deluxe_optimizer import (
     DeluxeState, adjusted_word_length, candidates, ceil_quarter, choose,
     damage_for, floor_quarter,
-    load_chapter1_hp_map, parse_state, strategy_for_state,
+    index_words, load_chapter1_hp_map, parse_state, strategy_for_state,
     validate_chapter1_state,
 )
 
@@ -29,6 +29,15 @@ def state(**overrides):
 
 
 class DeluxeOptimizerTests(unittest.TestCase):
+    def test_indexed_words_preserve_candidate_results(self):
+        current = state(board="TEST/AAAA/AAAA/AAAA")
+        words = ["TEST", "SEAT", "MISSING", "TEA"]
+
+        self.assertEqual(
+            candidates(current, index_words(words), frozenset(), 0.02),
+            candidates(current, words, frozenset(), 0.02),
+        )
+
     def test_zero_damage_tile_reduces_word_damage(self):
         normal = state(board="TEST/AAAA/AAAA/AAAA")
         smashed = state(
