@@ -39,13 +39,20 @@ function BattleEngine:AutomationDumpDialogs()
   local selectedCount = 0
   local selectedValue = 0
   local selectedValid = 0
-  if gTileEngine ~= nil and gTileTable ~= nil then
+  local selectedIdentity = ""
+  if gTileEngine ~= nil and gTileTable ~= nil and gBoard ~= nil then
     local selectedTiles = {}
-    for _, tile in pairs(gTileTable) do
-      if tile.mCObj ~= nil and tile.mCObj.IsSelected ~= nil and
-          tile.mCObj.IsSelected(tile.mCObj) then
-        selectedCount = selectedCount + 1
-        table.insert(selectedTiles, tile)
+    for y = 0, gTilesHigh - 1 do
+      for x = 0, gTilesWide - 1 do
+        local tileKey = gBoard.GridGetTile(gBoard, x, y)
+        local tile = gTileTable[tileKey]
+        if tile ~= nil and tile.mCObj ~= nil and
+            tile.mCObj.IsSelected ~= nil and
+            tile.mCObj.IsSelected(tile.mCObj) then
+          selectedCount = selectedCount + 1
+          selectedIdentity = selectedIdentity .. "," .. x .. ":" .. y
+          table.insert(selectedTiles, tile)
+        end
       end
     end
     selectedValue = gTileEngine.GetWordValue(gTileEngine, selectedTiles)
@@ -264,15 +271,23 @@ function BattleEngine:AutomationDumpDialogs()
     end
   end
 
-  -- Arm a complete selection, then authorize Enter exactly once on the first
-  -- following native update where the presentation has released input.
-  -- Deluxe discards Enter while its long-word interrupt still owns the battle.
+  -- Arm a complete selection and authorize input on its next native update.
+  -- Some words briefly reject that first edge; the runner handles that with a
+  -- bounded Enter retry while preserving this exact selected-tile identity.
   local attackReadySignature = nil
   if selectedCount > 0 and selectedValid == 1 then
     attackReadySignature = selectedCount .. "|" .. selectedValue
   end
-  if attackReadySignature ~= gAutomationAttackArmSignature then
-    gAutomationAttackArmSignature = attackReadySignature
+  -- Count and value alone collide frequently (for example, consecutive
+  -- seven-letter words worth the same amount). Include the current board so
+  -- a new rack can never inherit the prior word's accumulated ready updates.
+  local attackArmSignature = nil
+  if attackReadySignature ~= nil then
+    attackArmSignature = tostring(gAutomationLastBoard) .. "|" ..
+      selectedIdentity .. "|" .. attackReadySignature
+  end
+  if attackArmSignature ~= gAutomationAttackArmSignature then
+    gAutomationAttackArmSignature = attackArmSignature
     gAutomationAttackArmUpdates = 0
     gAutomationAttackReadySignature = nil
   elseif attackReadySignature ~= nil then

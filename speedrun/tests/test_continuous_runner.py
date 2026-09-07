@@ -1,4 +1,5 @@
 import tempfile
+import time
 import unittest
 from dataclasses import replace
 from pathlib import Path
@@ -156,6 +157,30 @@ class ContinuousRunnerTests(unittest.TestCase):
             ))
             self.assertEqual(attacks, [])
 
+    def test_early_attack_edge_retries_enter_until_native_ack(self):
+        with tempfile.TemporaryDirectory() as directory:
+            log_path = Path(directory) / "lua.log"
+            log_path.write_text("", encoding="utf-8")
+            attacks = []
+
+            class Controller:
+                def select_word(self, *_args, **_kwargs):
+                    self.last_tile_click_sent_at = time.monotonic()
+                    with log_path.open("a", encoding="utf-8") as log:
+                        log.write("AUTOMATION_ATTACK_READY=8|8.0|E\n")
+
+                def click_attack(self, delay):
+                    attacks.append(delay)
+                    if len(attacks) == 3:
+                        with log_path.open("a", encoding="utf-8") as log:
+                            log.write("AUTOMATION_ATTACK_SUBMITTED=8|E\n")
+
+            self.assertTrue(select_and_attack_when_native_ready(
+                Controller(), log_path, "AAAA/AAAA/AAAA/AAAA", "FANJETS",
+                0.08, tuple(range(8)), timeout=0.2,
+            ))
+            self.assertEqual(attacks, [0.01, 0.01, 0.01])
+
     def test_complete_long_word_beats_generic_interrupt_fallback(self):
         with tempfile.TemporaryDirectory() as directory:
             log_path = Path(directory) / "lua.log"
@@ -222,7 +247,7 @@ class ContinuousRunnerTests(unittest.TestCase):
             hook,
         )
 
-    def test_attack_hook_uses_one_shot_next_update_handshake(self):
+    def test_attack_hook_uses_stable_native_update_handshake(self):
         hook = (
             Path(__file__).resolve().parents[2]
             / "automation/lua_hook/DumpDialogs.lua"
@@ -232,6 +257,8 @@ class ContinuousRunnerTests(unittest.TestCase):
         self.assertIn("self.mCObj:GetState() == BE_IDLE", hook)
         self.assertIn("self.mPlayerPtr.mState == CREATURE_IDLE", hook)
         self.assertIn("dialogSource == nil and battleIdle and playerIdle", hook)
+        self.assertIn('tostring(gAutomationLastBoard) .. "|"', hook)
+        self.assertIn("attackArmSignature ~= gAutomationAttackArmSignature", hook)
         self.assertIn("gAutomationAttackReadySignature = nil", hook)
         self.assertIn("second, distinct authorization to submit", hook)
         self.assertNotIn("wordPresentationOwnsInterrupt", hook)

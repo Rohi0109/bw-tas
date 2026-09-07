@@ -554,8 +554,7 @@ class X11Keyboard:
     def click_attack(self, delay: float) -> None:
         """Submit the selected word through Deluxe's keyboard action."""
         # Selection already focused the Wine client. Refocusing here creates an
-        # asynchronous X11 focus transition at the exact native-ready edge and
-        # can make Return land outside the game even though every tile landed.
+        # asynchronous X11 focus transition at the exact native-ready edge.
         self.last_attack_key_sent_at = time.monotonic()
         self.key("Return")
         self.x11.XFlush(self.display)

@@ -530,6 +530,7 @@ def select_and_attack_when_native_ready(
     delay: float, path: tuple[int, ...] | None, timeout: float = 8.0,
 ) -> bool:
     """Click Attack only after Deluxe owns the complete intended selection."""
+    controller.last_attack_ready_latency_ms = float("inf")
     if log_path.exists():
         existing = list(SELECTION_RE.finditer(
             log_path.read_text(encoding="utf-8", errors="replace")[-8192:]
@@ -567,13 +568,35 @@ def select_and_attack_when_native_ready(
                         f"Attack timing {word.upper()}: ready_received; "
                         f"final_tile_to_ready_ms={final_to_ready:.1f}"
                     )
-                    controller.click_attack(delay)
+                    controller.last_attack_ready_latency_ms = final_to_ready
+                    early_ready = 0 <= final_to_ready < 250
+                    input_delay = min(delay, 0.01) if early_ready else delay
+                    input_attempt = 0
+                    input_result = "pending"
+                    while input_attempt < 40:
+                        input_attempt += 1
+                        controller.click_attack(input_delay)
+                        response = log.read()
+                        if ATTACK_SUBMITTED_RE.search(response) or (
+                            "User clicked ATTACK" in response
+                        ):
+                            input_result = "acknowledged"
+                            break
+                        if DIALOG_ACTIVE_RE.search(response):
+                            input_result = "interrupt"
+                            break
+                        # A normal post-presentation readiness edge needs only
+                        # one input; the burst exists solely to cross the brief
+                        # false-idle window exposed immediately after selection.
+                        if not early_ready:
+                            break
                     enter_at = getattr(
                         controller, "last_attack_key_sent_at", ready_received_at
                     )
                     log_message(
                         f"Attack timing {word.upper()}: enter_sent; "
-                        f"ready_to_enter_ms={(enter_at - ready_received_at) * 1000:.1f}"
+                        f"ready_to_enter_ms={(enter_at - ready_received_at) * 1000:.1f}; "
+                        f"attempts={input_attempt}; result={input_result}"
                     )
                     return True
             # Long-word presentation owns BattleEngine's generic interrupt.
@@ -1334,7 +1357,27 @@ def main() -> None:
                 submitted_path = path
                 input_confirmed = False
                 input_attempts = 1
-                input_confirm_at = time.monotonic() + args.input_confirm_timeout
+                ready_latency_ms = getattr(
+                    controller, "last_attack_ready_latency_ms", float("inf")
+                )
+                if native_attack_authorized and ready_latency_ms < 250:
+                    # This is the engine's brief false-idle gap before some
+                    # word presentations. The immediate Enter is worthwhile,
+                    # but if it is discarded, preserve the live selection long
+                    # enough for Lua to issue the post-presentation edge.
+                    input_confirm_at = time.monotonic() + max(
+                        4.0, args.input_confirm_timeout
+                    )
+                    log_message(
+                        f"Early native Attack edge ({ready_latency_ms:.1f} ms); "
+                        "using bounded 10 ms Enter retries while preserving the "
+                        "selected rack.",
+                        flush=True,
+                    )
+                else:
+                    input_confirm_at = (
+                        time.monotonic() + args.input_confirm_timeout
+                    )
                 if deluxe_state is not None:
                     submitted_sequence = deluxe_state.sequence
                     submitted_book, submitted_chapter = telemetry_context(
