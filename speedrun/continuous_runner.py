@@ -417,12 +417,18 @@ def incapacitation_recovery_action(
 def should_use_powerup_potion(
     state: DeluxeState, candidate: Candidate | None,
 ) -> bool:
-    """Spend Power-Up only when its native 1.25x boost removes a whole turn."""
+    """Spend Power-Up when its native 1.25x boost removes a whole turn.
+
+    Enemy Power Down is a DamageMultiplierEffect below 1.0. Candidate damage
+    is the un-debuffed engine value, so a nominally lethal word is not actually
+    lethal while that status remains; the potion replaces/counters it with the
+    positive multiplier.
+    """
     return bool(
         candidate is not None
         and state.attack_potion_available
         and not state.player_powered_up
-        and not candidate.lethal
+        and candidate.damage * state.player_damage_multiplier < state.hp
         and candidate.damage * 1.25 >= state.hp
     )
 

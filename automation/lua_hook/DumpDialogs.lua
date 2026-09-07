@@ -6,10 +6,8 @@ function BattleEngine:AutomationDumpDialogs()
       if type(effect) ~= "table" and type(effectKey) == "table" then
         effect = effectKey
       end
-      if type(effect) == "table" and
-          (effect.mClassName == "DamageMultiplierEffect" or
-           effect.classname == "DamageMultiplierEffect" or
-           effect.mEffectPAMName == "powerup") then
+      if type(effect) == "table" and effect.mMultiple ~= nil and
+          effect.mMultiple > 1 then
         playerPoweredUp = true
       end
     end

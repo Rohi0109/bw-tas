@@ -664,6 +664,27 @@ class ContinuousRunnerTests(unittest.TestCase):
         self.assertFalse(should_use_powerup_potion(circe, five_damage))
         self.assertTrue(should_use_powerup_potion(serpent, serpent_attack))
 
+    def test_powerdown_uses_powerup_when_restored_attack_is_lethal(self):
+        wolf_man = replace(
+            self.state(1), enemy="The Wolf-Man (Boss)", hp=4.75,
+            attack_potion_available=True, player_powered_up=False,
+            player_damage_multiplier=0.5,
+        )
+        nominal_finisher = Candidate(
+            "JERK", (0,), 5.5, 0.75, None, True, 0.7, 0,
+        )
+
+        self.assertTrue(should_use_powerup_potion(wolf_man, nominal_finisher))
+
+    def test_powerdown_does_not_waste_potion_when_boost_still_cannot_kill(self):
+        wolf_man = replace(
+            self.state(1), hp=10, attack_potion_available=True,
+            player_damage_multiplier=0.5,
+        )
+        weak = Candidate("JERK", (0,), 5.5, -4.5, None, False, 0.7, 0)
+
+        self.assertFalse(should_use_powerup_potion(wolf_man, weak))
+
     def test_stunned_low_health_heals_even_before_killing_blow(self):
         stunned = replace(
             self.state(1), player_hp=3.5, player_max_hp=6,

@@ -275,6 +275,7 @@ function TileEngine:AutomationDumpBoard()
     local healthPotionAvailable = false
     local attackPotionAvailable = false
     local playerPoweredUp = false
+    local playerDamageMultiplier = 1
     local playerHasDamageOverTime = false
     local offense = 0
     local treasures = "none"
@@ -320,10 +321,11 @@ function TileEngine:AutomationDumpBoard()
                   pamName == "burning" or pamName == "poison" then
                 playerHasDamageOverTime = true
               end
-              if className == "DamageMultiplierEffect" or
+              if (className == "DamageMultiplierEffect" or
                   effect.classname == "DamageMultiplierEffect" or
-                  pamName == "powerup" then
-                playerPoweredUp = true
+                  pamName == "powerup") and effect.mMultiple ~= nil then
+                playerDamageMultiplier = effect.mMultiple
+                playerPoweredUp = effect.mMultiple > 1
               end
             end
           end
@@ -410,7 +412,8 @@ function TileEngine:AutomationDumpBoard()
       (playerPetrified and "1" or "0") .. "|" ..
       (attackPotionAvailable and "1" or "0") .. "|" ..
       (playerFrozen and "1" or "0") .. "|" ..
-      (playerPoweredUp and "1" or "0") .. "|E")
+      (playerPoweredUp and "1" or "0") .. "|" ..
+      playerDamageMultiplier .. "|E")
     print("AUTOMATION_RNG=" .. gAutomationSequence .. "|-1|E")
     print("AUTOMATION_READY_SEQ=" .. gAutomationSequence .. "|E")
     print("AUTOMATION_READY=" .. snapshot)
