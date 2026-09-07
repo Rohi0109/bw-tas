@@ -588,6 +588,22 @@ def select_and_attack_when_native_ready(
         log.seek(start)
         while time.monotonic() < deadline:
             text = log.read()
+            # Enter can submit the word directly from the valid-word
+            # presentation without producing a separate ATTACK_READY edge.
+            # Treat that native acknowledgement as success immediately;
+            # otherwise a completed attack needlessly waits out this helper's
+            # full timeout before the combat loop can observe the result.
+            if ATTACK_SUBMITTED_RE.search(text) or "User clicked ATTACK" in text:
+                acknowledged_at = time.monotonic()
+                log_message(
+                    f"Attack timing {word.upper()}: submitted during "
+                    "presentation skip; final_tile_to_ack_ms="
+                    f"{((acknowledged_at - final_tile_at) * 1000):.1f}"
+                    if final_tile_at is not None
+                    else f"Attack timing {word.upper()}: submitted during "
+                    "presentation skip."
+                )
+                return True
             selection_matches = list(SELECTION_RE.finditer(text))
             if selection_matches:
                 latest_selection = selection_matches[-1]

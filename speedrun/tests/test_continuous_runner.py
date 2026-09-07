@@ -227,6 +227,35 @@ class ContinuousRunnerTests(unittest.TestCase):
             ))
             self.assertEqual(attacks, [0.01, 0.01, 0.01, 0.01])
 
+    def test_presentation_submission_does_not_wait_for_attack_ready(self):
+        with tempfile.TemporaryDirectory() as directory:
+            log_path = Path(directory) / "lua.log"
+            log_path.write_text("", encoding="utf-8")
+            attacks = []
+
+            class Controller:
+                def select_word(self, *_args, **_kwargs):
+                    self.last_tile_click_sent_at = time.monotonic()
+                    with log_path.open("a", encoding="utf-8") as log:
+                        log.write(
+                            "AUTOMATION_SELECTION=8|8.0|1|E\n"
+                            "AUTOMATION_DIALOG_ACTIVE=interrupt|4|E\n"
+                        )
+
+                def click_attack(self, delay):
+                    attacks.append(delay)
+                    if len(attacks) == 2:
+                        with log_path.open("a", encoding="utf-8") as log:
+                            log.write("AUTOMATION_ATTACK_SUBMITTED=test|E\n")
+
+            started = time.monotonic()
+            self.assertTrue(select_and_attack_when_native_ready(
+                Controller(), log_path, "AAAA/AAAA/AAAA/AAAA", "FANJETS",
+                0.08, tuple(range(8)), timeout=1.0,
+            ))
+            self.assertLess(time.monotonic() - started, 0.25)
+            self.assertEqual(attacks, [0.01, 0.01])
+
     def test_complete_long_word_beats_generic_interrupt_fallback(self):
         with tempfile.TemporaryDirectory() as directory:
             log_path = Path(directory) / "lua.log"
