@@ -67,6 +67,18 @@ class ContinuousRunnerTests(unittest.TestCase):
         self.assertIn("state_fingerprint(submitted_state)", source)
         self.assertNotIn("state_fingerlog_message", source)
 
+    def test_historical_word_interrupt_uses_native_authorization_state(self):
+        source = (
+            Path(__file__).resolve().parents[1] / "continuous_runner.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn("and native_attack_authorized", source)
+        self.assertNotIn(
+            'active_dialog == "interrupt"\n                    '
+            "and not input_confirmed\n                    "
+            "and submitted_attack_at is not None",
+            source,
+        )
+
     def test_powerup_waits_for_native_effect_and_input_ownership(self):
         with tempfile.TemporaryDirectory() as directory:
             log_path = Path(directory) / "lua.log"
@@ -216,6 +228,9 @@ class ContinuousRunnerTests(unittest.TestCase):
         ).read_text(encoding="utf-8")
         self.assertIn("gAutomationAttackArmUpdates >= 1", hook)
         self.assertIn("gAutomationAttackArmUpdates >= 1 and\n    dialogSource == nil", hook)
+        self.assertIn("self.mCObj:GetState() == BE_IDLE", hook)
+        self.assertIn("self.mPlayerPtr.mState == CREATURE_IDLE", hook)
+        self.assertIn("dialogSource == nil and battleIdle and playerIdle", hook)
         self.assertNotIn("wordPresentationOwnsInterrupt", hook)
         self.assertNotIn("self:CanSubmitTiles()", hook)
         self.assertNotIn("gAutomationAttackReadyUpdates >= 15", hook)

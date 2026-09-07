@@ -279,9 +279,16 @@ function BattleEngine:AutomationDumpDialogs()
     gAutomationAttackArmUpdates = gAutomationAttackArmUpdates + 1
   end
 
+  -- These are the concrete state checks immediately guarding the Attack
+  -- rectangle in BattleEngine:MouseDown. DIALOG_INACTIVE can precede them by
+  -- a few frames, especially after a long-word presentation.
+  local battleIdle = self.mCObj ~= nil and self.mCObj.GetState ~= nil and
+    self.mCObj:GetState() == BE_IDLE
+  local playerIdle = self.mPlayerPtr ~= nil and
+    self.mPlayerPtr.mState == CREATURE_IDLE
   local attackInputClear = attackReadySignature ~= nil and
     gAutomationAttackArmUpdates >= 1 and
-    dialogSource == nil and
+    dialogSource == nil and battleIdle and playerIdle and
     self.mGridOverlayPAM == nil and gAutomationZeroHealthEnemy == nil
   if attackInputClear then
     if gAutomationAttackReadySignature ~= attackReadySignature then

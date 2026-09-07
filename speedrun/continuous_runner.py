@@ -818,6 +818,7 @@ def main() -> None:
     submitted_sequence = None
     submitted_at = None
     submitted_attack_at = None
+    native_attack_authorized = False
     submitted_candidate: Candidate | None = None
     submitted_state: DeluxeState | None = None
     last_attack_state: DeluxeState | None = None
@@ -1276,10 +1277,12 @@ def main() -> None:
                     )
                     controller.use_purification_potion(max(0.8, args.delay))
                 attack_started_at = time.monotonic()
+                native_attack_authorized = False
                 if args.layout == "deluxe":
                     native_ready = select_and_attack_when_native_ready(
                         controller, log_path, board, word, args.delay, path,
                     )
+                    native_attack_authorized = native_ready
                     attack_clicked_at = time.monotonic() if native_ready else None
                     if not native_ready:
                         log_message(
@@ -1483,6 +1486,7 @@ def main() -> None:
                             submitted_word, retry_delay, submitted_path,
                         )
                         if native_ready:
+                            native_attack_authorized = True
                             submitted_attack_at = time.monotonic()
                         else:
                             log_message(
@@ -1526,7 +1530,7 @@ def main() -> None:
                 word_presentation_active = bool(
                     active_dialog == "interrupt"
                     and not input_confirmed
-                    and submitted_attack_at is not None
+                    and native_attack_authorized
                 )
                 if word_presentation_active:
                     log_message(
