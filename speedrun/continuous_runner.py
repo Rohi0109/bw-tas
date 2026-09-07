@@ -547,6 +547,7 @@ def dialogue_pulse_suppressed(
 def select_and_attack_when_native_ready(
     controller: X11Keyboard, log_path: Path, board: str, word: str,
     delay: float, path: tuple[int, ...] | None, timeout: float = 8.0,
+    allow_presentation_skip: bool = True,
 ) -> bool:
     """Click Attack only after Deluxe owns the complete intended selection."""
     controller.last_attack_ready_latency_ms = float("inf")
@@ -570,10 +571,44 @@ def select_and_attack_when_native_ready(
             f"{(selection_returned_at - final_tile_at) * 1000:.1f}"
         )
     deadline = time.monotonic() + timeout
+    selection_presentation_active = False
+    native_selection_complete = False
+    presentation_skip_attempts = 0
     with log_path.open("r", encoding="utf-8", errors="replace") as log:
         log.seek(start)
         while time.monotonic() < deadline:
             text = log.read()
+            selection_matches = list(SELECTION_RE.finditer(text))
+            if selection_matches:
+                latest_selection = selection_matches[-1]
+                native_selection_complete = (
+                    int(latest_selection.group("count")) == len(path or word)
+                    and latest_selection.group("valid") == "1"
+                )
+            presentation_events = []
+            presentation_events.extend(
+                (match.start(), match.group("source") == "interrupt")
+                for match in DIALOG_ACTIVE_RE.finditer(text)
+            )
+            presentation_events.extend(
+                (match.start(), False)
+                for match in DIALOG_INACTIVE_RE.finditer(text)
+            )
+            for _, selection_presentation_active in sorted(presentation_events):
+                pass
+            if (
+                selection_presentation_active
+                and native_selection_complete
+                and allow_presentation_skip
+                and presentation_skip_attempts < 40
+            ):
+                presentation_skip_attempts += 1
+                if presentation_skip_attempts == 1:
+                    log_message(
+                        f"Attack timing {word.upper()}: valid-word presentation "
+                        "active; starting bounded 10 ms Enter skip."
+                    )
+                controller.click_attack(min(delay, 0.01))
             matches = list(ATTACK_READY_RE.finditer(text))
             if matches:
                 latest = matches[-1]
@@ -585,7 +620,8 @@ def select_and_attack_when_native_ready(
                     )
                     log_message(
                         f"Attack timing {word.upper()}: ready_received; "
-                        f"final_tile_to_ready_ms={final_to_ready:.1f}"
+                        f"final_tile_to_ready_ms={final_to_ready:.1f}; "
+                        f"presentation_skip_attempts={presentation_skip_attempts}"
                     )
                     controller.last_attack_ready_latency_ms = final_to_ready
                     early_ready = 0 <= final_to_ready < 250
@@ -618,12 +654,9 @@ def select_and_attack_when_native_ready(
                         f"attempts={input_attempt}; result={input_result}"
                     )
                     return True
-            # Long-word presentation owns BattleEngine's generic interrupt.
-            # Its Lua-authorized safe-point pulses advance the animation; the
-            # rack remains untouched until ATTACK_READY arrives afterward.
-            for pulse in DIALOG_PULSE_RE.finditer(text):
-                if pulse.group("source") == "interrupt":
-                    controller.advance_dialog("interrupt", delay)
+            # This helper owns a complete valid rack. Generic safe-point
+            # dialogue clicks are intentionally excluded: Enter above can only
+            # advance this selection's presentation and cannot touch a tile.
             if INCAP_OVERLAY_RE.search(text):
                 return False
             time.sleep(0.01)
@@ -1362,6 +1395,10 @@ def main() -> None:
                 if args.layout == "deluxe":
                     native_ready = select_and_attack_when_native_ready(
                         controller, log_path, board, word, args.tile_delay, path,
+                        allow_presentation_skip=(
+                            deluxe_state is None
+                            or not deluxe_state.enemy.casefold().startswith("sphinx")
+                        ),
                     )
                     native_attack_authorized = native_ready
                     attack_clicked_at = time.monotonic() if native_ready else None
@@ -1585,6 +1622,10 @@ def main() -> None:
                         native_ready = select_and_attack_when_native_ready(
                             controller, log_path, submitted_board,
                             submitted_word, retry_delay, submitted_path,
+                            allow_presentation_skip=(
+                                submitted_state is None
+                                or not submitted_state.enemy.casefold().startswith("sphinx")
+                            ),
                         )
                         if native_ready:
                             native_attack_authorized = True
