@@ -9,6 +9,7 @@ from continuous_runner import (
     activate_powerup_when_native_ready,
     ATTACK_SUBMITTED_RE, DEFEATED_RE, DIALOG_ACTIVE_RE, DIALOG_PULSE_RE,
     INCAP_OVERLAY_RE, MINIGAME_PROMPT_RE, PLAYER_STUNNED_RE, PLAY_READY_RE,
+    DEATH_FLAGS_RE,
     RESET_READY_RE,
     post_treasure_convpanel_supersedes_boss_reset,
     ZERO_HEALTH_RE,
@@ -846,7 +847,7 @@ class ContinuousRunnerTests(unittest.TestCase):
         self.assertIsNotNone(match)
         self.assertEqual(match.group("enemy"), "Polyphemus (Boss)")
 
-    def test_boss_zero_health_path_resets_before_final_death_sequence(self):
+    def test_boss_zero_health_path_arms_safe_reset(self):
         source = (
             Path(__file__).resolve().parents[1] / "continuous_runner.py"
         ).read_text(encoding="utf-8")
@@ -855,9 +856,18 @@ class ContinuousRunnerTests(unittest.TestCase):
             source.index("zero_health_event = ZERO_HEALTH_RE.search(line)"):
             source.index("reset_ready_event = RESET_READY_RE.search(line)")
         ]
-        self.assertIn("reset_from_battle(controller, MenuTiming())", zero_health_handler)
-        self.assertIn('"death animation settles."', zero_health_handler)
-        self.assertNotIn("boss_reset_state = zero_health_state", zero_health_handler)
+        self.assertNotIn("reset_from_battle(controller, MenuTiming())", zero_health_handler)
+        self.assertIn('"waiting for the Lua-confirmed save-ready edge."', zero_health_handler)
+        self.assertIn("boss_reset_state = zero_health_state", zero_health_handler)
+
+    def test_lua_death_flags_capture_intermediate_native_edges(self):
+        match = DEATH_FLAGS_RE.search(
+            "AUTOMATION_DEATH_FLAGS=Grim (Boss)|true|nil|false|false|-1|-1|E"
+        )
+        self.assertIsNotNone(match)
+        self.assertEqual(match.group("enemy"), "Grim (Boss)")
+        self.assertEqual(match.group("anims_done"), "true")
+        self.assertEqual(match.group("final_sequence"), "false")
 
     def test_lua_reset_ready_event_captures_settled_boss(self):
         match = RESET_READY_RE.search(

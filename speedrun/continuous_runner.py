@@ -128,6 +128,12 @@ LEGACY_SCREEN_RE = re.compile(
 )
 DEFEATED_RE = re.compile(r"AUTOMATION_DEFEATED=(?P<enemy>[^|]+)\|E")
 ZERO_HEALTH_RE = re.compile(r"AUTOMATION_ZERO_HEALTH=(?P<enemy>[^|]+)\|E")
+DEATH_FLAGS_RE = re.compile(
+    r"AUTOMATION_DEATH_FLAGS=(?P<enemy>[^|]+)\|"
+    r"(?P<anims_done>true|false|nil)\|(?P<death_sequence>true|false|nil)\|"
+    r"(?P<final_sequence>true|false|nil)\|(?P<interrupt>true|false|nil)\|"
+    r"(?P<boss_state>[^|]+)\|(?P<checkpoint_state>[^|]+)\|E"
+)
 ATTACK_SUBMITTED_RE = re.compile(
     r"AUTOMATION_ATTACK_SUBMITTED=(?P<enemy>[^|]+)\|E"
 )
@@ -2266,6 +2272,18 @@ def main() -> None:
                         f"Stopped after the safety limit of {args.max_attacks} attacks"
                     )
             zero_health_event = ZERO_HEALTH_RE.search(line)
+            death_flags_event = DEATH_FLAGS_RE.search(line)
+            if death_flags_event:
+                log_message(
+                    "Native death edge: "
+                    f"enemy={death_flags_event.group('enemy')}; "
+                    f"anims_done={death_flags_event.group('anims_done')}; "
+                    f"death_sequence={death_flags_event.group('death_sequence')}; "
+                    f"final_sequence={death_flags_event.group('final_sequence')}; "
+                    f"interrupt={death_flags_event.group('interrupt')}; "
+                    f"boss_state={death_flags_event.group('boss_state')}; "
+                    f"checkpoint_state={death_flags_event.group('checkpoint_state')}"
+                )
             zero_health_state = (
                 attack_state_for_event(
                     submitted_state, last_attack_state,
@@ -2284,37 +2302,21 @@ def main() -> None:
             if (
                 zero_health_event and args.auto_menu_reset
                 and zero_health_state is not None
-                # The accepted lethal attack has reached the engine's native
-                # zero-HP state while the battle menu still owns input. Begin
-                # the WR reset here; waiting for mDidFinalDeathSequence merely
-                # watches the complete death animation before doing the same
-                # menu sequence. Route checkpoints still use DEFEATED.
+                # Zero HP is too early: Grim restored its pre-lethal 7 HP state
+                # after a menu exit at this edge. Arm the reset here, but wait
+                # for the engine's confirmed save-ready event. Route
+                # checkpoints still use DEFEATED.
                 and should_arm_boss_reset_on_zero_health(zero_health_state)
                 and encounter_key(zero_health_state) not in reset_encounters
                 and boss_reset_state is None
             ):
-                last_boss_reset_key = encounter_key(zero_health_state)
-                reset_encounters.add(last_boss_reset_key)
                 log_message(
                     f"Lua confirmed {zero_health_event.group('enemy')} reached zero HP; "
-                    "resetting immediately through the battle menu before the "
-                    "death animation settles.",
+                    "waiting for the Lua-confirmed save-ready edge.",
                     flush=True,
                 )
-                reset_from_battle(controller, MenuTiming())
-                boss_reset_state = None
-                boss_reset_dialog_ready = False
-                menu_reentry_pending = True
-                menu_reentry_attempts = 0
-                menu_reentry_at = time.monotonic() + 2.0
-                submitted_sequence = (
-                    deluxe_state.sequence if deluxe_state is not None else None
-                )
+                boss_reset_state = zero_health_state
                 dialog_probe_at = float("inf")
-                input_confirmed = True
-                input_confirm_at = float("inf")
-                ready = False
-                deadline = time.monotonic() + args.timeout
             reset_ready_event = RESET_READY_RE.search(line)
             if reset_ready_event and boss_reset_state is not None:
                 last_boss_reset_key = encounter_key(boss_reset_state)
