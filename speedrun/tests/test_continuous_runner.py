@@ -186,12 +186,14 @@ class ContinuousRunnerTests(unittest.TestCase):
             hook,
         )
 
-    def test_attack_hook_requires_post_presentation_stability(self):
+    def test_attack_hook_uses_first_clear_native_update(self):
         hook = (
             Path(__file__).resolve().parents[2]
             / "automation/lua_hook/DumpDialogs.lua"
         ).read_text(encoding="utf-8")
-        self.assertIn("gAutomationAttackReadyUpdates >= 15", hook)
+        self.assertIn("dialogSource == nil and self.mGridOverlayPAM == nil", hook)
+        self.assertNotIn("self:CanSubmitTiles()", hook)
+        self.assertNotIn("gAutomationAttackReadyUpdates >= 15", hook)
 
     def test_lua_runtime_wait_marker_is_detected_near_log_tail(self):
         marker = "Program in waiting. Type go() or press F5 to continue execution."

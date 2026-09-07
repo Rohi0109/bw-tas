@@ -264,21 +264,15 @@ function BattleEngine:AutomationDumpDialogs()
     end
   end
 
+  -- Enter can submit on the first update after the presentation releases
+  -- input. BattleEngine:CanSubmitTiles is an unimplemented stub in Deluxe, so
+  -- use the concrete input-ownership fields instead.
   local attackInputClear = selectedCount > 0 and selectedValid == 1 and
     dialogSource == nil and self.mGridOverlayPAM == nil
-  if attackInputClear then
-    if gAutomationAttackReadyUpdates == nil then
-      gAutomationAttackReadyUpdates = 0
-    end
-    gAutomationAttackReadyUpdates = gAutomationAttackReadyUpdates + 1
-  else
-    gAutomationAttackReadyUpdates = 0
+  if not attackInputClear then
     gAutomationAttackReadySignature = nil
   end
-  -- The lit Attack button can still reject MouseUp for a few updates after a
-  -- long-word presentation closes. Fifteen clean updates matches the hook's
-  -- existing native retry cadence and eliminates that post-animation race.
-  if attackInputClear and gAutomationAttackReadyUpdates >= 15 then
+  if attackInputClear then
     local attackReadySignature = selectedCount .. "|" .. selectedValue
     if gAutomationAttackReadySignature ~= attackReadySignature then
       gAutomationAttackReadySignature = attackReadySignature
