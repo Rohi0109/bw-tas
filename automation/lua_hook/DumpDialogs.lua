@@ -290,6 +290,12 @@ function BattleEngine:AutomationDumpDialogs()
     gAutomationAttackArmUpdates >= 1 and
     dialogSource == nil and battleIdle and playerIdle and
     self.mGridOverlayPAM == nil and gAutomationZeroHealthEnemy == nil
+  -- The first Enter on long words opens the completed-word presentation
+  -- without consuming the selection. Rearm while that interrupt owns input
+  -- so its release produces a second, distinct authorization to submit.
+  if dialogSource ~= nil and attackReadySignature ~= nil then
+    gAutomationAttackReadySignature = nil
+  end
   if attackInputClear then
     if gAutomationAttackReadySignature ~= attackReadySignature then
       gAutomationAttackReadySignature = attackReadySignature

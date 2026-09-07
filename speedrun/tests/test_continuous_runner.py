@@ -232,6 +232,8 @@ class ContinuousRunnerTests(unittest.TestCase):
         self.assertIn("self.mCObj:GetState() == BE_IDLE", hook)
         self.assertIn("self.mPlayerPtr.mState == CREATURE_IDLE", hook)
         self.assertIn("dialogSource == nil and battleIdle and playerIdle", hook)
+        self.assertIn("gAutomationAttackReadySignature = nil", hook)
+        self.assertIn("second, distinct authorization to submit", hook)
         self.assertNotIn("wordPresentationOwnsInterrupt", hook)
         self.assertNotIn("self:CanSubmitTiles()", hook)
         self.assertNotIn("gAutomationAttackReadyUpdates >= 15", hook)

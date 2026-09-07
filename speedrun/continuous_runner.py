@@ -860,6 +860,7 @@ def main() -> None:
     submitted_path: tuple[int, ...] | None = None
     input_confirmed = True
     word_presentation_active = False
+    word_presentation_pending_submit = False
     input_attempts = 0
     input_confirm_at = float("inf")
     tutorial_play_submitted = False
@@ -1562,9 +1563,10 @@ def main() -> None:
                     and native_attack_authorized
                 )
                 if word_presentation_active:
+                    word_presentation_pending_submit = True
                     log_message(
-                        "Ignoring completed-word presentation interrupt; "
-                        "awaiting native ATTACK acknowledgement.", flush=True,
+                        "Completed-word presentation started; preserving the "
+                        "selection for its second native Enter edge.", flush=True,
                     )
                     continue
                 if convpanel_supersedes_navigation_transition(active_dialog):
@@ -1669,6 +1671,37 @@ def main() -> None:
                         "Dialogue exited; waiting for a newer native READY "
                         "sequence before touching the rack.", flush=True,
                     )
+            attack_ready = ATTACK_READY_RE.search(line)
+            if (
+                attack_ready
+                and word_presentation_pending_submit
+                and not input_confirmed
+                and submitted_word is not None
+                and int(attack_ready.group("count"))
+                == len(submitted_path or submitted_word)
+            ):
+                second_ready_at = time.monotonic()
+                controller.click_attack(args.delay)
+                second_enter_at = getattr(
+                    controller, "last_attack_key_sent_at", second_ready_at
+                )
+                log_message(
+                    f"Attack timing {submitted_word.upper()}: "
+                    "post-presentation_enter_sent; "
+                    "ready_to_enter_ms="
+                    f"{(second_enter_at - second_ready_at) * 1000:.1f}",
+                    flush=True,
+                )
+                log_message(
+                    "Completed-word presentation released; submitting the "
+                    "preserved selection without retyping.", flush=True,
+                )
+                word_presentation_pending_submit = False
+                submitted_attack_at = time.monotonic()
+                input_confirm_at = (
+                    time.monotonic() + args.input_confirm_timeout
+                )
+                deadline = time.monotonic() + args.timeout
             dialog_pulse = DIALOG_PULSE_RE.search(line)
             if dialog_pulse and args.auto_dialog:
                 source = dialog_pulse.group("source")

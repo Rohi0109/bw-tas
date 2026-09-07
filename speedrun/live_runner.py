@@ -509,8 +509,6 @@ class X11Keyboard:
                 if not choices:
                     raise RuntimeError(f"No unused {letter} tile for {word.upper()}")
                 row, column = choices.pop(0)
-            if offset == len(word) - 1:
-                self.last_tile_click_sent_at = time.monotonic()
             self.click(int(width * tile_x[column]), int(height * tile_y[row]), delay)
         time.sleep(settle)
         self.click_attack(delay)
@@ -549,6 +547,8 @@ class X11Keyboard:
                 if not choices:
                     raise RuntimeError(f"No unused {letter} tile for {word.upper()}")
                 row, column = choices.pop(0)
+            if offset == len(word) - 1:
+                self.last_tile_click_sent_at = time.monotonic()
             self.click(int(width * tile_x[column]), int(height * tile_y[row]), delay)
 
     def click_attack(self, delay: float) -> None:
