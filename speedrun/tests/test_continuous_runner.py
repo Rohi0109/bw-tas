@@ -781,7 +781,7 @@ class ContinuousRunnerTests(unittest.TestCase):
             replace(hydra, player_has_damage_over_time=False), lethal,
         ))
 
-    def test_book3_chapter10_uses_full_heal_and_purify(self):
+    def test_book3_chapter10_full_heal_does_not_imply_purify(self):
         gauntlet = replace(
             self.state(1), book=3, chapter=10,
             enemy="Summoned Cerberus", player_hp=6, player_max_hp=7,
@@ -789,7 +789,7 @@ class ContinuousRunnerTests(unittest.TestCase):
         )
 
         self.assertTrue(should_use_health_potion(gauntlet))
-        self.assertTrue(should_use_purification_potion(gauntlet))
+        self.assertFalse(should_use_purification_potion(gauntlet))
 
     def test_summoned_enemy_recovers_missing_chapter10_context(self):
         gauntlet = replace(
@@ -800,6 +800,14 @@ class ContinuousRunnerTests(unittest.TestCase):
 
         self.assertTrue(is_book3_final_gauntlet(gauntlet))
         self.assertTrue(should_use_health_potion(gauntlet))
+        self.assertFalse(should_use_purification_potion(gauntlet))
+
+    def test_summoned_enemy_purifies_only_a_live_status(self):
+        gauntlet = replace(
+            self.state(1), book=3, chapter=10,
+            enemy="Summoned Medusa", player_petrified=True,
+        )
+
         self.assertTrue(should_use_purification_potion(gauntlet))
 
     def test_other_chapters_do_not_purify_without_known_threat(self):

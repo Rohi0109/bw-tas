@@ -453,8 +453,6 @@ def should_use_purification_potion(
         # the live status even when the current word is lethal so it cannot
         # carry into the final-head transition.
         return True
-    if is_book3_final_gauntlet(state):
-        return True
     if candidate is not None and candidate.lethal:
         return False
     if state.player_has_damage_over_time:
