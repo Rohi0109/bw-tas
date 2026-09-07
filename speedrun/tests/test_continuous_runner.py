@@ -209,12 +209,16 @@ class ContinuousRunnerTests(unittest.TestCase):
             hook,
         )
 
-    def test_attack_hook_uses_first_clear_native_update(self):
+    def test_attack_hook_uses_one_shot_next_update_handshake(self):
         hook = (
             Path(__file__).resolve().parents[2]
             / "automation/lua_hook/DumpDialogs.lua"
         ).read_text(encoding="utf-8")
-        self.assertIn("dialogSource == nil and self.mGridOverlayPAM == nil", hook)
+        self.assertIn("gAutomationAttackArmUpdates >= 1", hook)
+        self.assertIn('dialogSource == "interrupt" and selectedCount >= 7', hook)
+        self.assertIn(
+            "(dialogSource == nil or wordPresentationOwnsInterrupt)", hook
+        )
         self.assertNotIn("self:CanSubmitTiles()", hook)
         self.assertNotIn("gAutomationAttackReadyUpdates >= 15", hook)
 

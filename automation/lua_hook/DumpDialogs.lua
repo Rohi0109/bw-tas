@@ -264,16 +264,29 @@ function BattleEngine:AutomationDumpDialogs()
     end
   end
 
-  -- Enter can submit on the first update after the presentation releases
-  -- input. BattleEngine:CanSubmitTiles is an unimplemented stub in Deluxe, so
-  -- use the concrete input-ownership fields instead.
-  local attackInputClear = selectedCount > 0 and selectedValid == 1 and
-    dialogSource == nil and self.mGridOverlayPAM == nil
-  if not attackInputClear then
-    gAutomationAttackReadySignature = nil
+  -- Arm a complete selection, then authorize Enter exactly once on the next
+  -- native update. A 7+ letter selection owns BattleEngine's generic
+  -- interrupt while its word presentation is playing; that presentation must
+  -- not delay keyboard submission. Other dialogue owners remain blockers.
+  local attackReadySignature = nil
+  if selectedCount > 0 and selectedValid == 1 then
+    attackReadySignature = selectedCount .. "|" .. selectedValue
   end
+  if attackReadySignature ~= gAutomationAttackArmSignature then
+    gAutomationAttackArmSignature = attackReadySignature
+    gAutomationAttackArmUpdates = 0
+    gAutomationAttackReadySignature = nil
+  elseif attackReadySignature ~= nil then
+    gAutomationAttackArmUpdates = gAutomationAttackArmUpdates + 1
+  end
+
+  local wordPresentationOwnsInterrupt =
+    dialogSource == "interrupt" and selectedCount >= 7
+  local attackInputClear = attackReadySignature ~= nil and
+    gAutomationAttackArmUpdates >= 1 and
+    (dialogSource == nil or wordPresentationOwnsInterrupt) and
+    self.mGridOverlayPAM == nil and gAutomationZeroHealthEnemy == nil
   if attackInputClear then
-    local attackReadySignature = selectedCount .. "|" .. selectedValue
     if gAutomationAttackReadySignature ~= attackReadySignature then
       gAutomationAttackReadySignature = attackReadySignature
       print("AUTOMATION_ATTACK_READY=" .. attackReadySignature .. "|E")
