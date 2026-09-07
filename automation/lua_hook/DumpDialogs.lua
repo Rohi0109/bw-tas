@@ -264,10 +264,9 @@ function BattleEngine:AutomationDumpDialogs()
     end
   end
 
-  -- Arm a complete selection, then authorize Enter exactly once on the next
-  -- native update. A 7+ letter selection owns BattleEngine's generic
-  -- interrupt while its word presentation is playing; that presentation must
-  -- not delay keyboard submission. Other dialogue owners remain blockers.
+  -- Arm a complete selection, then authorize Enter exactly once on the first
+  -- following native update where the presentation has released input.
+  -- Deluxe discards Enter while its long-word interrupt still owns the battle.
   local attackReadySignature = nil
   if selectedCount > 0 and selectedValid == 1 then
     attackReadySignature = selectedCount .. "|" .. selectedValue
@@ -280,11 +279,9 @@ function BattleEngine:AutomationDumpDialogs()
     gAutomationAttackArmUpdates = gAutomationAttackArmUpdates + 1
   end
 
-  local wordPresentationOwnsInterrupt =
-    dialogSource == "interrupt" and selectedCount >= 7
   local attackInputClear = attackReadySignature ~= nil and
     gAutomationAttackArmUpdates >= 1 and
-    (dialogSource == nil or wordPresentationOwnsInterrupt) and
+    dialogSource == nil and
     self.mGridOverlayPAM == nil and gAutomationZeroHealthEnemy == nil
   if attackInputClear then
     if gAutomationAttackReadySignature ~= attackReadySignature then

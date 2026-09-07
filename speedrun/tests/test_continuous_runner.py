@@ -215,10 +215,8 @@ class ContinuousRunnerTests(unittest.TestCase):
             / "automation/lua_hook/DumpDialogs.lua"
         ).read_text(encoding="utf-8")
         self.assertIn("gAutomationAttackArmUpdates >= 1", hook)
-        self.assertIn('dialogSource == "interrupt" and selectedCount >= 7', hook)
-        self.assertIn(
-            "(dialogSource == nil or wordPresentationOwnsInterrupt)", hook
-        )
+        self.assertIn("gAutomationAttackArmUpdates >= 1 and\n    dialogSource == nil", hook)
+        self.assertNotIn("wordPresentationOwnsInterrupt", hook)
         self.assertNotIn("self:CanSubmitTiles()", hook)
         self.assertNotIn("gAutomationAttackReadyUpdates >= 15", hook)
 
