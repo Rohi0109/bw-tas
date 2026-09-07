@@ -2278,19 +2278,32 @@ def main() -> None:
             if (
                 zero_health_event and args.auto_menu_reset
                 and zero_health_state is not None
-                # Chapter bosses arm on zero health, then exit at the native
-                # reset-ready/save edge to skip their long post-victory
-                # sequence. Route checkpoints use DEFEATED instead.
+                # The accepted lethal attack has reached the engine's native
+                # zero-HP state while the battle menu still owns input. Begin
+                # the WR reset here; waiting for mDidFinalDeathSequence merely
+                # watches the complete death animation before doing the same
+                # menu sequence. Route checkpoints still use DEFEATED.
                 and should_arm_boss_reset_on_zero_health(zero_health_state)
                 and encounter_key(zero_health_state) not in reset_encounters
                 and boss_reset_state is None
             ):
+                last_boss_reset_key = encounter_key(zero_health_state)
+                reset_encounters.add(last_boss_reset_key)
                 log_message(
                     f"Lua confirmed {zero_health_event.group('enemy')} reached zero HP; "
-                    "waiting for the Lua-confirmed save-ready edge.",
+                    "resetting immediately through the battle menu before the "
+                    "death animation settles.",
                     flush=True,
                 )
-                boss_reset_state = zero_health_state
+                reset_from_battle(controller, MenuTiming())
+                boss_reset_state = None
+                boss_reset_dialog_ready = False
+                menu_reentry_pending = True
+                menu_reentry_attempts = 0
+                menu_reentry_at = time.monotonic() + 2.0
+                submitted_sequence = (
+                    deluxe_state.sequence if deluxe_state is not None else None
+                )
                 dialog_probe_at = float("inf")
                 input_confirmed = True
                 input_confirm_at = float("inf")

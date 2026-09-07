@@ -825,6 +825,19 @@ class ContinuousRunnerTests(unittest.TestCase):
         self.assertIsNotNone(match)
         self.assertEqual(match.group("enemy"), "Polyphemus (Boss)")
 
+    def test_boss_zero_health_path_resets_before_final_death_sequence(self):
+        source = (
+            Path(__file__).resolve().parents[1] / "continuous_runner.py"
+        ).read_text(encoding="utf-8")
+
+        zero_health_handler = source[
+            source.index("zero_health_event = ZERO_HEALTH_RE.search(line)"):
+            source.index("reset_ready_event = RESET_READY_RE.search(line)")
+        ]
+        self.assertIn("reset_from_battle(controller, MenuTiming())", zero_health_handler)
+        self.assertIn('"death animation settles."', zero_health_handler)
+        self.assertNotIn("boss_reset_state = zero_health_state", zero_health_handler)
+
     def test_lua_reset_ready_event_captures_settled_boss(self):
         match = RESET_READY_RE.search(
             "AUTOMATION_BOSS_RESET_READY=Polyphemus (Boss)|E"
