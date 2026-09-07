@@ -54,6 +54,7 @@ class ContinuousRunnerTests(unittest.TestCase):
             for handler in LOGGER.handlers:
                 handler.flush()
             output = log_path.read_text(encoding="utf-8")
+            self.assertRegex(output, r"\d{2}:\d{2}:\d{2}\.\d{3}")
             self.assertIn("DEBUG Lua dialogue pulse 1", output)
             self.assertIn("INFO Attack 1: TEST", output)
             for handler in LOGGER.handlers:

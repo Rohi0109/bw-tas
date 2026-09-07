@@ -509,6 +509,8 @@ class X11Keyboard:
                 if not choices:
                     raise RuntimeError(f"No unused {letter} tile for {word.upper()}")
                 row, column = choices.pop(0)
+            if offset == len(word) - 1:
+                self.last_tile_click_sent_at = time.monotonic()
             self.click(int(width * tile_x[column]), int(height * tile_y[row]), delay)
         time.sleep(settle)
         self.click_attack(delay)
@@ -554,6 +556,7 @@ class X11Keyboard:
         # Selection already focused the Wine client. Refocusing here creates an
         # asynchronous X11 focus transition at the exact native-ready edge and
         # can make Return land outside the game even though every tile landed.
+        self.last_attack_key_sent_at = time.monotonic()
         self.key("Return")
         self.x11.XFlush(self.display)
         time.sleep(delay)

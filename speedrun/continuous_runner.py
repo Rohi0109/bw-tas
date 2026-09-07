@@ -47,7 +47,8 @@ def configure_logging(level: str, log_file: Path | None) -> None:
     LOGGER.setLevel(logging.DEBUG)
     LOGGER.propagate = False
     formatter = logging.Formatter(
-        "%(asctime)s %(levelname)s %(message)s", datefmt="%H:%M:%S"
+        "%(asctime)s.%(msecs)03d %(levelname)s %(message)s",
+        datefmt="%H:%M:%S",
     )
     console = logging.StreamHandler(sys.stdout)
     console.setLevel(getattr(logging, level))
@@ -68,7 +69,9 @@ def log_message(*values: object, sep: str = " ", end: str = "\n",
     message = sep.join(str(value) for value in values)
     if file is sys.stderr:
         LOGGER.error(message)
-    elif message.startswith(("Lua dialogue pulse ", "Ignoring unchanged READY ")):
+    elif message.startswith((
+        "Lua dialogue pulse ", "Ignoring unchanged READY ", "Attack timing ",
+    )):
         LOGGER.debug(message)
     elif message.startswith(("No READY event ", "Board ready: ", "Board update: ")):
         LOGGER.debug(message)
@@ -535,7 +538,17 @@ def select_and_attack_when_native_ready(
             controller.clear_selection(delay)
             time.sleep(delay)
     start = log_path.stat().st_size if log_path.exists() else 0
+    selection_started_at = time.monotonic()
     controller.select_word(board, word, delay, path, clear_first=False)
+    selection_returned_at = time.monotonic()
+    final_tile_at = getattr(controller, "last_tile_click_sent_at", None)
+    if final_tile_at is not None:
+        log_message(
+            f"Attack timing {word.upper()}: selection_ms="
+            f"{(selection_returned_at - selection_started_at) * 1000:.1f}; "
+            f"final_tile_return_ms="
+            f"{(selection_returned_at - final_tile_at) * 1000:.1f}"
+        )
     deadline = time.monotonic() + timeout
     with log_path.open("r", encoding="utf-8", errors="replace") as log:
         log.seek(start)
@@ -545,7 +558,23 @@ def select_and_attack_when_native_ready(
             if matches:
                 latest = matches[-1]
                 if int(latest.group("count")) == len(path or word):
+                    ready_received_at = time.monotonic()
+                    final_to_ready = (
+                        (ready_received_at - final_tile_at) * 1000
+                        if final_tile_at is not None else -1
+                    )
+                    log_message(
+                        f"Attack timing {word.upper()}: ready_received; "
+                        f"final_tile_to_ready_ms={final_to_ready:.1f}"
+                    )
                     controller.click_attack(delay)
+                    enter_at = getattr(
+                        controller, "last_attack_key_sent_at", ready_received_at
+                    )
+                    log_message(
+                        f"Attack timing {word.upper()}: enter_sent; "
+                        f"ready_to_enter_ms={(enter_at - ready_received_at) * 1000:.1f}"
+                    )
                     return True
             # Long-word presentation owns BattleEngine's generic interrupt.
             # Its Lua-authorized safe-point pulses advance the animation; the
@@ -2026,6 +2055,13 @@ def main() -> None:
                         controller.select_treasures(slots, args.delay)
             attack_submitted_event = ATTACK_SUBMITTED_RE.search(line)
             if attack_submitted_event or "User clicked ATTACK" in line:
+                if submitted_attack_at is not None:
+                    log_message(
+                        f"Attack timing {(submitted_word or 'unknown').upper()}: "
+                        "submitted_ack; "
+                        f"enter_to_ack_ms="
+                        f"{(time.monotonic() - submitted_attack_at) * 1000:.1f}"
+                    )
                 input_confirmed = True
                 input_confirm_at = float("inf")
                 if input_attempts > 1:
