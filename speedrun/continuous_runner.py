@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import fcntl
 import json
 import logging
 import os
@@ -56,7 +57,7 @@ def configure_logging(level: str, log_file: Path | None) -> None:
     LOGGER.addHandler(console)
     if log_file is not None:
         log_file.parent.mkdir(parents=True, exist_ok=True)
-        detailed = logging.FileHandler(log_file, mode="w", encoding="utf-8")
+        detailed = logging.FileHandler(log_file, mode="a", encoding="utf-8")
         detailed.setLevel(logging.DEBUG)
         detailed.setFormatter(formatter)
         LOGGER.addHandler(detailed)
@@ -79,6 +80,24 @@ def log_message(*values: object, sep: str = " ", end: str = "\n",
         LOGGER.warning(message)
     else:
         LOGGER.info(message)
+
+
+def acquire_runner_lock(lock_path: Path):
+    """Hold an exclusive process lock before creating an input controller."""
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    lock_file = lock_path.open("a+", encoding="utf-8")
+    try:
+        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        lock_file.close()
+        raise RuntimeError(
+            "another TAS runner is already active; refusing duplicate input"
+        )
+    lock_file.seek(0)
+    lock_file.truncate()
+    lock_file.write(f"{os.getpid()}\n")
+    lock_file.flush()
+    return lock_file
 
 
 BOARD_PREFIX = "AUTOMATION_BOARD="
@@ -831,6 +850,11 @@ def main() -> None:
     configure_logging(args.log_level, args.log_file)
 
     log_path = args.log.resolve()
+    # Keep this handle alive for the duration of main(); flock releases it on
+    # every normal exit, exception, SIGINT, or process termination.
+    runner_lock = acquire_runner_lock(
+        log_path.parent.parent / "diagnostics" / "tas-runner.lock"
+    )
     timer_state = None
     if args.timer_state is not None and args.timer_state.exists():
         timer_state = load_timer_state(args.timer_state)

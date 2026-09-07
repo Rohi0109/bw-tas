@@ -5,6 +5,7 @@ from dataclasses import replace
 from pathlib import Path
 
 from continuous_runner import (
+    acquire_runner_lock,
     activate_powerup_when_native_ready,
     ATTACK_SUBMITTED_RE, DEFEATED_RE, DIALOG_ACTIVE_RE, DIALOG_PULSE_RE,
     INCAP_OVERLAY_RE, MINIGAME_PROMPT_RE, PLAYER_STUNNED_RE, PLAY_READY_RE,
@@ -46,6 +47,18 @@ from live_runner import X11Keyboard
 
 
 class ContinuousRunnerTests(unittest.TestCase):
+    def test_runner_lock_rejects_a_second_input_process(self):
+        with tempfile.TemporaryDirectory() as directory:
+            lock_path = Path(directory) / "tas-runner.lock"
+            first = acquire_runner_lock(lock_path)
+            try:
+                with self.assertRaisesRegex(RuntimeError, "already active"):
+                    acquire_runner_lock(lock_path)
+            finally:
+                first.close()
+            replacement = acquire_runner_lock(lock_path)
+            replacement.close()
+
     def test_logging_keeps_pulse_noise_in_detailed_file(self):
         with tempfile.TemporaryDirectory() as directory:
             log_path = Path(directory) / "tas.log"
