@@ -35,7 +35,9 @@ ROSTER_PATH = ROOT / "BookwormAdventuresModding/bwakit/game/data/enemy_rosters.t
 def normalize_enemy(name: str) -> str:
     normalized = "".join(
         character for character in name.casefold() if character.isalnum()
-    ).removesuffix("boss")
+    ).removesuffix("finalboss").removesuffix("boss")
+    if normalized.startswith("sphinx"):
+        return "sphinxpuzzle"
     normalized = {
         "angrymountaingoat": "mountaingoat",
         "angryewe": "ewe",
@@ -219,7 +221,10 @@ def process_line(state: dict, line: str, timestamp: float) -> bool:
     match = ENEMY_RE.search(line)
     if match:
         book = int(state.get("live_book", -1))
-        chapter = ENEMY_CHAPTERS.get((book, normalize_enemy(match.group("enemy"))))
+        enemy = match.group("enemy")
+        chapter = ENEMY_CHAPTERS.get((book, normalize_enemy(enemy)))
+        if book == 3 and enemy.startswith("Summoned "):
+            chapter = 10
         return chapter is not None and record_chapter(state, book, chapter, timestamp)
     return False
 
@@ -289,6 +294,8 @@ def report(
     tas_best = load_tas_best() if tas_best is None else tas_best
     best_segments = dict(tas_best.get("segments", {}))
     for completed in state.get("splits", []):
+        if not completed.get("clean", True) or completed.get("issues"):
+            continue
         key = f"{completed['book']}.{completed['chapter']}"
         best_segments[key] = min(
             completed["elapsed"], best_segments.get(key, float("inf"))

@@ -4,7 +4,7 @@ from pathlib import Path
 
 from run_timer import (
     finish_run, mark_current_issue, process_line, record_chapter, report,
-    run_history_report,
+    run_history_report, normalize_enemy,
     save_run_history,
     start_timer,
     update_tas_best,
@@ -48,6 +48,26 @@ class RunTimerTests(unittest.TestCase):
         ))
         self.assertEqual(state["current"]["chapter"], 2)
 
+    def test_special_final_chapter_enemy_names_match_roster(self):
+        self.assertEqual(normalize_enemy("Sphinx (Riddle 1 of 5)"), "sphinxpuzzle")
+        self.assertEqual(normalize_enemy("Sphinx (Last Riddle)"), "sphinxpuzzle")
+        self.assertEqual(normalize_enemy("Codex (Final Boss)"), "codex")
+
+        state = self.state()
+        state["live_book"] = 2
+        self.assertTrue(process_line(
+            state, "AUTOMATION_ENEMY=10|Sphinx (Riddle 1 of 5)|E", 110.0,
+        ))
+        self.assertEqual(state["current"]["chapter"], 4)
+        state["live_book"] = 3
+        self.assertTrue(process_line(
+            state, "AUTOMATION_ENEMY=20|Summoned Cerberus|E", 120.0,
+        ))
+        self.assertEqual(state["current"]["chapter"], 10)
+        self.assertFalse(process_line(
+            state, "AUTOMATION_ENEMY=21|Codex (Final Boss)|E", 130.0,
+        ))
+
     def test_codex_zero_health_finishes_run_at_native_lethal_edge(self):
         state = self.state()
         record_chapter(state, 3, 10, 110.0)
@@ -71,6 +91,24 @@ class RunTimerTests(unittest.TestCase):
         self.assertIn("Total: 1:40", text)
         self.assertIn("Book 1 Chapter 1: 0:30", text)
         self.assertIn("Book 1 progress: 1:30", text)
+
+    def test_report_does_not_present_dirty_segment_as_tas_best(self):
+        state = self.state()
+        record_chapter(state, 2, 4, 100.0)
+        state["splits"].append({
+            **state["current"], "ended_at": 400.0, "elapsed": 300.0,
+            "clean": False, "issues": ["repeated-chapter-entry"],
+        })
+        state["current"] = None
+        state["finished_at"] = 400.0
+
+        text = report(
+            state, 400.0,
+            {"chapters": {"2.4": 39.0}},
+            {"segments": {}},
+        )
+
+        self.assertNotIn("TAS best", text)
 
     def test_report_compares_chapter_and_cumulative_wr_gaps(self):
         state = self.state()
