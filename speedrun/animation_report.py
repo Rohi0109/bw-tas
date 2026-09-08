@@ -18,9 +18,11 @@ def animation_groups(path: Path) -> list[dict]:
     for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
         try:
             row = json.loads(line)
+            if row.get("record_type") != "attack-to-zero-health":
+                continue
             action = row["action"]
             timing = row["timing"]
-            seconds = float(timing["resolution_seconds"])
+            seconds = float(timing["attack_to_zero_health_seconds"])
             letters = len(action["word"])
             gem_types = tuple(action.get("gem_types", ()))
             key = (
@@ -28,7 +30,7 @@ def animation_groups(path: Path) -> list[dict]:
                 action.get("tier"),
                 "diamond" in gem_types,
                 bool(action.get("lethal")),
-                bool(row.get("enemy_defeated")),
+                True,
             )
             if row.get("clean", False) and seconds >= 0:
                 groups[key].append(seconds)

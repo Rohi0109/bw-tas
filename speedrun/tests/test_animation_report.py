@@ -12,24 +12,24 @@ class AnimationReportTests(unittest.TestCase):
             path = Path(directory) / "timing.jsonl"
             rows = [
                 {
+                    "record_type": "attack-to-zero-health",
                     "clean": True,
-                    "enemy_defeated": True,
                     "action": {
                         "word": "SAPPHIRE", "tier": "sapphire",
                         "gem_types": ["diamond"], "lethal": True,
                         "animation_class": "wow-overkill",
                     },
-                    "timing": {"resolution_seconds": 3.0},
+                    "timing": {"attack_to_zero_health_seconds": 3.0},
                 },
                 {
+                    "record_type": "attack-to-zero-health",
                     "clean": True,
-                    "enemy_defeated": True,
                     "action": {
                         "word": "SAPPHIRE", "tier": "sapphire",
                         "gem_types": ["diamond"], "lethal": True,
                         "animation_class": "wow-overkill",
                     },
-                    "timing": {"resolution_seconds": 5.0},
+                    "timing": {"attack_to_zero_health_seconds": 5.0},
                 },
             ]
             path.write_text(

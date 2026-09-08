@@ -75,7 +75,7 @@ book1-report:
 tas-book1-lookahead *args:
     ./run-deluxe-speedrun-auto.sh --strategy book1-lookahead {{args}}
 
-# Experimental speed policy: target Sapphire and avoid Diamond tile animations.
+# Experimental speed policy: target Sapphire, then minimize attack class/input.
 tas-speed-sapphire *args:
     ./run-deluxe-speedrun-auto.sh --strategy speed-sapphire {{args}}
 

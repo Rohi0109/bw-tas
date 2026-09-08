@@ -126,9 +126,15 @@ alternatives. Completed attacks append timing samples to
 `runtime/deluxe-modded/tas-timing.jsonl`.
 
 The experimental `speed-sapphire` strategy targets Sapphire overkill rewards,
-then minimizes the visible word-length attack class and input time. It excludes
-every route that consumes a Diamond tile whenever any non-Diamond candidate can
-still guarantee the kill. Run it with `just tas-speed-sapphire`.
+then minimizes the visible word-length attack class and input time. Diamond
+tiles are not penalized: their damage is especially useful when it turns a
+shorter attack into a guaranteed kill. Run it with `just tas-speed-sapphire`.
+
+Each confirmed kill also appends a dedicated `attack-to-zero-health` row using
+the native Attack-button timestamp and Lua's zero-health edge. Run
+`just animation-report` to group those measurements by animation class, reward
+tier, and consumed gem colors. Legacy timing rows are deliberately excluded
+because intermediate READY states made their resolution intervals unreliable.
 
 New timing samples record the visible attack class (`normal` through
 `wow-overkill`), exact gem colors consumed, Diamond usage, predicted lethality,

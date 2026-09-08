@@ -563,10 +563,8 @@ def choose(cands: list[Candidate], strategy: str) -> tuple[Candidate, dict[str, 
     elif not lethal:
         selected = max(cands, key=lambda c: (c.damage / c.predicted_time, c.damage, -len(c.word), c.word))
     elif strategy == "speed-sapphire":
-        non_diamond = [candidate for candidate in lethal if "diamond" not in candidate.gem_types]
-        eligible = non_diamond or lethal
         selected = min(
-            eligible,
+            lethal,
             key=lambda c: (
                 c.tier != "sapphire",
                 attack_animation_rank(len(c.word)),

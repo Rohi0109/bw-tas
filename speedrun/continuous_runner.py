@@ -1100,6 +1100,7 @@ def main() -> None:
     submitted_sequence = None
     submitted_at = None
     submitted_attack_at = None
+    kill_timing_logged = False
     native_attack_authorized = False
     submitted_candidate: Candidate | None = None
     submitted_state: DeluxeState | None = None
@@ -1580,7 +1581,13 @@ def main() -> None:
                         tile_input_delay(deluxe_state, args.tile_delay), path,
                     )
                     native_attack_authorized = native_ready
-                    attack_clicked_at = time.monotonic() if native_ready else None
+                    attack_clicked_at = (
+                        getattr(
+                            controller, "last_attack_key_sent_at",
+                            time.monotonic(),
+                        )
+                        if native_ready else None
+                    )
                     if not native_ready:
                         log_message(
                             "Native selection did not reach the complete valid "
@@ -1591,7 +1598,9 @@ def main() -> None:
                         board, word, args.delay, args.settle, path,
                         clear_first=False,
                     )
-                    attack_clicked_at = time.monotonic()
+                    attack_clicked_at = getattr(
+                        controller, "last_attack_key_sent_at", time.monotonic()
+                    )
                 submitted_board = board
                 submitted_word = word
                 submitted_path = path
@@ -1630,6 +1639,7 @@ def main() -> None:
                     last_attack_state = deluxe_state
                     submitted_strategy = effective_strategy
                     submitted_frontier = list(ranked)
+                    kill_timing_logged = False
                 ready = False
                 deadline = time.monotonic() + args.timeout
 
@@ -1831,7 +1841,10 @@ def main() -> None:
                         )
                         if native_ready:
                             native_attack_authorized = True
-                            submitted_attack_at = time.monotonic()
+                            submitted_attack_at = getattr(
+                                controller, "last_attack_key_sent_at",
+                                time.monotonic(),
+                            )
                         else:
                             log_message(
                                 "Native selection did not reach the complete "
@@ -2026,7 +2039,7 @@ def main() -> None:
                     "preserved selection without retyping.", flush=True,
                 )
                 word_presentation_pending_submit = False
-                submitted_attack_at = time.monotonic()
+                submitted_attack_at = second_enter_at
                 input_confirm_at = (
                     time.monotonic() + args.input_confirm_timeout
                 )
@@ -2463,6 +2476,48 @@ def main() -> None:
                         f"Stopped after the safety limit of {args.max_attacks} attacks"
                     )
             zero_health_event = ZERO_HEALTH_RE.search(line)
+            if (
+                zero_health_event and not kill_timing_logged
+                and submitted_attack_at is not None
+                and submitted_candidate is not None
+                and submitted_state is not None
+                and zero_health_event.group("enemy") == submitted_state.enemy
+            ):
+                zero_at = time.monotonic()
+                kill_sample = {
+                    "record_type": "attack-to-zero-health",
+                    "schema_version": TELEMETRY_SCHEMA_VERSION,
+                    "run_id": (
+                        timer_state.get("started_at_iso")
+                        if timer_state is not None else None
+                    ),
+                    "book": submitted_book,
+                    "chapter": submitted_chapter,
+                    "stage": submitted_state.stage,
+                    "enemy": submitted_state.enemy,
+                    "strategy": submitted_strategy,
+                    "clean": input_attempts == 1,
+                    "action": candidate_payload(submitted_candidate),
+                    "timing": {
+                        "attack_to_zero_health_seconds": (
+                            zero_at - submitted_attack_at
+                        ),
+                        "input_attempts": input_attempts,
+                    },
+                }
+                assert args.telemetry is not None
+                args.telemetry.parent.mkdir(parents=True, exist_ok=True)
+                with args.telemetry.open("a", encoding="utf-8") as output:
+                    output.write(json.dumps(kill_sample, sort_keys=True) + "\n")
+                kill_timing_logged = True
+                log_message(
+                    f"Attack timing {submitted_candidate.word}: "
+                    "attack_to_zero_health_ms="
+                    f"{(zero_at - submitted_attack_at) * 1000:.1f}; "
+                    f"animation={submitted_candidate.animation_class}; "
+                    f"gems={','.join(submitted_candidate.gem_types) or 'none'}.",
+                    flush=True,
+                )
             death_flags_event = DEATH_FLAGS_RE.search(line)
             if death_flags_event:
                 log_message(

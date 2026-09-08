@@ -358,7 +358,7 @@ class DeluxeOptimizerTests(unittest.TestCase):
 
         self.assertEqual(selected.word, "SAPPHIRE")
 
-    def test_speed_sapphire_avoids_diamond_when_non_diamond_can_kill(self):
+    def test_speed_sapphire_uses_diamond_when_it_reaches_sapphire(self):
         ranked = [
             Candidate(
                 "DIA", (0,), 8, 4, "sapphire", True, 0.5, 1,
@@ -372,7 +372,7 @@ class DeluxeOptimizerTests(unittest.TestCase):
 
         selected, _ = choose(ranked, "speed-sapphire")
 
-        self.assertEqual(selected.word, "PLAIN")
+        self.assertEqual(selected.word, "DIA")
 
     def test_speed_sapphire_uses_diamond_when_it_is_only_lethal_route(self):
         ranked = [
