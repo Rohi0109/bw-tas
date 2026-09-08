@@ -15,8 +15,8 @@ function BookManager:AutomationChapterContinue()
   print("AUTOMATION_SYNC=3")
   print("AUTOMATION_CHAPTER_SELECTION=" ..
     tostring(managerMiniGame) .. "|" .. tostring(bookMiniGame) .. "|E")
-  -- Moxie is offered at the observed checkpoint chapters. Yes always means
-  -- skip the mini-game and continue the TAS route.
+  -- Moxie offers Link n' Spell at the observed checkpoint chapters. The
+  -- runner declines it with No and continues the TAS route.
   local selected = gAutomationChapterSelected
   local moxiePrompt =
     selected == 4 or selected == 7 or selected == 9 or selected == 10

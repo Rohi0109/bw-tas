@@ -368,13 +368,13 @@ class X11Keyboard:
         self.x11.XFlush(self.display)
         time.sleep(delay)
 
-    def confirm_skip_minigame(self, delay: float) -> None:
-        """Choose Yes when chapter entry offers to skip a mini-game."""
+    def decline_minigame(self, delay: float) -> None:
+        """Choose No when Moxie offers to start Link n' Spell."""
         if self.layout != "deluxe":
             raise RuntimeError("Mini-game skip is calibrated only for Deluxe")
         width, height = self._size(self.window)
         self.focus()
-        self.click(int(width * 0.415), int(height * 0.683), delay)
+        self.click(int(width * 0.585), int(height * 0.683), delay)
 
     def select_treasures(self, slots: tuple[int, ...], delay: float) -> None:
         """Select zero-based Deluxe treasure-grid slots and continue."""

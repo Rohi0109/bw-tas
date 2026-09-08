@@ -583,6 +583,7 @@ def choose(cands: list[Candidate], strategy: str) -> tuple[Candidate, dict[str, 
             lethal,
             key=lambda c: (
                 c.tier != "sapphire",
+                "sapphire" in c.gem_types,
                 attack_animation_rank(len(c.word)),
                 c.predicted_time,
                 c.overkill,

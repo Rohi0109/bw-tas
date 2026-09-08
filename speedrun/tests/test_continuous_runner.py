@@ -506,7 +506,7 @@ class ContinuousRunnerTests(unittest.TestCase):
                 alexander, "Trojan Captain", set(), 1,
             )
         )
-        self.assertFalse(should_arm_boss_reset_on_zero_health(alexander))
+        self.assertTrue(should_arm_boss_reset_on_zero_health(alexander))
 
     def test_overlay_cancelled_submission_retains_last_attack_route_identity(self):
         alexander = replace(self.state(7), enemy="Alexander")
@@ -536,18 +536,22 @@ class ContinuousRunnerTests(unittest.TestCase):
         )
         harpy = replace(griffon, enemy="Harpy")
         earlier_griffon = replace(griffon, chapter=5)
+        hydra_head = replace(griffon, chapter=7, enemy="Hydra (Head 5)")
+        hydra_main = replace(griffon, chapter=7, enemy="Hydra (Main Head)")
 
         self.assertEqual(tile_input_delay(griffon, 0.02), 0.08)
         self.assertEqual(tile_input_delay(griffon, 0.1), 0.1)
         self.assertEqual(tile_input_delay(harpy, 0.02), 0.02)
         self.assertEqual(tile_input_delay(earlier_griffon, 0.02), 0.02)
+        self.assertEqual(tile_input_delay(hydra_head, 0.02), 0.02)
+        self.assertEqual(tile_input_delay(hydra_main, 0.02), 0.08)
 
     def test_only_last_sphinx_riddle_arms_save_ready_reset(self):
         earlier = replace(self.state(1), enemy="Sphinx (Riddle 4 of 5)")
         final = replace(self.state(1), enemy="Sphinx (Last Riddle)")
 
         self.assertFalse(should_arm_boss_reset_on_zero_health(earlier))
-        self.assertTrue(should_arm_boss_reset_on_zero_health(final))
+        self.assertFalse(should_arm_boss_reset_on_zero_health(final))
 
     def test_petrify_edges_include_native_health_state(self):
         started = PLAYER_STUNNED_RE.search(
@@ -759,6 +763,15 @@ class ContinuousRunnerTests(unittest.TestCase):
         self.assertEqual(
             boss_finish_strategy(hydra, "overkill-tier", [lethal]),
             "minimum-overkill",
+        )
+
+    def test_speed_sapphire_does_not_chase_carryover_on_boss_finisher(self):
+        boss = replace(self.state(1), enemy="Shaitan (Boss)")
+        lethal = Candidate("HIT", (0,), 4, 1, "sapphire", True, 0.6, 0)
+
+        self.assertEqual(
+            boss_finish_strategy(boss, "speed-sapphire", [lethal]),
+            "shortest-lethal",
         )
 
     def test_health_potion_heals_at_or_below_four_before_nonlethal_turn(self):
@@ -1317,6 +1330,19 @@ class ContinuousRunnerTests(unittest.TestCase):
         # Native inventory order is health (red), Power-Up (green), Purify
         # (blue). Guard against swapping the adjacent green and blue bottles.
         self.assertEqual(clicks, [(144, 341), (220, 341)])
+
+    def test_moxie_offer_is_declined_with_right_side_no_button(self):
+        controller = X11Keyboard.__new__(X11Keyboard)
+        controller.layout = "deluxe"
+        controller.window = 1
+        controller._size = lambda _window: (800, 600)
+        controller.focus = lambda: None
+        clicks = []
+        controller.click = lambda x, y, delay: clicks.append((x, y))
+
+        controller.decline_minigame(0)
+
+        self.assertEqual(clicks, [(468, 409)])
 
     def test_incapacitation_overlay_clicks_tile_cleared_before_next_word(self):
         controller = X11Keyboard.__new__(X11Keyboard)

@@ -403,6 +403,45 @@ class DeluxeOptimizerTests(unittest.TestCase):
 
         self.assertEqual(selected.word, "STUN")
 
+    def test_speed_sapphire_preserves_stun_gem_on_equivalent_kill(self):
+        ranked = [
+            Candidate(
+                "SPEND", (0,), 8, 3, "sapphire", True, 0.7, 1,
+                ("sapphire",), "very-good",
+            ),
+            Candidate(
+                "KEEP", (1,), 8, 3, "sapphire", True, 0.7, 0,
+                (), "good",
+            ),
+        ]
+
+        selected, _ = choose(ranked, "speed-sapphire")
+
+        self.assertEqual(selected.word, "KEEP")
+
+    def test_speed_sapphire_uses_sapphire_if_it_is_only_kill(self):
+        ranked = [
+            Candidate(
+                "SPEND", (0,), 8, 1, "sapphire", True, 0.7, 1,
+                ("sapphire",), "very-good",
+            ),
+            Candidate("MISS", (1,), 6, -1, None, False, 0.5, 0),
+        ]
+
+        selected, _ = choose(ranked, "speed-sapphire")
+
+        self.assertEqual(selected.word, "SPEND")
+
+    def test_speed_sapphire_falls_back_to_damage_rate_without_stun(self):
+        ranked = [
+            Candidate("RATE", (0,), 6, -4, None, False, 0.5, 0),
+            Candidate("TOTAL", (1,), 8, -2, None, False, 1.0, 0),
+        ]
+
+        selected, _ = choose(ranked, "speed-sapphire")
+
+        self.assertEqual(selected.word, "RATE")
+
     def test_chapter_aware_uses_shortest_lethal_for_book1_chapters1_to5(self):
         for chapter in range(1, 6):
             current = state(book=1, chapter=chapter, overkill_thresholds=())

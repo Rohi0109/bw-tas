@@ -41,7 +41,10 @@ class DeluxeRouteTests(unittest.TestCase):
         earlier = state(book=2, chapter=2, enemy="Thieves 6, 7 & 8")
 
         self.assertIsNotNone(post_victory_reset_reason(penultimate, set()))
-        self.assertIsNone(post_victory_reset_reason(earlier, set()))
+        self.assertEqual(
+            post_victory_reset_reason(earlier, set()),
+            "after Thieves 6, 7 & 8",
+        )
 
     def test_ali_baba_live_final_boss_name_matches_roster(self):
         boss = state(
@@ -60,20 +63,29 @@ class DeluxeRouteTests(unittest.TestCase):
             "after Swashbuckler, before boss entrance",
         )
 
-    def test_late_chapter_boss_event_does_not_restart_next_chapter(self):
+    def test_late_chapter_boss_event_is_a_reset_fallback(self):
         defeated = state(enemy="Polyphemus (Boss)", stage=6)
 
         self.assertTrue(is_chapter_boss_defeat(defeated))
-        self.assertIsNone(post_victory_reset_reason(defeated, set()))
+        self.assertEqual(
+            post_victory_reset_reason(defeated, set()),
+            "after Polyphemus (Boss)",
+        )
 
-    def test_hydra_only_resets_after_main_head(self):
+    def test_hydra_phases_reset_after_each_defeat(self):
         head = state(enemy="Hydra (Head 6)", chapter=7)
         main = state(enemy="Hydra (Main Head)", chapter=7)
 
         self.assertFalse(is_chapter_boss_defeat(head))
-        self.assertIsNone(post_victory_reset_reason(head, set()))
+        self.assertEqual(
+            post_victory_reset_reason(head, set()),
+            "after Hydra (Head 6)",
+        )
         self.assertTrue(is_chapter_boss_defeat(main))
-        self.assertIsNone(post_victory_reset_reason(main, set()))
+        self.assertEqual(
+            post_victory_reset_reason(main, set()),
+            "after Hydra (Main Head)",
+        )
 
     def test_midchapter_note_triggers_immediately_after_defeat(self):
         defeated = state(enemy="Cyclops Herder", stage=3)

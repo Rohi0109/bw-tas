@@ -111,8 +111,16 @@ def post_victory_reset_reason(
         return f"after route checkpoint {defeated.enemy}"
     if enemy in PRE_BOSS_ENCOUNTERS:
         return f"after {defeated.enemy}, before boss entrance"
-    # The current defeat hook reaches Python after the next treasure/map
-    # transition. Resetting chapter bosses here can therefore restart the
-    # chapter that just unlocked. Post-boss animation skips need an earlier
-    # lethal-transition hook; keep this late event for route checkpoints only.
+    # Multi-phase encounters do not expose the ordinary save-ready death edge.
+    # Once DEFEATED identifies their completed phase, use the same menu skip
+    # instead of carrying the old sparse checkpoint-only route.
+    if enemy.startswith("hydrahead"):
+        return f"after {defeated.enemy}"
+    # Sphinx boards are one continuous puzzle and must retain their rotation.
+    if enemy.startswith("sphinx"):
+        return None
+    # Ordinary encounters normally reset earlier through RESET_READY. This is
+    # also the safe fallback when a build omits that edge.
+    if enemy != "codex":
+        return f"after {defeated.enemy}"
     return None

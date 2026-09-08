@@ -488,8 +488,6 @@ def boss_finish_strategy(
     """Avoid valueless overkill animations on a boss's finishing turn."""
     if not any(candidate.lethal for candidate in ranked):
         return strategy
-    if strategy == "speed-sapphire":
-        return strategy
     if state.enemy.startswith("Hydra ("):
         # Each head awards nothing for excess damage, while Lex still spends
         # time playing the larger overkill response before the next head.
@@ -558,10 +556,14 @@ def attack_state_for_event(
 def should_arm_boss_reset_on_zero_health(
     state: DeluxeState | None,
 ) -> bool:
-    """Chapter bosses arm an exit when Lua confirms their HP reached zero."""
-    return state is not None and (
-        is_chapter_boss_defeat(state)
-        or state.enemy == "Sphinx (Last Riddle)"
+    """Arm the fastest save-ready menu exit for a completed combat enemy."""
+    if state is None:
+        return False
+    normalized = normalize_enemy(state.enemy)
+    return not (
+        normalized == "codex"
+        or normalized.startswith("hydrahead")
+        or normalized.startswith("sphinx")
     )
 
 
@@ -589,16 +591,16 @@ def refresh_rejected_words_context(
 
 
 def tile_input_delay(state: DeluxeState | None, configured_delay: float) -> float:
-    """Pace Griffon's opening rack after its unusually late intro handoff.
+    """Pace racks with known unusually late native input handoffs.
 
     Re-clicking an apparently unconfirmed tile is unsafe: telemetry can lag an
     accepted click, and the retry then deselects it. The fresh READY sequence
     already proves rack ownership, so use one deliberately paced click per
     tile instead.
     """
-    if (
-        state is not None and state.book == 1
-        and state.chapter == 6 and state.enemy == "Griffon"
+    if state is not None and (
+        (state.book == 1 and state.chapter == 6 and state.enemy == "Griffon")
+        or state.enemy == "Hydra (Main Head)"
     ):
         return max(configured_delay, 0.08)
     return configured_delay
@@ -1303,11 +1305,11 @@ def main() -> None:
         )
         if unresolved_prompt:
             log_message(
-                "Recovering Lua-confirmed mini-game prompt; choosing Yes to skip it.",
+                "Recovering Lua-confirmed mini-game prompt; choosing No.",
                 flush=True,
             )
             time.sleep(max(0.8, args.delay))
-            controller.confirm_skip_minigame(max(0.8, args.delay))
+            controller.decline_minigame(max(0.8, args.delay))
             pending_minigame_prompt = int(
                 prompt_matches[-1].group("sequence")
             )
@@ -1750,11 +1752,11 @@ def main() -> None:
                 ):
                     minigame_prompt_attempts += 1
                     log_message(
-                        "Mini-game skip remains unconfirmed; retrying Yes "
+                        "Mini-game decline remains unconfirmed; retrying No "
                         f"({minigame_prompt_attempts}/5).",
                         flush=True,
                     )
-                    controller.confirm_skip_minigame(max(0.8, args.delay))
+                    controller.decline_minigame(max(0.8, args.delay))
                     minigame_prompt_retry_at = time.monotonic() + 1.5
                     deadline = time.monotonic() + args.timeout
                 if chapter_enter_pending and time.monotonic() >= chapter_enter_at:
@@ -2352,15 +2354,15 @@ def main() -> None:
                 not in handled_minigame_prompts
             ):
                 log_message(
-                    "Lua-confirmed mini-game prompt; choosing Yes to skip it.",
+                    "Lua-confirmed mini-game prompt; choosing No.",
                     flush=True,
                 )
                 # The hook runs as the prompt is being constructed. Give its
-                # buttons one frame-safe pause before clicking Yes. Return to
+                # buttons one frame-safe pause before clicking No. Return to
                 # the log loop immediately afterward; native chapter events
                 # confirm whether the click was accepted.
                 time.sleep(max(0.8, args.delay))
-                controller.confirm_skip_minigame(0.0)
+                controller.decline_minigame(0.0)
                 pending_minigame_prompt = int(
                     minigame_prompt.group("sequence")
                 )
