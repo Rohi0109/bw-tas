@@ -128,7 +128,9 @@ alternatives. Completed attacks append timing samples to
 The experimental `speed-sapphire` strategy targets Sapphire overkill rewards,
 then minimizes the visible word-length attack class and input time. Diamond
 tiles are not penalized: their damage is especially useful when it turns a
-shorter attack into a guaranteed kill. Run it with `just tas-speed-sapphire`.
+shorter attack into a guaranteed kill. If no candidate is lethal, the strategy
+prefers a word consuming a Sapphire tile so the skipped enemy response avoids
+an enemy-turn animation. Run it with `just tas-speed-sapphire`.
 
 Each confirmed kill also appends a dedicated `attack-to-zero-health` row using
 the native Attack-button timestamp and Lua's zero-health edge. Run

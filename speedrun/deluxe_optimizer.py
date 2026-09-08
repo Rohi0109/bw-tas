@@ -560,6 +560,22 @@ def choose(cands: list[Candidate], strategy: str) -> tuple[Candidate, dict[str, 
     maximum = max(cands, key=lambda c: (c.damage, -c.predicted_time, c.word))
     if strategy == "max-damage":
         selected = maximum
+    elif strategy == "speed-sapphire" and not lethal:
+        sapphire = [
+            candidate for candidate in cands
+            if "sapphire" in candidate.gem_types
+        ]
+        pool = sapphire or cands
+        selected = max(
+            pool,
+            key=lambda c: (
+                c.damage / c.predicted_time,
+                c.damage,
+                -attack_animation_rank(len(c.word)),
+                -c.predicted_time,
+                c.word,
+            ),
+        )
     elif not lethal:
         selected = max(cands, key=lambda c: (c.damage / c.predicted_time, c.damage, -len(c.word), c.word))
     elif strategy == "speed-sapphire":

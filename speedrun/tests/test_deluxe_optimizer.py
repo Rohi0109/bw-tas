@@ -387,6 +387,22 @@ class DeluxeOptimizerTests(unittest.TestCase):
 
         self.assertEqual(selected.word, "DIA")
 
+    def test_speed_sapphire_uses_sapphire_on_a_nonlethal_turn(self):
+        ranked = [
+            Candidate(
+                "STUN", (0,), 4, -6, None, False, 0.8, 1,
+                ("sapphire",), "good",
+            ),
+            Candidate(
+                "DAMAGE", (1,), 8, -2, None, False, 0.6, 0,
+                (), "excellent",
+            ),
+        ]
+
+        selected, _ = choose(ranked, "speed-sapphire")
+
+        self.assertEqual(selected.word, "STUN")
+
     def test_chapter_aware_uses_shortest_lethal_for_book1_chapters1_to5(self):
         for chapter in range(1, 6):
             current = state(book=1, chapter=chapter, overkill_thresholds=())
