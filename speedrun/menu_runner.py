@@ -19,6 +19,18 @@ class MenuTiming:
     after_enter: float = 1.50
 
 
+def event_driven_reset_timing() -> MenuTiming:
+    """Use native telemetry, rather than a post-Adventure blind wait.
+
+    Deluxe's battle menu, quit prompt, and title menu are native screens that
+    do not run our Lua hooks, so their inter-click guards remain necessary.
+    Adventure hands control back to BookManager, whose chapter-map telemetry
+    is authoritative; sleeping after that click only delays consumption of an
+    event that may already have arrived.
+    """
+    return MenuTiming(after_adventure=0.0)
+
+
 def start_from_main_menu(
     controller: X11Keyboard,
     timing: MenuTiming,

@@ -1,4 +1,5 @@
 import tempfile
+import threading
 import time
 import unittest
 from dataclasses import replace
@@ -15,11 +16,13 @@ from continuous_runner import (
     ZERO_HEALTH_RE,
     boss_finish_strategy,
     attack_state_for_event,
-    boss_reset_dialog_recovery_allowed, clear_stale_treasure_on_ready,
+    boss_reset_dialog_recovery_allowed, book_transition_dialog_click_required,
+    clear_stale_treasure_on_ready,
     clear_stale_treasure_transition,
     convpanel_supersedes_navigation_transition,
     completes_early_ready,
     clear_special_transitions_on_chapter_start,
+    chapter_map_confirms_menu_reentry,
     dialogue_pulse_suppressed,
     enemy_accepts_candidate, health_potion_confirmed, is_initial_play_tutorial,
     is_unchanged_combat_snapshot,
@@ -39,6 +42,9 @@ from continuous_runner import (
     should_confirm_book_movie_skip,
     immediate_defeated_reset_reason,
     should_arm_boss_reset_on_zero_health,
+    should_retry_minigame_prompt,
+    requires_confirmed_tile_input,
+    refresh_rejected_words_context,
     incapacitation_recovery_action,
     should_use_purification_potion,
     treasure_slots_after, treasure_slots_for_context, treasure_slots_for_state,
@@ -128,6 +134,29 @@ class ContinuousRunnerTests(unittest.TestCase):
 
             self.assertFalse(activate_powerup_when_native_ready(
                 Controller(), log_path, 0.01, timeout=0.02,
+            ))
+
+    def test_powerup_confirmation_survives_fragmented_lua_output(self):
+        with tempfile.TemporaryDirectory() as directory:
+            log_path = Path(directory) / "lua.log"
+            log_path.write_text("", encoding="utf-8")
+
+            class Controller:
+                def clear_selection(self, _delay):
+                    pass
+
+                def use_powerup_potion(self, _delay):
+                    with log_path.open("a", encoding="utf-8") as log:
+                        log.write("AUTOMATION_POWERUP_STATE=1|")
+
+                    def finish_record():
+                        with log_path.open("a", encoding="utf-8") as log:
+                            log.write("1|E\n")
+
+                    threading.Timer(0.02, finish_record).start()
+
+            self.assertTrue(activate_powerup_when_native_ready(
+                Controller(), log_path, 0.01, timeout=0.1,
             ))
 
     def test_attack_waits_for_complete_native_selection(self):
@@ -445,6 +474,17 @@ class ContinuousRunnerTests(unittest.TestCase):
             )
         )
 
+    def test_chapter6_griffon_requires_native_per_tile_confirmation(self):
+        griffon = replace(
+            self.state(1), book=1, chapter=6, enemy="Griffon",
+        )
+        harpy = replace(griffon, enemy="Harpy")
+        earlier_griffon = replace(griffon, chapter=5)
+
+        self.assertTrue(requires_confirmed_tile_input(griffon))
+        self.assertFalse(requires_confirmed_tile_input(harpy))
+        self.assertFalse(requires_confirmed_tile_input(earlier_griffon))
+
     def test_only_last_sphinx_riddle_arms_save_ready_reset(self):
         earlier = replace(self.state(1), enemy="Sphinx (Riddle 4 of 5)")
         final = replace(self.state(1), enemy="Sphinx (Last Riddle)")
@@ -517,6 +557,56 @@ class ContinuousRunnerTests(unittest.TestCase):
         self.assertFalse(enemy_accepts_candidate(medusa, short))
         self.assertTrue(enemy_accepts_candidate(medusa, long))
 
+    def test_angry_mob_rejects_three_letter_candidates(self):
+        mob = replace(self.state(1), enemy="Angry Mob! (Boss)")
+        short = Candidate("DEV", (0, 1, 2), 4, 1, None, True, 0.6, 0)
+        long = Candidate("DEVA", (0, 1, 2, 3), 5, 1, None, True, 0.7, 0)
+
+        self.assertFalse(enemy_accepts_candidate(mob, short))
+        self.assertTrue(enemy_accepts_candidate(mob, long))
+
+    def test_nemean_lion_rejects_three_letter_candidates(self):
+        lion = replace(self.state(1), enemy="Nemean Lion (Boss)")
+        short = Candidate("AIR", (0,), 2, 1, None, True, 0.6, 0)
+        long = Candidate("AIRS", (0,), 3, 2, None, True, 0.7, 0)
+
+        self.assertFalse(enemy_accepts_candidate(lion, short))
+        self.assertTrue(enemy_accepts_candidate(lion, long))
+
+    def test_mummy_rejects_three_letter_candidates(self):
+        mummy = replace(self.state(1), enemy="The Mummy (Boss)")
+        short = Candidate("AIR", (0,), 2, 1, None, True, 0.6, 0)
+        long = Candidate("AIRS", (0,), 3, 2, None, True, 0.7, 0)
+
+        self.assertFalse(enemy_accepts_candidate(mummy, short))
+        self.assertTrue(enemy_accepts_candidate(mummy, long))
+
+    def test_mirage_xel_rejects_three_letter_candidates(self):
+        xel = replace(self.state(1), enemy="Mirage Xel (Boss)")
+        short = Candidate("AWE", (0,), 2, 1, None, True, 0.6, 0)
+        long = Candidate("AWARE", (0,), 3, 2, None, True, 0.7, 0)
+
+        self.assertFalse(enemy_accepts_candidate(xel, short))
+        self.assertTrue(enemy_accepts_candidate(xel, long))
+
+    def test_rejected_words_clear_on_new_rack_or_enemy(self):
+        rejected = {"AVE", "AWE"}
+        first = replace(self.state(1), enemy="Mirage Xel (Boss)", board="AAAA")
+        same = replace(first, sequence=2)
+        scrambled = replace(first, sequence=3, board="BBBB")
+        next_enemy = replace(scrambled, sequence=4, enemy="Crazy Murray")
+
+        context = refresh_rejected_words_context(rejected, None, first)
+        self.assertEqual(rejected, set())
+        rejected.add("AVE")
+        context = refresh_rejected_words_context(rejected, context, same)
+        self.assertEqual(rejected, {"AVE"})
+        context = refresh_rejected_words_context(rejected, context, scrambled)
+        self.assertEqual(rejected, set())
+        rejected.add("AWE")
+        refresh_rejected_words_context(rejected, context, next_enemy)
+        self.assertEqual(rejected, set())
+
     def test_book_movie_skip_only_arms_after_chapter10_boss_stall(self):
         final_boss = replace(
             self.state(1), chapter=10, enemy="Medusa (Boss)"
@@ -548,20 +638,44 @@ class ContinuousRunnerTests(unittest.TestCase):
         self.assertIsNotNone(event)
         self.assertEqual(event.group("chapter"), "7")
 
+    def test_moxie_yes_retries_until_confirmed_with_bounded_budget(self):
+        self.assertTrue(should_retry_minigame_prompt(12, 1, 10.0, 9.0))
+        self.assertFalse(should_retry_minigame_prompt(None, 1, 10.0, 9.0))
+        self.assertFalse(should_retry_minigame_prompt(12, 5, 10.0, 9.0))
+        self.assertFalse(should_retry_minigame_prompt(12, 1, 8.0, 9.0))
+
     def test_treasure_context_recovers_route_without_combat_snapshot(self):
         self.assertEqual(treasure_slots_for_context(1, 10), (0, 3, 6))
-        self.assertEqual(treasure_slots_for_context(3, 1), (0, 6, 10))
+        self.assertEqual(treasure_slots_for_context(3, 1), (0, 6, 18))
+
+    def test_sphinx_uses_arch_shield_and_fleece(self):
+        self.assertEqual(treasure_slots_for_context(2, 4), (0, 1, 2))
+        self.assertEqual(treasure_slots_for_context(2, 3), (0, 3, 6))
+
+    def test_book2_equips_parrot_after_mama_roc(self):
+        self.assertEqual(treasure_slots_for_context(2, 6), (0, 6, 18))
+        self.assertEqual(treasure_slots_for_context(2, 7), (0, 6, 18))
+        self.assertEqual(treasure_slots_for_context(2, 10), (0, 6, 18))
+
+    def test_resumed_sphinx_deselects_preserved_key_first(self):
+        sphinx = replace(
+            self.state(1), book=2, chapter=4,
+            enemy="Sphinx (Riddle 1 of 5)",
+            treasures=frozenset({"arch of xyzzy", "jeweled key"}),
+        )
+
+        self.assertEqual(treasure_slots_for_state(sphinx), (11, 0, 1, 2))
 
     def test_hydra_head_uses_hydra_treasure_route(self):
         self.assertEqual(treasure_slots_after("Hydra (Head 3)"), (0, 3, 6))
 
     def test_maladin_unlock_switches_to_wooden_parrot(self):
-        self.assertEqual(treasure_slots_after("Maladin (Boss)"), (0, 6, 10))
+        self.assertEqual(treasure_slots_after("Maladin (Boss)"), (0, 6, 18))
 
     def test_book3_keeps_arch_hand_parrot_after_any_boss(self):
         book3 = replace(self.state(1), book=3, enemy="Grim (Boss)")
 
-        self.assertEqual(treasure_slots_for_state(book3), (0, 6, 10))
+        self.assertEqual(treasure_slots_for_state(book3), (0, 6, 18))
 
     def test_boss_finisher_uses_shortest_lethal_strategy(self):
         boss = replace(self.state(1), enemy="Pharaoh of Old (Boss)")
@@ -579,6 +693,15 @@ class ContinuousRunnerTests(unittest.TestCase):
         self.assertEqual(
             boss_finish_strategy(boss, "overkill-tier", [nonlethal]),
             "overkill-tier",
+        )
+
+    def test_hydra_finisher_uses_minimum_overkill_strategy(self):
+        hydra = replace(self.state(1), enemy="Hydra (Head 3)")
+        lethal = Candidate("HIT", (0,), 4, 1, None, True, 0.6, 0)
+
+        self.assertEqual(
+            boss_finish_strategy(hydra, "overkill-tier", [lethal]),
+            "minimum-overkill",
         )
 
     def test_health_potion_heals_at_or_below_four_before_nonlethal_turn(self):
@@ -1028,6 +1151,9 @@ class ContinuousRunnerTests(unittest.TestCase):
             (False, False, True, False), (False, False, False, True),
         ):
             self.assertTrue(dialogue_pulse_suppressed(*blockers))
+        self.assertTrue(dialogue_pulse_suppressed(
+            False, False, False, False, True,
+        ))
 
     def test_native_chapter_start_clears_stale_special_screen_state(self):
         stale_boss = object()
@@ -1042,6 +1168,10 @@ class ContinuousRunnerTests(unittest.TestCase):
         self.assertFalse(dialogue_pulse_suppressed(
             boss is not None, screen == "treasure" or selecting, False, False,
         ))
+
+    def test_ready_chapter_map_confirms_menu_reentry(self):
+        self.assertTrue(chapter_map_confirms_menu_reentry(True))
+        self.assertFalse(chapter_map_confirms_menu_reentry(False))
 
     def test_confirmed_boss_reset_can_clear_blocking_result_dialogue(self):
         reset_key = (1, 6, 7, "Cerberus (Boss)")
@@ -1060,6 +1190,16 @@ class ContinuousRunnerTests(unittest.TestCase):
         self.assertFalse(
             boss_reset_dialog_recovery_allowed("interrupt", True, None)
         )
+
+    def test_book1_completion_advances_exactly_two_lex_dialogues(self):
+        medusa = (1, -1, 6, "medusaboss")
+
+        self.assertTrue(book_transition_dialog_click_required(medusa, 0))
+        self.assertTrue(book_transition_dialog_click_required(medusa, 1))
+        self.assertFalse(book_transition_dialog_click_required(medusa, 2))
+        self.assertFalse(book_transition_dialog_click_required(
+            (2, 10, 6, "twistedvizier"), 0,
+        ))
 
     def test_convpanel_clears_stale_treasure_transition(self):
         self.assertEqual(

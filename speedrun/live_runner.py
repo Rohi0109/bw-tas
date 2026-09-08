@@ -13,6 +13,7 @@ import ctypes.util
 import json
 import time
 from pathlib import Path
+from typing import Callable
 
 from board.parse_board import parse_board
 from board.solve_board import setup, solve_board
@@ -516,6 +517,7 @@ class X11Keyboard:
     def select_word(
         self, board_text: str, word: str, delay: float,
         path: tuple[int, ...] | None = None, clear_first: bool = True,
+        confirm_tile: Callable[[int], bool] | None = None,
     ) -> None:
         """Select a word without clicking Attack."""
         self.focus()
@@ -549,7 +551,14 @@ class X11Keyboard:
                 row, column = choices.pop(0)
             if offset == len(word) - 1:
                 self.last_tile_click_sent_at = time.monotonic()
-            self.click(int(width * tile_x[column]), int(height * tile_y[row]), delay)
+            x = int(width * tile_x[column])
+            y = int(height * tile_y[row])
+            self.click(x, y, delay)
+            if confirm_tile is not None:
+                attempts = 1
+                while not confirm_tile(offset + 1) and attempts < 3:
+                    self.click(x, y, delay)
+                    attempts += 1
 
     def click_attack(self, delay: float) -> None:
         """Submit the selected word through Deluxe's keyboard action."""

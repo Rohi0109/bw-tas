@@ -541,6 +541,11 @@ def choose(cands: list[Candidate], strategy: str) -> tuple[Candidate, dict[str, 
         selected = maximum
     elif not lethal:
         selected = max(cands, key=lambda c: (c.damage / c.predicted_time, c.damage, -len(c.word), c.word))
+    elif strategy == "minimum-overkill":
+        selected = min(
+            lethal,
+            key=lambda c: (c.overkill, c.predicted_time, len(c.word), c.word),
+        )
     elif strategy == "shortest-lethal":
         selected = shortest
     else:

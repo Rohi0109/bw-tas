@@ -132,8 +132,8 @@ WR chapter endpoints. The report separates schema-v2 combat samples from the
 remaining chapter time and rejects unmistakably contaminated segments, such as
 the old paused Chapter 1.10 sample.
 
-`tas-best-splits.json` remains the per-chapter personal-best table.
-`tas-run-history.json` separately upserts the complete timer snapshot for every
+`records/tas-best-splits.json` remains the per-chapter personal-best table.
+`records/tas-run-history.json` separately upserts the complete timer snapshot for every
 attempt at each chapter transition, so starting a new profile no longer erases
 the previous run's clean/invalid splits.
 
@@ -363,6 +363,13 @@ where regeneration is not active.
    status treasures only where the enemy roster makes their benefit reliable.
 
 #### Main-menu exit and Adventure re-entry plan
+
+The continuous TAS does not sleep after clicking Adventure. It immediately
+returns to the log loop and waits for BookManager's native chapter-map event
+before clicking Enter. The three preceding guards (battle menu, quit prompt,
+and title menu) remain fixed because those native UI screens do not execute the
+instrumented Lua update methods; reducing them requires separate native-screen
+ownership detection, not a guessed shorter delay.
 
 1. **High priority:** use the in-game Main Menu button after progress has been
    committed, then select Adventure mode to re-enter at the next actionable

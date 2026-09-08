@@ -1,6 +1,9 @@
 import unittest
 
-from menu_runner import MenuTiming, reset_from_battle, start_from_main_menu
+from menu_runner import (
+    MenuTiming, event_driven_reset_timing, reset_from_battle,
+    start_from_main_menu,
+)
 
 
 class RecordingController:
@@ -14,6 +17,14 @@ class RecordingController:
 
 
 class MenuRunnerTests(unittest.TestCase):
+    def test_event_driven_reset_does_not_sleep_after_adventure(self):
+        timing = event_driven_reset_timing()
+
+        self.assertEqual(timing.after_battle_menu, 0.35)
+        self.assertEqual(timing.after_quit_prompt, 1.00)
+        self.assertEqual(timing.after_quit, 1.10)
+        self.assertEqual(timing.after_adventure, 0.0)
+
     def test_start_resumes_same_chapter_without_extra_click(self):
         controller = RecordingController()
         timing = MenuTiming(after_adventure=1.2, after_enter=1.5)

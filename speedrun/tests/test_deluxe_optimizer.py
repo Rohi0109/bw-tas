@@ -1,7 +1,7 @@
 import unittest
 
 from deluxe_optimizer import (
-    DeluxeState, adjusted_word_length, candidates, ceil_quarter, choose,
+    Candidate, DeluxeState, adjusted_word_length, candidates, ceil_quarter, choose,
     damage_for, floor_quarter,
     index_words, load_chapter1_hp_map, parse_state, strategy_for_state,
     validate_chapter1_state,
@@ -329,6 +329,17 @@ class DeluxeOptimizerTests(unittest.TestCase):
         selected, alternatives = choose(ranked, "overkill-tier")
         self.assertEqual(selected.word, "AAAAAAAAAAAA")
         self.assertEqual(alternatives["shortest_lethal"].word, "AAA")
+
+    def test_minimum_overkill_prefers_least_damage_then_speed(self):
+        ranked = [
+            Candidate("LONG", (0,), 8, 4, None, True, 0.5, 0),
+            Candidate("SLOW", (0,), 5, 1, None, True, 0.8, 0),
+            Candidate("FAST", (0,), 5, 1, None, True, 0.6, 0),
+        ]
+
+        selected, _ = choose(ranked, "minimum-overkill")
+
+        self.assertEqual(selected.word, "FAST")
 
     def test_chapter_aware_uses_shortest_lethal_for_book1_chapters1_to5(self):
         for chapter in range(1, 6):

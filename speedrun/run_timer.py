@@ -16,9 +16,10 @@ from deluxe_optimizer import DISPLAY_NAME_ALIASES
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_STATE = ROOT / "runtime/deluxe-modded/run-timer.json"
 DEFAULT_LOG = ROOT / "runtime/deluxe-modded/lua.log"
-DEFAULT_WR_SPLITS = ROOT / "human-wr-splits.json"
-DEFAULT_TAS_BEST = ROOT / "tas-best-splits.json"
-DEFAULT_RUN_HISTORY = ROOT / "tas-run-history.json"
+RECORDS_DIR = ROOT / "records"
+DEFAULT_WR_SPLITS = RECORDS_DIR / "human-wr-splits.json"
+DEFAULT_TAS_BEST = RECORDS_DIR / "tas-best-splits.json"
+DEFAULT_RUN_HISTORY = RECORDS_DIR / "tas-run-history.json"
 CHAPTER_RE = re.compile(
     r"Book:StartGame called for book Book(?P<book>\d+), chapter (?P<chapter>\d+)"
 )

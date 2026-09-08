@@ -139,7 +139,10 @@ def recreate_profile(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Recreate a fresh Deluxe TAS user")
-    parser.add_argument("--profile", default="Lex10")
+    parser.add_argument(
+        "--profile",
+        help="profile to recreate (defaults to Deluxe's active LastUser)",
+    )
     parser.add_argument(
         "--from-select-user", action="store_true",
         help="the game is already on Select a User with LastUser selected",
@@ -151,9 +154,10 @@ def main() -> None:
     args = parser.parse_args()
 
     controller = X11Keyboard("Bookworm Adventures Deluxe", "deluxe")
+    profile = args.profile or last_user()
     recreate_profile(
         controller,
-        args.profile,
+        profile,
         from_select_user=args.from_select_user,
         skip_intro=args.skip_intro,
         timer_path=args.timer,
