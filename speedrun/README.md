@@ -125,6 +125,17 @@ saves and chapters still select the correct policy. Override it with
 alternatives. Completed attacks append timing samples to
 `runtime/deluxe-modded/tas-timing.jsonl`.
 
+The experimental `speed-sapphire` strategy targets Sapphire overkill rewards,
+then minimizes the visible word-length attack class and input time. It excludes
+every route that consumes a Diamond tile whenever any non-Diamond candidate can
+still guarantee the kill. Run it with `just tas-speed-sapphire`.
+
+New timing samples record the visible attack class (`normal` through
+`wow-overkill`), exact gem colors consumed, Diamond usage, predicted lethality,
+and confirmed defeat. `just animation-report` groups clean samples by those
+fields and reports their measured minimum and median resolution times for
+offline solver simulations.
+
 ### Book 1 optimization workflow
 
 Use `just book1-report` to compare stored TAS segments with the supplied human

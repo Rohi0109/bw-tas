@@ -1,7 +1,8 @@
 import unittest
 
 from deluxe_optimizer import (
-    Candidate, DeluxeState, adjusted_word_length, candidates, ceil_quarter, choose,
+    Candidate, DeluxeState, adjusted_word_length, attack_animation_class,
+    candidates, ceil_quarter, choose,
     damage_for, floor_quarter,
     index_words, load_chapter1_hp_map, parse_state, strategy_for_state,
     validate_chapter1_state,
@@ -340,6 +341,51 @@ class DeluxeOptimizerTests(unittest.TestCase):
         selected, _ = choose(ranked, "minimum-overkill")
 
         self.assertEqual(selected.word, "FAST")
+
+    def test_attack_animation_classes_follow_visible_length_buckets(self):
+        self.assertEqual(attack_animation_class(3), "normal")
+        self.assertEqual(attack_animation_class(7), "awesome")
+        self.assertEqual(attack_animation_class(8), "wow-overkill")
+        self.assertEqual(attack_animation_class(14), "wow-overkill")
+
+    def test_speed_sapphire_targets_sapphire_over_a_faster_lower_tier(self):
+        ranked = [
+            Candidate("FAST", (0,), 5, 1, "amethyst", True, 0.5, 0),
+            Candidate("SAPPHIRE", (1,), 7, 3, "sapphire", True, 0.9, 0),
+        ]
+
+        selected, _ = choose(ranked, "speed-sapphire")
+
+        self.assertEqual(selected.word, "SAPPHIRE")
+
+    def test_speed_sapphire_avoids_diamond_when_non_diamond_can_kill(self):
+        ranked = [
+            Candidate(
+                "DIA", (0,), 8, 4, "sapphire", True, 0.5, 1,
+                ("diamond",), "normal",
+            ),
+            Candidate(
+                "PLAIN", (1,), 6, 2, "amethyst", True, 0.7, 0,
+                (), "very-good",
+            ),
+        ]
+
+        selected, _ = choose(ranked, "speed-sapphire")
+
+        self.assertEqual(selected.word, "PLAIN")
+
+    def test_speed_sapphire_uses_diamond_when_it_is_only_lethal_route(self):
+        ranked = [
+            Candidate(
+                "DIA", (0,), 8, 1, "sapphire", True, 0.5, 1,
+                ("diamond",), "normal",
+            ),
+            Candidate("PLAIN", (1,), 6, -1, None, False, 0.7, 0),
+        ]
+
+        selected, _ = choose(ranked, "speed-sapphire")
+
+        self.assertEqual(selected.word, "DIA")
 
     def test_chapter_aware_uses_shortest_lethal_for_book1_chapters1_to5(self):
         for chapter in range(1, 6):

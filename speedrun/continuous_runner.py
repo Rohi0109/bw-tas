@@ -487,6 +487,8 @@ def boss_finish_strategy(
     """Avoid valueless overkill animations on a boss's finishing turn."""
     if not any(candidate.lethal for candidate in ranked):
         return strategy
+    if strategy == "speed-sapphire":
+        return strategy
     if state.enemy.startswith("Hydra ("):
         # Each head awards nothing for excess damage, while Lex still spends
         # time playing the larger overkill response before the next head.
@@ -930,7 +932,7 @@ def main() -> None:
         "--strategy",
         choices=(
             "chapter-aware", "book1-lookahead", "overkill-tier",
-            "shortest-lethal", "max-damage",
+            "shortest-lethal", "max-damage", "speed-sapphire",
         ),
         default="chapter-aware",
     )
@@ -1454,6 +1456,8 @@ def main() -> None:
                     log_message(
                         f"  chose {word} damage={damage:.2f} "
                         f"overkill={selected.overkill:.2f} tier={selected.tier} "
+                        f"animation={selected.animation_class} "
+                        f"gems={','.join(selected.gem_types) or 'none'} "
                         f"strategy={effective_strategy} "
                         f"time={selected.predicted_time:.2f}s; "
                         f"shortest={shortest.word if shortest else 'none'}; "
@@ -2712,6 +2716,13 @@ def main() -> None:
                             "overkill": submitted_candidate.overkill,
                             "tier": submitted_candidate.tier,
                             "gems_used": submitted_candidate.gem_count,
+                            "gem_types_used": list(submitted_candidate.gem_types),
+                            "uses_diamond": (
+                                "diamond" in submitted_candidate.gem_types
+                            ),
+                            "attack_animation_class": (
+                                submitted_candidate.animation_class
+                            ),
                             "predicted_seconds": submitted_candidate.predicted_time,
                             "actual_seconds": time.monotonic() - submitted_at,
                             "next_sequence": deluxe_state.sequence,

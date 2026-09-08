@@ -189,6 +189,8 @@ class TransitionCorpus:
                     tier=action.get("tier"), lethal=action["lethal"],
                     predicted_time=action["predicted_time"],
                     gem_count=action["gem_count"],
+                    gem_types=tuple(action.get("gem_types", ())),
+                    animation_class=action.get("animation_class", "unknown"),
                 )
                 transitions.append(RecordedTransition(
                     state_from_payload(row["before"]), candidate,

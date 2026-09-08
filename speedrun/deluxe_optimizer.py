@@ -83,6 +83,20 @@ GEM_TIER_NAMES = (
     "amethyst", "sapphire", "emerald", "garnet", "ruby", "crystal", "diamond"
 )
 
+ATTACK_ANIMATION_CLASSES = {
+    3: "normal", 4: "good", 5: "very-good", 6: "excellent", 7: "awesome",
+}
+
+
+def attack_animation_class(word_length: int) -> str:
+    """Return the game's visible attack class for telemetry bucketing."""
+    return ATTACK_ANIMATION_CLASSES.get(word_length, "wow-overkill")
+
+
+def attack_animation_rank(word_length: int) -> int:
+    """Order attack classes without pretending their durations are known."""
+    return min(max(word_length, 3), 8) - 3
+
 SUPPORTED_DAMAGE_TREASURES = {
     "artemis bow", "arch of xyzzy", "heph's hammer",
     "hand of hercules", "wooden parrot",
@@ -228,6 +242,8 @@ class Candidate:
     lethal: bool
     predicted_time: float
     gem_count: int
+    gem_types: tuple[str, ...] = ()
+    animation_class: str = "unknown"
 
 
 @dataclass(frozen=True)
@@ -518,14 +534,19 @@ def candidates(
             continue
         damage = damage_for(state, word, path, metal_words)
         overkill = damage - state.hp
-        gem_count = sum(state.gems[index] in GEM_TIER_NAMES for index in path)
+        gem_types = tuple(
+            state.gems[index] for index in path
+            if state.gems[index] in GEM_TIER_NAMES
+        )
+        gem_count = len(gem_types)
         # Frozen POC timing model: input dominates within an overkill tier;
         # gem activations receive a small measured-cost placeholder that the
         # JSONL telemetry can later replace.
         predicted = 0.35 + len(word) * click_delay + gem_count * 0.10
         result.append(Candidate(
             word, path, damage, overkill, overkill_tier(overkill, state.overkill_thresholds),
-            damage + 1e-9 >= state.hp, predicted, gem_count,
+            damage + 1e-9 >= state.hp, predicted, gem_count, gem_types,
+            attack_animation_class(len(word)),
         ))
     return result
 
@@ -541,6 +562,19 @@ def choose(cands: list[Candidate], strategy: str) -> tuple[Candidate, dict[str, 
         selected = maximum
     elif not lethal:
         selected = max(cands, key=lambda c: (c.damage / c.predicted_time, c.damage, -len(c.word), c.word))
+    elif strategy == "speed-sapphire":
+        non_diamond = [candidate for candidate in lethal if "diamond" not in candidate.gem_types]
+        eligible = non_diamond or lethal
+        selected = min(
+            eligible,
+            key=lambda c: (
+                c.tier != "sapphire",
+                attack_animation_rank(len(c.word)),
+                c.predicted_time,
+                c.overkill,
+                c.word,
+            ),
+        )
     elif strategy == "minimum-overkill":
         selected = min(
             lethal,

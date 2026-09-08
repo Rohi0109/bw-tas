@@ -75,6 +75,14 @@ book1-report:
 tas-book1-lookahead *args:
     ./run-deluxe-speedrun-auto.sh --strategy book1-lookahead {{args}}
 
+# Experimental speed policy: target Sapphire and avoid Diamond tile animations.
+tas-speed-sapphire *args:
+    ./run-deluxe-speedrun-auto.sh --strategy speed-sapphire {{args}}
+
+# Summarize measured kill/animation costs for solver simulations.
+animation-report *args:
+    PYTHONPATH=speedrun python3 speedrun/animation_report.py {{args}}
+
 # Replay a fresh seed-1 run with exact state-fingerprint decision overrides.
 tas-book1-experiment decisions *args:
     ./run-deluxe-speedrun-auto.sh --book1-overrides "{{decisions}}" {{args}}
