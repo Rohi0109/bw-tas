@@ -154,7 +154,8 @@ ATTACK_READY_RE = re.compile(
     r"(?P<value>-?\d+(?:\.\d+)?)\|E"
 )
 POWERUP_STATE_RE = re.compile(
-    r"AUTOMATION_POWERUP_STATE=(?P<active>[01])\|(?P<input_ready>[01])\|E"
+    r"AUTOMATION_POWERUP_STATE=(?P<active>[01])\|(?P<input_ready>[01])"
+    r"(?:\|(?P<blocker>[^|]+))?\|E"
 )
 RESET_READY_RE = re.compile(
     r"AUTOMATION_BOSS_RESET_READY=(?P<enemy>[^|]+)\|E"
@@ -587,11 +588,20 @@ def refresh_rejected_words_context(
     return context
 
 
-def requires_confirmed_tile_input(state: DeluxeState | None) -> bool:
-    """Chapter 6's first rack drops rapid clicks while its intro finishes."""
-    return state is not None and (
-        state.book == 1 and state.chapter == 6 and state.enemy == "Griffon"
-    )
+def tile_input_delay(state: DeluxeState | None, configured_delay: float) -> float:
+    """Pace Griffon's opening rack after its unusually late intro handoff.
+
+    Re-clicking an apparently unconfirmed tile is unsafe: telemetry can lag an
+    accepted click, and the retry then deselects it. The fresh READY sequence
+    already proves rack ownership, so use one deliberately paced click per
+    tile instead.
+    """
+    if (
+        state is not None and state.book == 1
+        and state.chapter == 6 and state.enemy == "Griffon"
+    ):
+        return max(configured_delay, 0.08)
+    return configured_delay
 
 
 def is_initial_play_tutorial(
@@ -769,13 +779,24 @@ def select_and_attack_when_native_ready(
 
 def activate_powerup_when_native_ready(
     controller: X11Keyboard, log_path: Path, delay: float,
-    timeout: float = 8.0,
+    timeout: float = 8.0, retry_after: float = 2.0,
 ) -> bool:
-    """Use Power-Up and wait until its native effect yields input ownership."""
+    """Use Power-Up and wait until its native effect yields input ownership.
+
+    A potion click can be rejected during the short encounter handoff even
+    though the new board is already visible. Retry the same inventory slot
+    once, but only while native telemetry still proves that the effect is not
+    active. Never re-click after activation: the remaining wait may represent
+    a real overlay that still owns input.
+    """
     controller.clear_selection(delay)
     start = log_path.stat().st_size if log_path.exists() else 0
     controller.use_powerup_potion(max(0.8, delay))
-    deadline = time.monotonic() + timeout
+    started_at = time.monotonic()
+    deadline = started_at + timeout
+    retry_at = started_at + min(retry_after, max(0.0, timeout / 2))
+    retried = False
+    latest = None
     with log_path.open("r", encoding="utf-8", errors="replace") as log:
         log.seek(start)
         telemetry = ""
@@ -791,7 +812,26 @@ def activate_powerup_when_native_ready(
                     and latest.group("input_ready") == "1"
                 ):
                     return True
+            if (
+                not retried and time.monotonic() >= retry_at
+                and (latest is None or latest.group("active") == "0")
+            ):
+                log_message(
+                    "Power-Up is still natively inactive; retrying its item "
+                    "click once.", flush=True,
+                )
+                controller.use_powerup_potion(max(0.8, delay))
+                retried = True
             time.sleep(0.01)
+    if latest is None:
+        detail = "no native Power-Up telemetry observed"
+    else:
+        blocker = latest.group("blocker") or "unspecified"
+        detail = (
+            f"active={latest.group('active')}; "
+            f"input_ready={latest.group('input_ready')}; blocker={blocker}"
+        )
+    log_message(f"Power-Up native confirmation timed out: {detail}.", flush=True)
     return False
 
 
@@ -1536,8 +1576,8 @@ def main() -> None:
                 native_attack_authorized = False
                 if args.layout == "deluxe":
                     native_ready = select_and_attack_when_native_ready(
-                        controller, log_path, board, word, args.tile_delay, path,
-                        confirm_each_tile=requires_confirmed_tile_input(deluxe_state),
+                        controller, log_path, board, word,
+                        tile_input_delay(deluxe_state, args.tile_delay), path,
                     )
                     native_attack_authorized = native_ready
                     attack_clicked_at = time.monotonic() if native_ready else None
@@ -1785,10 +1825,9 @@ def main() -> None:
                     if args.layout == "deluxe":
                         native_ready = select_and_attack_when_native_ready(
                             controller, log_path, submitted_board,
-                            submitted_word, retry_delay, submitted_path,
-                            confirm_each_tile=requires_confirmed_tile_input(
-                                submitted_state
-                            ),
+                            submitted_word,
+                            tile_input_delay(submitted_state, retry_delay),
+                            submitted_path,
                         )
                         if native_ready:
                             native_attack_authorized = True

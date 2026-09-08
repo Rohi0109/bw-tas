@@ -43,7 +43,7 @@ from continuous_runner import (
     immediate_defeated_reset_reason,
     should_arm_boss_reset_on_zero_health,
     should_retry_minigame_prompt,
-    requires_confirmed_tile_input,
+    tile_input_delay,
     refresh_rejected_words_context,
     incapacitation_recovery_action,
     should_use_purification_potion,
@@ -158,6 +158,61 @@ class ContinuousRunnerTests(unittest.TestCase):
             self.assertTrue(activate_powerup_when_native_ready(
                 Controller(), log_path, 0.01, timeout=0.1,
             ))
+
+    def test_powerup_retries_once_while_native_effect_is_inactive(self):
+        with tempfile.TemporaryDirectory() as directory:
+            log_path = Path(directory) / "lua.log"
+            log_path.write_text("", encoding="utf-8")
+
+            class Controller:
+                clicks = 0
+
+                def clear_selection(self, _delay):
+                    pass
+
+                def use_powerup_potion(self, _delay):
+                    self.clicks += 1
+                    with log_path.open("a", encoding="utf-8") as log:
+                        if self.clicks == 1:
+                            log.write(
+                                "AUTOMATION_POWERUP_STATE=0|0|inactive|E\n"
+                            )
+                        else:
+                            log.write(
+                                "AUTOMATION_POWERUP_STATE=1|1|ready|E\n"
+                            )
+
+            controller = Controller()
+            self.assertTrue(activate_powerup_when_native_ready(
+                controller, log_path, 0.001, timeout=0.1,
+                retry_after=0.01,
+            ))
+            self.assertEqual(controller.clicks, 2)
+
+    def test_powerup_never_reclicks_an_active_but_blocked_effect(self):
+        with tempfile.TemporaryDirectory() as directory:
+            log_path = Path(directory) / "lua.log"
+            log_path.write_text("", encoding="utf-8")
+
+            class Controller:
+                clicks = 0
+
+                def clear_selection(self, _delay):
+                    pass
+
+                def use_powerup_potion(self, _delay):
+                    self.clicks += 1
+                    with log_path.open("a", encoding="utf-8") as log:
+                        log.write(
+                            "AUTOMATION_POWERUP_STATE=1|0|interrupt|E\n"
+                        )
+
+            controller = Controller()
+            self.assertFalse(activate_powerup_when_native_ready(
+                controller, log_path, 0.001, timeout=0.04,
+                retry_after=0.005,
+            ))
+            self.assertEqual(controller.clicks, 1)
 
     def test_attack_waits_for_complete_native_selection(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -351,6 +406,7 @@ class ContinuousRunnerTests(unittest.TestCase):
             "local powerupInputClear = playerPoweredUp and",
             hook,
         )
+        self.assertIn('powerupBlocker = "grid-overlay:" .. overlayFrame', hook)
 
     def test_attack_hook_uses_stable_native_update_handshake(self):
         hook = (
@@ -474,16 +530,17 @@ class ContinuousRunnerTests(unittest.TestCase):
             )
         )
 
-    def test_chapter6_griffon_requires_native_per_tile_confirmation(self):
+    def test_chapter6_griffon_uses_paced_single_click_input(self):
         griffon = replace(
             self.state(1), book=1, chapter=6, enemy="Griffon",
         )
         harpy = replace(griffon, enemy="Harpy")
         earlier_griffon = replace(griffon, chapter=5)
 
-        self.assertTrue(requires_confirmed_tile_input(griffon))
-        self.assertFalse(requires_confirmed_tile_input(harpy))
-        self.assertFalse(requires_confirmed_tile_input(earlier_griffon))
+        self.assertEqual(tile_input_delay(griffon, 0.02), 0.08)
+        self.assertEqual(tile_input_delay(griffon, 0.1), 0.1)
+        self.assertEqual(tile_input_delay(harpy, 0.02), 0.02)
+        self.assertEqual(tile_input_delay(earlier_griffon, 0.02), 0.02)
 
     def test_only_last_sphinx_riddle_arms_save_ready_reset(self):
         earlier = replace(self.state(1), enemy="Sphinx (Riddle 4 of 5)")

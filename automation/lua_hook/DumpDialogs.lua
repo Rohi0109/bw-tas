@@ -28,8 +28,26 @@ function BattleEngine:AutomationDumpDialogs()
   -- Require one second of native 100 Hz updates with uninterrupted ownership.
   local powerupInputReady = powerupInputClear and
     gAutomationPowerupReadyUpdates >= 100
+  local powerupBlocker = "ready"
+  if not playerPoweredUp then
+    powerupBlocker = "inactive"
+  elseif self.mInterruptState then
+    powerupBlocker = "interrupt"
+  elseif self.mLevelupEffect ~= nil then
+    powerupBlocker = "levelup"
+  elseif self.mGridOverlayPAM ~= nil then
+    local overlayFrame = "unknown"
+    if self.mGridOverlayPAM.mPlayingFrame ~= nil then
+      overlayFrame = tostring(self.mGridOverlayPAM.mPlayingFrame)
+    end
+    powerupBlocker = "grid-overlay:" .. overlayFrame
+  elseif convpanel ~= nil and convpanel.Active ~= nil and convpanel.Active() then
+    powerupBlocker = "conversation"
+  elseif gAutomationPowerupReadyUpdates < 100 then
+    powerupBlocker = "settling"
+  end
   local powerupSignature = (playerPoweredUp and "1" or "0") .. "|" ..
-    (powerupInputReady and "1" or "0")
+    (powerupInputReady and "1" or "0") .. "|" .. powerupBlocker
   if gAutomationPowerupSignature ~= powerupSignature then
     gAutomationPowerupSignature = powerupSignature
     print("AUTOMATION_POWERUP_STATE=" .. powerupSignature .. "|E")
