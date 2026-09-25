@@ -1,65 +1,92 @@
-# Bookworm Adventures source launcher
+# Bookworm Adventures TAS
 
-The active project repository is [Rohi0109/bw-tas](https://github.com/Rohi0109/bw-tas).
-The original `WarRobotDoge/Bookworm-google` remote is not required for this
-project and is no longer configured locally.
+This repository contains the tooling and notes for an automated **Bookworm
+Adventures Deluxe** tool-assisted speedrun. The runner reads game telemetry,
+chooses words, sends native input through X11, and records timing and combat
+evidence.
 
-For the **Deluxe TAS**, start with the [TAS README](speedrun/README.md):
-run commands, telemetry/solver boundaries, tests, and the cleanup plan.
-The instructions below describe the separate archived plugin launcher.
+The active repository is
+[Rohi0109/bw-tas](https://github.com/Rohi0109/bw-tas).
 
-## Current GitHub task
+## Quick start
 
-The current optimization task is to finish and validate faster, reliable
-menu exit and re-entry for the Deluxe TAS. The legacy reset path remains the
-default while native menu ownership observations are investigated. See the
-[menu-reset handoff](speedrun/MENU_RESET_HANDOFF.md) for the implementation
-order, validation criteria, and rollback command.
-
-This repository contains a small C host for the archived PopCap
-`BookwormAdventures.dll`. It recreates the browser plugin's callbacks and
-lifecycle messages, so this is the real game code and chapter data—not a static
-HTML recreation.
-
-## Run the source launcher
-
-The staged files and isolated 32-bit Wine prefix are already prepared:
+Run commands from the repository root.
 
 ```sh
-./run-native.sh
+just setup
+just game
 ```
 
-To rebuild the Windows launcher after editing its source:
+Keep the game terminal open. In a second terminal, attach the runner:
 
 ```sh
-./native/build.sh
-cp native/bwa_launcher.exe runtime/stage/bwa_launcher.exe
-./run-native.sh
+just tas
 ```
 
-The launcher sets its working directory to its own location, loads
-`BookwormAdventures.dll`, supplies the six host callbacks requested by the DLL,
-reproduces the archived page's `SessionReady`/`GameReady` handshake, and skips
-the web page's between-chapter advertising break. Run the staged launcher via
-`run-native.sh`; the build artifact in `native/` does not sit beside the game
-assets and is not intended to be launched directly.
+For a fresh timed profile, leave the game at its main menu and run:
 
-## Relevant files
+```sh
+just tas-new
+```
 
-- `native/bwa_launcher.c` — readable source for the replacement plugin host.
-- `native/build.sh` — builds a 32-bit Windows executable with the local MinGW toolchain.
-- `runtime/stage/` — staged DLL, properties, and chapter assets.
-- `runtime/launcher-wineprefix/` — isolated Wine environment for this launcher.
-- `bookwormadventures.js` and `common.js` — archived scripts used to recover the original lifecycle behavior.
+This recreates the selected TAS profile. Use `just tas` to resume an existing
+profile without resetting it.
 
-## Browser status
+The isolated RNG experiment uses separate commands and installation files:
 
-`web/boxedwine/` is an experiment, not the working path. The current official
-BoxedWine web build does not provide the Direct3D support this game needs, so
-`index.html` should not be presented as a finished browser port. The proven
-source-based path is the launcher above. A true browser delivery layer still
-needs either a compatible emulator build, a source port of the rendering layer,
-or server-side streaming of this working launcher.
+```sh
+just rng-game
+just rng-tas
+```
 
-The game files remain subject to their original rights and should only be
-distributed where you have permission to do so.
+Do not run two input controllers against the same game window.
+
+## What is here
+
+| Path | Purpose |
+| --- | --- |
+| `speedrun/tas.py` | Main TAS entry point and lifecycle setup. |
+| `speedrun/continuous_runner.py` | Event loop for combat, navigation, retries, and transitions. |
+| `speedrun/deluxe_optimizer.py` | Word search, damage modeling, and candidate ranking. |
+| `speedrun/combat_policy.py` | Potion, boss, status, and route decisions. |
+| `speedrun/x11_controller.py` | Calibrated keyboard and mouse input. |
+| `automation/lua_hook/` | Instrumentation hooks that emit native game events. |
+| `runtime/` | Local game copies, logs, and experiment output; ignored by Git. |
+| `records/` | Versioned timing and run history. |
+
+For module boundaries, telemetry format, and detailed run instructions, see
+[`speedrun/README.md`](speedrun/README.md).
+
+## Validation
+
+Run the Python regression suites without launching the game:
+
+```sh
+PYTHONPATH=speedrun python3 -m unittest discover -s speedrun/tests -p 'test_*.py'
+python3 -m unittest discover -s automation -p 'test_*.py'
+```
+
+These tests cover parser behavior, solver and policy decisions, input guards,
+navigation state, telemetry, and watchdog behavior. Passing tests do not
+replace live timing validation.
+
+## Current task
+
+The active optimization task is faster, reliable menu exit and re-entry. The
+legacy reset path remains the default while native menu ownership observations
+are validated. The implementation plan and acceptance criteria are in
+[`speedrun/MENU_RESET_HANDOFF.md`](speedrun/MENU_RESET_HANDOFF.md).
+
+The repository does not claim a completed menu-reset speedup until controlled
+game runs show improved reset-to-READY timing without lost progress or reset
+failures.
+
+## Related documentation
+
+- [`speedrun/README.md`](speedrun/README.md) — detailed architecture and usage.
+- [`speedrun/MENU_RESET_HANDOFF.md`](speedrun/MENU_RESET_HANDOFF.md) — current implementation handoff.
+- [`speedrun/STATE_GRAPH.md`](speedrun/STATE_GRAPH.md) — deterministic graph and RNG experiments.
+- [`things-to-add-roadmap.md`](things-to-add-roadmap.md) — broader roadmap.
+
+The game assets and executable builds remain subject to their original rights.
+Use and distribute them only where you have permission.
