@@ -1,8 +1,20 @@
 # Bookworm Adventures source launcher
 
+The active project repository is [Rohi0109/bw-tas](https://github.com/Rohi0109/bw-tas).
+The original `WarRobotDoge/Bookworm-google` remote is not required for this
+project and is no longer configured locally.
+
 For the **Deluxe TAS**, start with the [TAS README](speedrun/README.md):
 run commands, telemetry/solver boundaries, tests, and the cleanup plan.
 The instructions below describe the separate archived plugin launcher.
+
+## Current GitHub task
+
+The current optimization task is to finish and validate faster, reliable
+menu exit and re-entry for the Deluxe TAS. The legacy reset path remains the
+default while native menu ownership observations are investigated. See the
+[menu-reset handoff](speedrun/MENU_RESET_HANDOFF.md) for the implementation
+order, validation criteria, and rollback command.
 
 This repository contains a small C host for the archived PopCap
 `BookwormAdventures.dll`. It recreates the browser plugin's callbacks and
