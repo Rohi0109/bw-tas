@@ -3,6 +3,10 @@
 /bookwork_copy/
 /runtime/
 
+# Python bytecode is local build/test output.
+__pycache__/
+*.pyc
+
 *.zip
 *.wasm
 web/boxedwine/

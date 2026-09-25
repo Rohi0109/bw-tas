@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from deluxe_optimizer import DISPLAY_NAME_ALIASES, DeluxeState
+from combat_models import DeluxeState
+from deluxe_optimizer import DISPLAY_NAME_ALIASES
 
 
 def normalize_enemy(name: str) -> str:
@@ -114,13 +115,19 @@ def post_victory_reset_reason(
     # Multi-phase encounters do not expose the ordinary save-ready death edge.
     # Once DEFEATED identifies their completed phase, use the same menu skip
     # instead of carrying the old sparse checkpoint-only route.
+    # Head 5 -> Head 6 is a delayed in-memory handoff. Leaving here repeatedly
+    # reloads Head 5's transition state and can spend several seconds clicking
+    # Adventure before Head 6 finally becomes authoritative. Let this single
+    # phase advance normally; the other proven Hydra exits remain enabled.
+    if enemy == "hydrahead5":
+        return None
     if enemy.startswith("hydrahead"):
         return f"after {defeated.enemy}"
     # Sphinx boards are one continuous puzzle and must retain their rotation.
     if enemy.startswith("sphinx"):
         return None
-    # Ordinary encounters normally reset earlier through RESET_READY. This is
-    # also the safe fallback when a build omits that edge.
+    # DEFEATED is the first edge that proves encounter progress was committed;
+    # animation-complete/RESET_READY can still reload the dead enemy.
     if enemy != "codex":
         return f"after {defeated.enemy}"
     return None

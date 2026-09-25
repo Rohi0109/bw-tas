@@ -14,7 +14,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Iterable
 
-from deluxe_optimizer import Candidate, DeluxeState
+from combat_models import Candidate, DeluxeState
 
 
 TELEMETRY_SCHEMA_VERSION = 2

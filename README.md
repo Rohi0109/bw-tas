@@ -1,5 +1,9 @@
 # Bookworm Adventures source launcher
 
+For the **Deluxe TAS**, start with the [TAS README](speedrun/README.md):
+run commands, telemetry/solver boundaries, tests, and the cleanup plan.
+The instructions below describe the separate archived plugin launcher.
+
 This repository contains a small C host for the archived PopCap
 `BookwormAdventures.dll`. It recreates the browser plugin's callbacks and
 lifecycle messages, so this is the real game code and chapter data—not a static

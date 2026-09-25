@@ -12,9 +12,26 @@ setup *args:
 game *args:
     ./run-deluxe-tas.sh {{args}}
 
+# Launch the fixed-seed experiment in its own 800x600 Wine desktop and prefix.
+rng-game:
+    bash ./run-rng-game.sh
+
+# Run the fixed-seed TAS with session IDs, separate telemetry and no race timer.
+rng-tas *args:
+    PYTHONPATH=speedrun python3 speedrun/tas.py \
+      --layout deluxe --experiment \
+      --title "Bookworm Adventures Deluxe" \
+      --log runtime/experiments/engine-seed-game/lua.log \
+      --log-file runtime/experiments/engine-seed-game/tas-live.log {{args}}
+
 # Run the Deluxe TAS in a second terminal, e.g. `just tas --strategy max-damage`.
 tas *args:
     ./run-deluxe-speedrun-auto.sh {{args}}
+
+# Preload the solver, recreate the active TAS profile, then run in one process.
+# Start with Deluxe at its main menu. This deletes/recreates the selected profile.
+tas-new *args:
+    ./run-deluxe-speedrun-auto.sh --new-run {{args}}
 
 # Run the TAS; automatically ask Codex to repair stalls and safely restart.
 watchdog *args:
@@ -22,6 +39,19 @@ watchdog *args:
       --log runtime/deluxe-modded/lua.log \
       --stall-seconds 20 \
       -- ./run-deluxe-speedrun-auto.sh {{args}}
+
+# Quiet local monitoring: no screenshots, model calls, repairs, or restarts.
+# Launch the game first; attaches to its current state without deleting a profile.
+monitor *args:
+    python3 automation/tas_watchdog.py \
+      --log runtime/deluxe-modded/lua.log --no-screenshot --quiet \
+      --status runtime/diagnostics/monitor-status.json \
+      --stall-seconds 60 --timeout-seconds 7200 \
+      -- ./run-deluxe-speedrun-auto.sh {{args}}
+
+# Show the last local monitor snapshot; this does not invoke a model.
+monitor-status:
+    python3 -m json.tool runtime/diagnostics/monitor-status.json
 
 # Run one watched TAS attempt without automatically invoking Codex.
 watchdog-once *args:

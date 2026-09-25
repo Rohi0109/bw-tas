@@ -15,23 +15,7 @@ function BookManager:AutomationChapterContinue()
   print("AUTOMATION_SYNC=3")
   print("AUTOMATION_CHAPTER_SELECTION=" ..
     tostring(managerMiniGame) .. "|" .. tostring(bookMiniGame) .. "|E")
-  -- Moxie offers Link n' Spell at the observed checkpoint chapters. The
-  -- runner declines it with No and continues the TAS route.
-  local selected = gAutomationChapterSelected
-  local moxiePrompt =
-    selected == 4 or selected == 7 or selected == 9 or selected == 10
-  if managerMiniGame or bookMiniGame or moxiePrompt then
-    if gAutomationMiniGamePromptSequence == nil then
-      gAutomationMiniGamePromptSequence = 0
-    end
-    gAutomationMiniGamePromptSequence =
-      gAutomationMiniGamePromptSequence + 1
-    print("AUTOMATION_SYNC=1")
-    print("AUTOMATION_SYNC=2")
-    print("AUTOMATION_SYNC=3")
-    print("AUTOMATION_MINIGAME_PROMPT=" ..
-      tostring(gAutomationChapterBook) .. "|" ..
-      tostring(gAutomationChapterSelected) .. "|" ..
-      tostring(gAutomationMiniGamePromptSequence) .. "|E")
-  end
+  -- Prompt detection deliberately lives in Book:PromptToPlayMiniGame.  This
+  -- map handler only knows a mini-game may be selected; its old chapter-based
+  -- prediction could click before the native Yes/No panel existed.
 end

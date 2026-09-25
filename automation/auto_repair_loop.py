@@ -59,7 +59,7 @@ def main() -> int:
     parser.add_argument("--timeout-seconds", type=float, default=None)
     parser.add_argument("--poll-seconds", type=float, default=0.25)
     parser.add_argument(
-        "--screenshot", action=argparse.BooleanOptionalAction, default=True,
+        "--screenshot", action=argparse.BooleanOptionalAction, default=False,
     )
     parser.add_argument("--max-attempts", type=int, default=3)
     parser.add_argument("command", nargs=argparse.REMAINDER)

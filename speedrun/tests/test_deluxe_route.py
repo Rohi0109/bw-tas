@@ -72,10 +72,12 @@ class DeluxeRouteTests(unittest.TestCase):
             "after Polyphemus (Boss)",
         )
 
-    def test_hydra_phases_reset_after_each_defeat(self):
+    def test_hydra_head5_preserves_delayed_handoff(self):
+        delayed_handoff = state(enemy="Hydra (Head 5)", chapter=7)
         head = state(enemy="Hydra (Head 6)", chapter=7)
         main = state(enemy="Hydra (Main Head)", chapter=7)
 
+        self.assertIsNone(post_victory_reset_reason(delayed_handoff, set()))
         self.assertFalse(is_chapter_boss_defeat(head))
         self.assertEqual(
             post_victory_reset_reason(head, set()),

@@ -1,6 +1,11 @@
 import tempfile
 import unittest
+import contextlib
+import io
+import json
+import sys
 from pathlib import Path
+from unittest.mock import patch
 
 from auto_repair_loop import is_infrastructure_failure, read_repair_result
 from failure_packet import build_packet, relevant_lines, stall_signature
@@ -30,6 +35,73 @@ class FailurePacketTests(unittest.TestCase):
 
 
 class WatchdogTests(unittest.TestCase):
+    def test_quiet_monitor_keeps_final_lines_and_writes_status(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            status = root / 'status.json'
+            output = io.StringIO()
+            with contextlib.redirect_stdout(output):
+                code, packet = run_watchdog(
+                    command=[sys.executable, '-c',
+                             "print('12:00 INFO Attack 1: TEST'); "
+                             "print('12:00 INFO State 2: Goat HP 3/3'); "
+                             "print('12:00 WARNING retry')"],
+                    repo=root, log=root/'lua.log', incidents=root/'incidents',
+                    stall_seconds=2, timeout_seconds=3, poll_seconds=.01,
+                    quiet=True, status_path=status,
+                )
+            self.assertEqual(code, 0)
+            self.assertIsNone(packet)
+            self.assertNotIn('Attack 1', output.getvalue())
+            snapshot = json.loads(status.read_text())
+            self.assertEqual(snapshot['status'], 'runner-exited')
+            self.assertEqual(snapshot['attacks_submitted'], 1)
+            self.assertEqual(snapshot['warning_count'], 1)
+            self.assertIn('Goat', snapshot['latest_state'])
+            self.assertFalse(snapshot['screenshots_enabled'])
+
+    def test_crash_produces_packet_without_screenshot(self):
+        with tempfile.TemporaryDirectory() as directory, \
+                patch('tas_watchdog.capture_screenshot') as screenshot:
+            root = Path(directory)
+            code, path = run_watchdog(
+                command=[sys.executable, '-c', "print('fatal detail', flush=True); exit(7)"],
+                repo=root, log=root/'lua.log', incidents=root/'incidents',
+                stall_seconds=2, timeout_seconds=3, poll_seconds=.01, quiet=True,
+            )
+            self.assertEqual(code, 7)
+            packet = json.loads(path.read_text())
+            self.assertIn('fatal detail', packet['process_output_tail'])
+            screenshot.assert_not_called()
+
+    def test_unterminated_output_does_not_block_stall_timer(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            code, packet = run_watchdog(
+                command=[sys.executable, '-c',
+                         "import sys,time; sys.stdout.write('partial'); "
+                         "sys.stdout.flush(); time.sleep(5)"],
+                repo=root, log=root/'lua.log', incidents=root/'incidents',
+                stall_seconds=.15, timeout_seconds=1, poll_seconds=.01, quiet=True,
+            )
+            self.assertEqual(code, 124)
+            self.assertIn('unchanged', json.loads(packet.read_text())['reason'])
+
+    def test_interrupt_stops_owned_child(self):
+        from tas_watchdog import stop_process
+        with tempfile.TemporaryDirectory() as directory, \
+                patch('tas_watchdog.selectors.EpollSelector.select', side_effect=KeyboardInterrupt), \
+                patch('tas_watchdog.stop_process', wraps=stop_process) as stop:
+            root = Path(directory)
+            with self.assertRaises(KeyboardInterrupt):
+                run_watchdog(
+                    command=[sys.executable, '-c', 'import time; time.sleep(5)'],
+                    repo=root, log=root/'lua.log', incidents=root/'incidents',
+                    stall_seconds=1, timeout_seconds=2, poll_seconds=.01, quiet=True,
+                )
+            process = stop.call_args.args[0]
+            self.assertIsNotNone(process.poll())
+
     def test_stalled_log_writes_packet_and_returns_124(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

@@ -415,6 +415,9 @@ function TileEngine:AutomationDumpBoard()
       (playerPoweredUp and "1" or "0") .. "|" ..
       playerDamageMultiplier .. "|E")
     print("AUTOMATION_RNG=" .. gAutomationSequence .. "|-1|E")
+    -- Latest submission identity only; READY itself does not prove resolution.
+    print("AUTOMATION_READY_ATTACK=" .. gAutomationSequence .. "|" ..
+      (gAutomationAttackId or 0) .. "|E")
     print("AUTOMATION_READY_SEQ=" .. gAutomationSequence .. "|E")
     print("AUTOMATION_READY=" .. snapshot)
     if postPlayHandoff then gAutomationSawPlayTutorial = false end

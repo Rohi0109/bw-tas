@@ -1,75 +1,47 @@
-"""Exact-state Chapter 1 optimizer for Bookworm Adventures Deluxe TAS runs."""
+"""Deluxe word search, modeled damage and candidate ranking.
+
+Shared values live in combat_models; Lua decoding lives in combat_telemetry.
+Legacy imports of those names remain supported below.
+"""
 
 from __future__ import annotations
 
 import math
 import re
 from collections import Counter
-from dataclasses import dataclass
 from pathlib import Path
 
+from combat_models import Candidate, DeluxeState, WordSpec
+# Compatibility exports; new code imports combat_telemetry directly.
+from combat_telemetry import (
+    CONTEXT_RE,
+    ENEMY_RE,
+    HEALTH_RE,
+    PLAYER_HEALTH_RE,
+    PLAYER_STATUS_RE,
+    LETTERS_RE,
+    GEMS_RE,
+    POWERS_RE,
+    SELECTABLE_RE,
+    ZERO_DAMAGE_RE,
+    MODS_RE,
+    OVERKILL_RE,
+    READY_SEQ_RE,
+    RNG_RE,
+    GEM_CODE_NAMES,
+    parse_state,
+)
 
-CONTEXT_RE = re.compile(
-    r"AUTOMATION_CONTEXT=(?P<seq>\d+)\|(?P<book>-?\d+)\|"
-    r"(?P<chapter>-?\d+)\|(?P<stage>-?\d+)\|E"
-)
-ENEMY_RE = re.compile(r"AUTOMATION_ENEMY=(?P<seq>\d+)\|(?P<value>[^|]+)\|E")
-HEALTH_RE = re.compile(
-    r"AUTOMATION_HEALTH=(?P<seq>\d+)\|(?P<hp>-?\d+(?:\.\d+)?)\|"
-    r"(?P<max_hp>-?\d+(?:\.\d+)?)\|(?P<offense>-?\d+(?:\.\d+)?)\|E"
-)
-PLAYER_HEALTH_RE = re.compile(
-    r"AUTOMATION_PLAYER_HEALTH=(?P<seq>\d+)\|"
-    r"(?P<hp>-?\d+(?:\.\d+)?)\|(?P<max_hp>-?\d+(?:\.\d+)?)\|E"
-)
-PLAYER_STATUS_RE = re.compile(
-    r"AUTOMATION_PLAYER_STATUS=(?P<seq>\d+)\|(?P<stunned>[01])\|"
-    r"(?P<health_potion>[01])(?:\|(?P<damage_over_time>[01]))?"
-    r"(?:\|(?P<petrified>[01]))?(?:\|(?P<attack_potion>[01]))?"
-    r"(?:\|(?P<frozen>[01]))?(?:\|(?P<powered_up>[01]))?"
-    r"(?:\|(?P<damage_multiplier>-?\d+(?:\.\d+)?))?\|E"
-)
-LETTERS_RE = re.compile(
-    r"AUTOMATION_LETTERS=(?P<seq>\d+)\|(?P<row>[0-3])\|(?P<value>[A-Z]{4})\|E"
-)
-GEMS_RE = re.compile(
-    r"AUTOMATION_GEMS=(?P<seq>\d+)\|(?P<row>[0-3])\|(?P<value>[a-z](?:,[a-z]){3})\|E"
-)
-POWERS_RE = re.compile(
-    r"AUTOMATION_POWERS=(?P<seq>\d+)\|(?P<row>[0-3])\|"
-    r"(?P<value>-?\d+(?:\.\d+)?(?:,-?\d+(?:\.\d+)?){3})\|E"
-)
-SELECTABLE_RE = re.compile(
-    r"AUTOMATION_SELECTABLE=(?P<seq>\d+)\|(?P<row>[0-3])\|"
-    r"(?P<value>[01]{4})\|E"
-)
-ZERO_DAMAGE_RE = re.compile(
-    r"AUTOMATION_ZERO_DAMAGE=(?P<seq>\d+)\|(?P<row>[0-3])\|"
-    r"(?P<value>[01]{4})\|E"
-)
-MODS_RE = re.compile(r"AUTOMATION_MODS=(?P<seq>\d+)\|(?P<value>[^|]+)\|E")
-OVERKILL_RE = re.compile(
-    r"AUTOMATION_OVERKILL=(?P<seq>\d+)\|"
-    r"(?P<value>none|-?\d+(?:\.\d+)?(?:,-?\d+(?:\.\d+)?)*)\|E"
-)
-READY_SEQ_RE = re.compile(r"AUTOMATION_READY_SEQ=(?P<seq>\d+)\|E")
-RNG_RE = re.compile(
-    r"AUTOMATION_RNG=(?P<seq>\d+)\|(?P<calls>-?\d+)\|E"
-)
-GEM_CODE_NAMES = {
-    "n": "none", "a": "amethyst", "s": "sapphire", "e": "emerald",
-    "g": "garnet", "r": "ruby", "c": "crystal", "d": "diamond",
-    "m": "metal",
-}
 
 DAMAGE_BY_LENGTH = {
-    3: 0.25, 4: 0.5, 5: 0.75, 6: 1.0, 7: 1.5, 8: 2.0,
-    9: 2.75, 10: 3.5, 11: 4.5, 12: 5.5, 13: 6.75,
-    14: 8.0, 15: 9.5, 16: 11.0, 17: 13.0,
+    # Native DAMAGE_TABLE capture: tier n indexes gDamageByWordLength[n-1].
+    0: 0.0, 1: 0.25, 2: 0.25, 3: 0.5, 4: 0.75, 5: 1.0,
+    6: 1.5, 7: 2.0, 8: 2.75, 9: 3.5, 10: 4.5, 11: 5.5,
+    12: 6.75, 13: 8.0, 14: 9.5, 15: 11.0, 16: 13.0,
 }
 
-# Extracted from main.luc's native LETTER_BONUSES table. These intrinsic
-# weights are independent of gems and equipped treasures.
+# Defaults from main.luc's LETTER_BONUSES table. Equipped Bow of Zyx overrides
+# X/Y/Z; adjusted_word_length applies that native treasure rule.
 LETTER_BONUSES = {
     "B": 0.25, "C": 0.25, "F": 0.25, "H": 0.25,
     "M": 0.25, "P": 0.25,
@@ -85,6 +57,18 @@ GEM_TIER_NAMES = (
 
 ATTACK_ANIMATION_CLASSES = {
     3: "normal", 4: "good", 5: "very-good", 6: "excellent", 7: "awesome",
+}
+
+# Median attack-to-zero timings from clean native telemetry. These include
+# Lex's visible attack animation and are deliberately conservative: input and
+# gem activation costs are still added separately per candidate below.
+ATTACK_ANIMATION_SECONDS = {
+    "normal": 0.637,
+    "good": 0.790,
+    "very-good": 0.875,
+    "excellent": 0.890,
+    "awesome": 0.966,
+    "wow-overkill": 1.681,
 }
 
 
@@ -202,63 +186,12 @@ def validate_chapter1_state(
     return None
 
 
-@dataclass(frozen=True)
-class DeluxeState:
-    sequence: int
-    board: str
-    gems: tuple[str, ...]
-    tile_powers: tuple[float, ...]
-    book: int
-    chapter: int
-    stage: int
-    enemy: str
-    hp: float
-    max_hp: float
-    offense: float
-    treasures: frozenset[str]
-    overkill_thresholds: tuple[float, ...]
-    selectable: tuple[bool, ...] = (True,) * 16
-    player_hp: float = -1
-    player_max_hp: float = -1
-    player_stunned: bool = False
-    player_frozen: bool = False
-    player_petrified: bool = False
-    health_potion_available: bool = False
-    attack_potion_available: bool = False
-    player_powered_up: bool = False
-    player_damage_multiplier: float = 1.0
-    player_has_damage_over_time: bool = False
-    zero_damage: tuple[bool, ...] = (False,) * 16
-    rng_calls: int = -1
-
-
-@dataclass(frozen=True)
-class Candidate:
-    word: str
-    path: tuple[int, ...]
-    damage: float
-    overkill: float
-    tier: str | None
-    lethal: bool
-    predicted_time: float
-    gem_count: int
-    gem_types: tuple[str, ...] = ()
-    animation_class: str = "unknown"
-
-
-@dataclass(frozen=True)
-class WordSpec:
-    word: str
-    letter_mask: int
-    requirements: tuple[tuple[str, int], ...]
-
-
 def index_words(words: list[str]) -> list[WordSpec]:
     """Precompute immutable letter requirements outside the READY hot path."""
     indexed = []
     for raw_word in words:
         word = raw_word.upper()
-        if len(word) not in DAMAGE_BY_LENGTH:
+        if not 3 <= len(word) <= 16:
             continue
         counts = Counter(word)
         mask = 0
@@ -266,128 +199,6 @@ def index_words(words: list[str]) -> list[WordSpec]:
             mask = mask | (1 << (ord(letter) - ord("A")))
         indexed.append(WordSpec(word, mask, tuple(sorted(counts.items()))))
     return indexed
-
-
-def parse_state(text: str) -> DeluxeState | None:
-    ready_sequences = [int(match.group("seq")) for match in READY_SEQ_RE.finditer(text)]
-    for sequence in reversed(ready_sequences):
-        contexts = [m for m in CONTEXT_RE.finditer(text) if int(m.group("seq")) == sequence]
-        enemies = [m for m in ENEMY_RE.finditer(text) if int(m.group("seq")) == sequence]
-        healths = [m for m in HEALTH_RE.finditer(text) if int(m.group("seq")) == sequence]
-        player_healths = [
-            m for m in PLAYER_HEALTH_RE.finditer(text)
-            if int(m.group("seq")) == sequence
-        ]
-        player_statuses = [
-            m for m in PLAYER_STATUS_RE.finditer(text)
-            if int(m.group("seq")) == sequence
-        ]
-        letters = {
-            int(m.group("row")): m for m in LETTERS_RE.finditer(text)
-            if int(m.group("seq")) == sequence
-        }
-        gems = {int(m.group("row")): m for m in GEMS_RE.finditer(text) if int(m.group("seq")) == sequence}
-        powers = {int(m.group("row")): m for m in POWERS_RE.finditer(text) if int(m.group("seq")) == sequence}
-        selectables = {
-            int(m.group("row")): m for m in SELECTABLE_RE.finditer(text)
-            if int(m.group("seq")) == sequence
-        }
-        zero_damage = {
-            int(m.group("row")): m for m in ZERO_DAMAGE_RE.finditer(text)
-            if int(m.group("seq")) == sequence
-        }
-        mods = [m for m in MODS_RE.finditer(text) if int(m.group("seq")) == sequence]
-        overkills = [m for m in OVERKILL_RE.finditer(text) if int(m.group("seq")) == sequence]
-        rng = [m for m in RNG_RE.finditer(text) if int(m.group("seq")) == sequence]
-        if contexts and enemies and healths and len(letters) == len(gems) == len(powers) == 4 and mods and overkills:
-            break
-    else:
-        return None
-    match = contexts[-1]
-    health = healths[-1]
-    raw_treasures = mods[-1].group("value")
-    treasures = frozenset(
-        name.strip().casefold() for name in raw_treasures.split(",")
-        if name.strip().casefold() != "none"
-    )
-    return DeluxeState(
-        sequence=sequence,
-        board="/".join(letters[row].group("value") for row in range(4)),
-        gems=tuple(
-            GEM_CODE_NAMES.get(gem, f"bonus-{gem}") for row in range(4)
-            for gem in gems[row].group("value").split(",")
-        ),
-        tile_powers=tuple(
-            float(value) for row in range(4)
-            for value in powers[row].group("value").split(",")
-        ),
-        selectable=tuple(
-            value == "1" for row in range(4)
-            for value in (
-                selectables[row].group("value") if row in selectables else "1111"
-            )
-        ),
-        zero_damage=tuple(
-            value == "1" for row in range(4)
-            for value in (
-                zero_damage[row].group("value") if row in zero_damage else "0000"
-            )
-        ),
-        rng_calls=int(rng[-1].group("calls")) if rng else -1,
-        player_hp=(float(player_healths[-1].group("hp")) if player_healths else -1),
-        player_max_hp=(
-            float(player_healths[-1].group("max_hp")) if player_healths else -1
-        ),
-        player_stunned=(
-            player_statuses[-1].group("stunned") == "1"
-            if player_statuses else False
-        ),
-        player_petrified=(
-            player_statuses[-1].group("petrified") == "1"
-            if player_statuses and player_statuses[-1].group("petrified")
-            else False
-        ),
-        player_frozen=(
-            player_statuses[-1].group("frozen") == "1"
-            if player_statuses and player_statuses[-1].group("frozen")
-            else False
-        ),
-        health_potion_available=(
-            player_statuses[-1].group("health_potion") == "1"
-            if player_statuses else False
-        ),
-        attack_potion_available=(
-            player_statuses[-1].group("attack_potion") == "1"
-            if player_statuses and player_statuses[-1].group("attack_potion")
-            else False
-        ),
-        player_powered_up=(
-            player_statuses[-1].group("powered_up") == "1"
-            if player_statuses and player_statuses[-1].group("powered_up")
-            else False
-        ),
-        player_damage_multiplier=(
-            float(player_statuses[-1].group("damage_multiplier"))
-            if player_statuses and
-            player_statuses[-1].group("damage_multiplier") else 1.0
-        ),
-        player_has_damage_over_time=(
-            player_statuses[-1].group("damage_over_time") == "1"
-            if player_statuses and player_statuses[-1].group("damage_over_time")
-            else False
-        ),
-        book=int(match.group("book")),
-        chapter=int(match.group("chapter")),
-        stage=int(match.group("stage")),
-        enemy=enemies[-1].group("value").strip(),
-        hp=float(health.group("hp")),
-        max_hp=float(health.group("max_hp")),
-        offense=float(health.group("offense")),
-        treasures=treasures,
-        overkill_thresholds=tuple(sorted(
-            float(value) for value in overkills[-1].group("value").split(",")
-        )) if overkills[-1].group("value") != "none" else (),
-    )
 
 
 def ceil_quarter(value: float) -> float:
@@ -402,10 +213,15 @@ def adjusted_word_length(
     state: DeluxeState, word: str, path: tuple[int, ...]
 ) -> int:
     """Return the native damage tier after usable intrinsic letter weights."""
-    value = float(len(word))
+    value = 0.0
     for letter, index in zip(word, path):
         if not state.zero_damage[index]:
-            value += LETTER_BONUSES.get(letter, 0.0)
+            bonus = LETTER_BONUSES.get(letter, 0.0)
+            # ArtemisBow.luc (displayed as Bow of Zyx) assigns, not adds,
+            # 1.5 to each of X/Y/Z in LETTER_BONUSES.
+            if "bow of zyx" in state.treasures and letter in "XYZ":
+                bonus = 1.5
+            value += 1.0 + bonus
     # BattleEngine passes TileEngine:GetWordValue through math.round before
     # indexing gDamageByWordLength. PopCap's positive values round .5 upward.
     return min(max(DAMAGE_BY_LENGTH), math.floor(value + 0.5 + 1e-9))
@@ -463,12 +279,7 @@ def damage_for(
     tile_contributions = []
     for index in path:
         contribution = state.tile_powers[index]
-        # A smashed/plagued tile contributes no letter damage. The game's
-        # damage scale is quarter-heart based, so remove that tile's normal
-        # quarter-heart contribution while preserving any separately reported
-        # gem/treasure bonus.
-        if state.zero_damage[index]:
-            contribution -= 0.25
+        # ModifyValue suppression is already applied before tier lookup.
         tile_contributions.append(contribution)
     tile_bonus = ceil_quarter(sum(tile_contributions))
     damage = max(0.0, base + tile_bonus + base * state.offense)
@@ -477,11 +288,11 @@ def damage_for(
             damage *= 1.5
         damage += 1.0
     elif "heph's hammer" in state.treasures:
-        # Deluxe quantizes ordinary word damage before applying Hammer's
-        # documented extra half-heart. Chimera snapshot 80's TUT therefore
-        # deals 0.25 + 0.5, rather than rounding the combined value to 1.0.
+        # Retain the existing Hammer rule; the current native validation
+        # capture covers plain-rack Book 1 attacks, not Hammer resolution.
         damage = floor_quarter(damage) + 0.5
-    return ceil_quarter(damage)
+    # Native nonlethal HP edges truncate the final amount to quarter hearts.
+    return floor_quarter(damage)
 
 
 def overkill_tier(overkill: float, thresholds: tuple[float, ...]) -> str | None:
@@ -527,7 +338,7 @@ def candidates(
             word = raw_word.word
         else:
             word = raw_word.upper()
-        if len(word) not in DAMAGE_BY_LENGTH:
+        if not 3 <= len(word) <= 16:
             continue
         path = _path_for_word(state, word)
         if path is None:
@@ -539,14 +350,18 @@ def candidates(
             if state.gems[index] in GEM_TIER_NAMES
         )
         gem_count = len(gem_types)
-        # Frozen POC timing model: input dominates within an overkill tier;
-        # gem activations receive a small measured-cost placeholder that the
-        # JSONL telemetry can later replace.
-        predicted = 0.35 + len(word) * click_delay + gem_count * 0.10
+        # Native timing model: Lex's animation class dominates long finishers.
+        # Keep input and gem activations explicit so equal animation classes
+        # still prefer the shorter, less decorated lethal path.
+        animation_class = attack_animation_class(len(word))
+        predicted = (
+            ATTACK_ANIMATION_SECONDS[animation_class]
+            + len(word) * click_delay + gem_count * 0.10
+        )
         result.append(Candidate(
             word, path, damage, overkill, overkill_tier(overkill, state.overkill_thresholds),
             damage + 1e-9 >= state.hp, predicted, gem_count, gem_types,
-            attack_animation_class(len(word)),
+            animation_class,
         ))
     return result
 
@@ -619,6 +434,11 @@ def strategy_for_state(
         return requested
     chapter = state.chapter if state.chapter >= 1 else chapter_override
     if state.book == 1:
+        # These Chapter 10 Gorgon checkpoints are immediately menu-reset after
+        # DEFEATED, so overkill reward tiers have no route value. Minimize the
+        # measured time to the lethal edge instead.
+        if _roster_name(state.enemy) in {"pemphredo", "enyo"}:
+            return "shortest-lethal"
         if chapter is not None and 1 <= chapter <= 5:
             return "shortest-lethal"
         if chapter is None and _roster_name(state.enemy) in BOOK1_MIN_KILL_ENEMIES:

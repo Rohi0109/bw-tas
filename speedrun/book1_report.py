@@ -92,13 +92,17 @@ def build_report(timer: dict, wr: dict, best: dict, samples: list[dict]) -> str:
             {**current, "elapsed": elapsed}, wr_segment
         )
         chapter_samples = by_chapter.get(key, [])
+        timed_samples = [
+            sample for sample in chapter_samples
+            if sample.get("timing", {}).get("ready_seconds") is not None
+        ]
         combat = sum(
             float(sample["timing"]["ready_seconds"])
-            for sample in chapter_samples
+            for sample in timed_samples
         )
         input_time = sum(
             float(sample["timing"].get("input_seconds") or 0.0)
-            for sample in chapter_samples
+            for sample in timed_samples
         )
         resolution = max(0.0, combat - input_time)
         other = max(0.0, elapsed - combat)
@@ -111,7 +115,7 @@ def build_report(timer: dict, wr: dict, best: dict, samples: list[dict]) -> str:
             f"{format_duration(wr_segment or 0):>8}   "
             f"{format_delta(delta):>6}   {format_duration(input_time):>5}  "
             f"{format_duration(resolution):>7}   {format_duration(other):>5}  "
-            f"{len(chapter_samples):>7}  {status}"
+            f"{len(timed_samples):>7}  {status}"
         )
     lines.extend((
         "",

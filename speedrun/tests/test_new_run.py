@@ -4,12 +4,31 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 from new_run import (
-    last_user, log_suffix_contains, profile_path, recreate_profile,
+    bridge_runner_startup_dialogue, last_user, log_suffix_contains,
+    profile_path, recreate_profile,
     skip_intro_until_chapter,
 )
 
 
 class NewRunTests(unittest.TestCase):
+    @patch("new_run.time.sleep")
+    def test_startup_bridge_clicks_only_confirmed_convpanel(self, _sleep):
+        with tempfile.TemporaryDirectory() as directory:
+            log = Path(directory) / "lua.log"
+            log.write_text(
+                "AUTOMATION_DIALOG_PULSE=convpanel|3|1|E\n"
+                "AUTOMATION_PLAY_TUTORIAL=4|E\n"
+                "AUTOMATION_DIALOG_PULSE=convpanel|3|2|E\n",
+                encoding="utf-8",
+            )
+            controller = Mock()
+
+            bridge_runner_startup_dialogue(
+                controller, log, 0, timeout=0.01,
+            )
+
+        controller.advance_dialog.assert_called_once_with("convpanel", 0.01)
+
     def test_log_suffix_ignores_stale_chapter_marker(self):
         with tempfile.TemporaryDirectory() as directory:
             log = Path(directory) / "lua.log"
@@ -32,6 +51,30 @@ class NewRunTests(unittest.TestCase):
 
             skip_intro_until_chapter(controller, log, offset)
 
+        controller.skip_intro.assert_not_called()
+        controller.confirm_skip_intro.assert_not_called()
+
+    @patch("new_run.time.sleep")
+    def test_intro_recovers_lua_wait_before_clicking_intro(self, _sleep):
+        with tempfile.TemporaryDirectory() as directory:
+            log = Path(directory) / "lua.log"
+            log.write_text("", encoding="utf-8")
+            offset = 0
+            controller = Mock()
+
+            def resume(_delay):
+                with log.open("a", encoding="utf-8") as output:
+                    output.write("AUTOMATION_BOARD=SFAE/PFUN/RJDY/TLIS\n")
+
+            controller.resume_lua_runtime.side_effect = resume
+            log.write_text(
+                "Program in waiting. Type go() or press F5 to continue execution.\n",
+                encoding="utf-8",
+            )
+
+            skip_intro_until_chapter(controller, log, offset, timeout=0.2)
+
+        controller.resume_lua_runtime.assert_called_once_with(0.15)
         controller.skip_intro.assert_not_called()
         controller.confirm_skip_intro.assert_not_called()
 
@@ -68,9 +111,10 @@ class NewRunTests(unittest.TestCase):
     @patch("new_run.last_user", return_value="Lex10")
     @patch("new_run.USERS")
     @patch("new_run.time.sleep")
+    @patch("new_run.bridge_runner_startup_dialogue")
     @patch("new_run.skip_intro_until_chapter")
     def test_fresh_run_confirms_intro_skip(
-        self, intro, _sleep, users, _last_user, profile, wait_for_profile,
+        self, intro, bridge, _sleep, users, _last_user, profile, wait_for_profile,
         _start_timer, _record_chapter, _save_history, _save_state,
     ):
         users.glob.return_value = []
@@ -91,6 +135,7 @@ class NewRunTests(unittest.TestCase):
         )
         _save_history.assert_called_once_with(_start_timer.return_value)
         intro.assert_called_once()
+        bridge.assert_called_once()
 
 
 if __name__ == "__main__":

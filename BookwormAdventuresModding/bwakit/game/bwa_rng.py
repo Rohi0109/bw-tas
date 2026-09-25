@@ -1,12 +1,17 @@
-"""Reproduction of Bookworm Adventures Deluxe's RNG.
+"""Reproduction of Bookworm Adventures Deluxe's CRT/Lua RNG only.
+
+Native board letters use a separate engine generator, also exposed as
+sexy.NextRand. This class does NOT predict native refills. See
+speedrun/STATE_GRAPH.md for the verified call path and engine state addresses.
 
 Recovered by disassembling the engine: the game uses the standard MSVCRT
 `rand()` / `srand()`, exposed to Lua as math.random / math.randomseed, and the
-custom QRand:Next() is a weighted wrapper over math.random. No script ever calls
-math.randomseed, so the C seed keeps its default value of 1 and the entire
-randomness stream is a fixed, reproducible sequence from process start.
+custom QRand:Next() is a weighted wrapper over math.random. Seed 1 below is a
+reference default, not a verified game startup seed. The current Deluxe build
+also calls srand from native code; absence of script calls does not establish
+a fixed stream. See speedrun/STATE_GRAPH.md for build-specific addresses.
 
-MSVCRT generator (verified from the exe at 0x4e801e):
+MSVCRT generator (current Deluxe rand at 0x66699b; addresses vary by build):
     state = (state * 214013 + 2531011) & 0xFFFFFFFF
     rand() = (state >> 16) & 0x7FFF          # 0..32767
 

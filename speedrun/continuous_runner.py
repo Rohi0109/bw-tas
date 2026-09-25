@@ -5,18 +5,75 @@ from __future__ import annotations
 import argparse
 import fcntl
 import json
-import logging
 import os
 import re
 import sys
 import time
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from pathlib import Path
 
-from live_runner import X11Keyboard, best_word
+from live_runner import best_word
+from x11_controller import X11Keyboard
+from combat_models import Candidate, DeluxeState, WordSpec
+from combat_telemetry import READY_SEQ_RE, parse_state
+from runner_telemetry import (
+    latest_unresolved_minigame_prompt,
+    BOARD_PREFIX,
+    READY_PREFIX,
+    BOARD_EVENT_RE,
+    DONE_MARKER,
+    CHAPTER_RE,
+    DIALOG_ACTIVE_RE,
+    DIALOG_PULSE_RE,
+    DIALOG_INACTIVE_RE,
+    PLAY_TUTORIAL_RE,
+    PLAY_READY_RE,
+    LEGACY_SCREEN_RE,
+    DEFEATED_RE,
+    ZERO_HEALTH_RE,
+    DEATH_FLAGS_RE,
+    ATTACK_SUBMITTED_RE,
+    SELECTION_RE,
+    ATTACK_READY_RE,
+    POWERUP_STATE_RE,
+    RESET_READY_RE,
+    PLAYER_STUNNED_RE,
+    INCAP_OVERLAY_RE,
+    CHAPTER_MAP_RE,
+    CHAPTER_ACTION_RE,
+    LUA_WAIT_MARKER,
+    TREASURE_CONTEXT_RE,
+    MINIGAME_PROMPT_RE,
+    ready_sequence_is_fresh,
+    streamed_ready_sequence,
+    lua_runtime_is_waiting,
+    state_is_incapacitated,
+    latest_incapacitation_state,
+    latest_active_incapacitation_event,
+    latest_unresolved_incapacitation_overlay,
+    read_log_tail,
+    read_seed,
+    unresolved_play_tutorial,
+    read_latest_dialog,
+    read_screen_blocker,
+)
+from combat_policy import (
+    SPHINX_ANSWERS,
+    boss_finish_strategy,
+    health_potion_confirmed,
+    incapacitation_recovery_action,
+    is_book3_final_gauntlet,
+    should_use_health_potion,
+    should_use_powerup_potion,
+    should_use_purification_potion,
+    sphinx_allows_damage_fallback,
+    sphinx_candidate,
+)
+from attack_lifecycle import AttackLifecycle
+from rack_prefetch import RackPrefetch
 from deluxe_optimizer import (
-    Candidate, DeluxeState, candidates, choose, load_chapter1_hp_map,
-    index_words, load_metal_words, parse_state, strategy_for_state,
+    candidates, choose, load_chapter1_hp_map,
+    index_words, load_metal_words, strategy_for_state,
     validate_chapter1_state,
 )
 from book1_optimizer import (
@@ -30,6 +87,7 @@ from deluxe_route import (
 )
 from menu_runner import event_driven_reset_timing, reset_from_battle
 from run_timer import (
+    ENEMY_CHAPTERS, normalize_enemy as normalize_roster_enemy,
     DEFAULT_STATE as DEFAULT_TIMER_STATE,
     load_state as load_timer_state,
     mark_current_issue,
@@ -40,55 +98,21 @@ from run_timer import (
 )
 
 
-LOGGER = logging.getLogger("bookworm.tas")
+from runner_logging import LOGGER, configure_logging, log_message
+from attack_input import select_and_attack_when_native_ready, activate_powerup_when_native_ready
 
 
 RESET_MENU_TIMING = event_driven_reset_timing()
-
-
-def configure_logging(level: str, log_file: Path | None) -> None:
-    """Keep concise progress on stdout and detailed diagnostics on disk."""
-    LOGGER.handlers.clear()
-    LOGGER.setLevel(logging.DEBUG)
-    LOGGER.propagate = False
-    formatter = logging.Formatter(
-        "%(asctime)s.%(msecs)03d %(levelname)s %(message)s",
-        datefmt="%H:%M:%S",
-    )
-    console = logging.StreamHandler(sys.stdout)
-    console.setLevel(getattr(logging, level))
-    console.setFormatter(formatter)
-    LOGGER.addHandler(console)
-    if log_file is not None:
-        log_file.parent.mkdir(parents=True, exist_ok=True)
-        detailed = logging.FileHandler(log_file, mode="a", encoding="utf-8")
-        detailed.setLevel(logging.DEBUG)
-        detailed.setFormatter(formatter)
-        LOGGER.addHandler(detailed)
-
-
-def log_message(*values: object, sep: str = " ", end: str = "\n",
-                file: object | None = None, flush: bool = False) -> None:
-    """Compatibility formatter while routing all runner output through logging."""
-    del end, flush
-    message = sep.join(str(value) for value in values)
-    if file is sys.stderr:
-        LOGGER.error(message)
-    elif message.startswith((
-        "Lua dialogue pulse ", "Ignoring unchanged READY ", "Attack timing ",
-    )):
-        LOGGER.debug(message)
-    elif message.startswith(("No READY event ", "Board ready: ", "Board update: ")):
-        LOGGER.debug(message)
-    elif " warning:" in message.casefold() or message.startswith("No ATTACK acknowledgement"):
-        LOGGER.warning(message)
-    else:
-        LOGGER.info(message)
+MENU_REENTRY_RETRY_SECONDS = 0.20
 
 
 def chapter_map_confirms_menu_reentry(enabled: bool) -> bool:
-    """A live chapter-map input gate proves that Adventure was accepted."""
-    return enabled
+    """Any consumed native map event ends main-menu input ownership.
+
+    CanClickContinue describes the Enter button, not whether Adventure worked.
+    A disabled/animating map still must never receive Adventure coordinates.
+    """
+    return True
 
 
 def acquire_runner_lock(lock_path: Path):
@@ -109,85 +133,6 @@ def acquire_runner_lock(lock_path: Path):
     return lock_file
 
 
-BOARD_PREFIX = "AUTOMATION_BOARD="
-READY_PREFIX = "AUTOMATION_READY="
-BOARD_EVENT_RE = re.compile(
-    r"AUTOMATION_(?P<kind>BOARD|READY)="
-    r"(?P<board>[A-Z]{4}/[A-Z]{4}/[A-Z]{4}/[A-Z]{4})"
-)
-DONE_MARKER = "no more enemies left"
-CHAPTER_RE = re.compile(
-    r"Book:StartGame called for book (?P<book>[^,]+), chapter (?P<chapter>\d+)"
-)
-DIALOG_ACTIVE_RE = re.compile(
-    r"AUTOMATION_DIALOG_ACTIVE=(?P<source>[a-z]+)\|(?P<sequence>\d+)\|E"
-)
-DIALOG_PULSE_RE = re.compile(
-    r"AUTOMATION_DIALOG_PULSE=(?P<source>[a-z]+)\|(?P<sequence>\d+)\|"
-    r"(?P<pulse>\d+)\|E"
-)
-DIALOG_INACTIVE_RE = re.compile(r"AUTOMATION_DIALOG_INACTIVE=(?P<sequence>\d+)\|E")
-PLAY_TUTORIAL_RE = re.compile(r"AUTOMATION_PLAY_TUTORIAL=(?P<sequence>\d+)\|E")
-PLAY_READY_RE = re.compile(
-    r"AUTOMATION_PLAY_READY=(?P<letter>P|L|A|Y|DONE)\|(?P<pulse>\d+)\|E"
-)
-LEGACY_SCREEN_RE = re.compile(
-    r"AUTOMATION_DIALOG=(?P<kind>treasure|none)\|(?P<sequence>\d+)\|E"
-)
-DEFEATED_RE = re.compile(r"AUTOMATION_DEFEATED=(?P<enemy>[^|]+)\|E")
-ZERO_HEALTH_RE = re.compile(r"AUTOMATION_ZERO_HEALTH=(?P<enemy>[^|]+)\|E")
-DEATH_FLAGS_RE = re.compile(
-    r"AUTOMATION_DEATH_FLAGS=(?P<enemy>[^|]+)\|"
-    r"(?P<anims_done>true|false|nil)\|(?P<death_sequence>true|false|nil)\|"
-    r"(?P<final_sequence>true|false|nil)\|(?P<interrupt>true|false|nil)\|"
-    r"(?P<boss_state>[^|]+)\|(?P<checkpoint_state>[^|]+)\|E"
-)
-ATTACK_SUBMITTED_RE = re.compile(
-    r"AUTOMATION_ATTACK_SUBMITTED=(?P<enemy>[^|]+)\|E"
-)
-SELECTION_RE = re.compile(
-    r"AUTOMATION_SELECTION=(?P<count>\d+)\|(?P<value>-?\d+(?:\.\d+)?)\|"
-    r"(?P<valid>[01])\|E"
-)
-ATTACK_READY_RE = re.compile(
-    r"AUTOMATION_ATTACK_READY=(?P<count>\d+)\|"
-    r"(?P<value>-?\d+(?:\.\d+)?)\|E"
-)
-POWERUP_STATE_RE = re.compile(
-    r"AUTOMATION_POWERUP_STATE=(?P<active>[01])\|(?P<input_ready>[01])"
-    r"(?:\|(?P<blocker>[^|]+))?\|E"
-)
-RESET_READY_RE = re.compile(
-    r"AUTOMATION_BOSS_RESET_READY=(?P<enemy>[^|]+)\|E"
-)
-PLAYER_STUNNED_RE = re.compile(
-    r"AUTOMATION_PLAYER_(?P<kind>STUNNED|FROZEN|PETRIFIED)=(?P<active>[01])"
-    r"(?:\|(?P<hp>-?\d+(?:\.\d+)?)\|(?P<max_hp>-?\d+(?:\.\d+)?)"
-    r"\|(?P<health_potion>[01])(?:\|(?P<purify_potion>[01]))?)?\|E"
-)
-INCAP_OVERLAY_RE = re.compile(
-    r"AUTOMATION_INCAP_OVERLAY=(?P<kind>stunned|frozen|petrified)\|"
-    r"(?P<frame>[^|]+)"
-    r"(?:\|(?P<hp>-?\d+(?:\.\d+)?)\|(?P<max_hp>-?\d+(?:\.\d+)?)"
-    r"\|(?P<health_potion>[01])\|(?P<purify_potion>[01]))?\|E"
-)
-CHAPTER_MAP_RE = re.compile(
-    r"AUTOMATION_CHAPTER_MAP=(?P<book>nil|\d+)\|"
-    r"(?P<current>nil|\d+)\|(?P<chapter>nil|\d+)\|"
-    r"(?P<selected>-?\d+)\|(?P<enabled>true|false)\|E"
-)
-CHAPTER_ACTION_RE = re.compile(
-    r"AUTOMATION_CHAPTER_ACTION=(?P<action>[a-z-]+)\|E"
-)
-LUA_WAIT_MARKER = "Program in waiting. Type go() or press F5 to continue execution."
-TREASURE_CONTEXT_RE = re.compile(
-    r"AUTOMATION_TREASURE_CONTEXT=(?P<book>nil|\d+)\|"
-    r"(?P<current>nil|\d+)\|(?P<selected>-?\d+)\|E"
-)
-MINIGAME_PROMPT_RE = re.compile(
-    r"AUTOMATION_MINIGAME_PROMPT=(?P<book>nil|\d+)\|"
-    r"(?P<chapter>-?\d+)\|(?P<sequence>\d+)\|E"
-)
 SPHINX_ANSWERS = {
     "Sphinx (Riddle 1 of 5)": "SKY",
     "Sphinx (Riddle 2 of 5)": "WALL",
@@ -270,62 +215,9 @@ def telemetry_context(
     current = timer_state.get("current") if timer_state is not None else None
     if current is not None:
         return int(current["book"]), int(current["chapter"])
-    return state.book, state.chapter
-
-
-def ready_sequence_is_fresh(sequence: int, required_after: int | None) -> bool:
-    """Only a later native rack may reclaim input after an overlay."""
-    return required_after is None or sequence > required_after
-
-
-def lua_runtime_is_waiting(text: str) -> bool:
-    """Recognize the debugger pause emitted by the embedded Lua runtime."""
-    marker_at = text.rfind(LUA_WAIT_MARKER)
-    if marker_at < 0:
-        return False
-    suffix = text[marker_at + len(LUA_WAIT_MARKER):]
-    return not suffix.strip("\x00\b >\r\n\t")
-
-
-def state_is_incapacitated(state: DeluxeState | None) -> bool:
-    """Recover an active native overlay when the runner attaches mid-effect."""
-    return bool(
-        state is not None
-        and (state.player_stunned or state.player_frozen or state.player_petrified)
+    return state.book, ENEMY_CHAPTERS.get(
+        (state.book, normalize_roster_enemy(state.enemy)), state.chapter,
     )
-
-
-def latest_incapacitation_state(
-    text: str, state: DeluxeState | None = None,
-) -> bool:
-    """Replay post-snapshot incap edges when attaching to an existing log."""
-    active = {
-        "stunned": bool(state is not None and state.player_stunned),
-        "frozen": bool(state is not None and state.player_frozen),
-        "petrified": bool(state is not None and state.player_petrified),
-    }
-    for event in PLAYER_STUNNED_RE.finditer(text):
-        active[event.group("kind").casefold()] = event.group("active") == "1"
-    return any(active.values())
-
-
-def latest_active_incapacitation_event(text: str):
-    """Return the latest telemetry edge for a status that remains active."""
-    active_events = {"stunned": None, "frozen": None, "petrified": None}
-    for event in PLAYER_STUNNED_RE.finditer(text):
-        kind = event.group("kind").casefold()
-        active_events[kind] = event if event.group("active") == "1" else None
-    remaining = [event for event in active_events.values() if event is not None]
-    return max(remaining, key=lambda event: event.start(), default=None)
-
-
-def latest_unresolved_incapacitation_overlay(text: str):
-    """Recover an overlay frame emitted after the latest actionable READY."""
-    overlays = list(INCAP_OVERLAY_RE.finditer(text))
-    if not overlays:
-        return None
-    latest = overlays[-1]
-    return latest if latest.start() > text.rfind("AUTOMATION_READY_SEQ=") else None
 
 
 def treasure_slots_for_state(state: DeluxeState) -> tuple[int, ...] | None:
@@ -374,129 +266,6 @@ def treasure_slots_for_context(book: int, selected_chapter: int) -> tuple[int, .
     return None
 
 
-
-def is_book3_final_gauntlet(state: DeluxeState) -> bool:
-    """Recognize Chapter 10 even when Deluxe omits its chapter number."""
-    return state.book == 3 and (
-        state.chapter == 10 or state.enemy.startswith("Summoned ")
-    )
-
-
-def should_use_health_potion(
-    state: DeluxeState, candidate: Candidate | None = None
-) -> bool:
-    """Heal before attacking when Lex has at most four hearts.
-
-    Hydra and the Book 3 final gauntlet retain their conservative full-heal
-    rules because leaving either sequence discards substantially more progress.
-    Ordinary encounters refill Lex between enemies, so do not spend a potion
-    before a predicted killing blow. High-risk multi-phase encounters retain
-    their conservative rules below.
-    """
-    if state.player_hp < 0 or state.player_max_hp <= 0:
-        return False
-    if not state.health_potion_available:
-        return False
-    in_danger = (
-        state.player_hp <= min(4.0, state.player_max_hp)
-        and state.player_hp < state.player_max_hp
-    )
-    if state.player_petrified:
-        return state.player_hp < state.player_max_hp
-    if (state.player_stunned or state.player_frozen) and in_danger:
-        return True
-    if state.enemy in SPHINX_ANSWERS and in_danger:
-        return True
-    if state.enemy.startswith("Hydra (") or is_book3_final_gauntlet(state):
-        return state.player_hp < state.player_max_hp
-    planned_finisher = bool(
-        candidate is not None
-        and (
-            candidate.lethal
-            or (
-                state.attack_potion_available
-                and candidate.damage * 1.25 >= state.hp
-            )
-        )
-    )
-    return in_danger and not planned_finisher
-
-
-def health_potion_confirmed(before: DeluxeState, after: DeluxeState) -> bool:
-    """Return whether native state proves the requested potion took effect."""
-    return not after.health_potion_available or after.player_hp > before.player_hp
-
-
-def incapacitation_recovery_action(
-    *, purify_available: bool, health_available: bool,
-    player_hp: float, player_max_hp: float,
-) -> str:
-    """Choose the safe, ordered response to a confirmed lost-turn status."""
-    if purify_available:
-        return "purify"
-    if (
-        health_available and 0 < player_hp <= min(4.0, player_max_hp)
-        and player_hp < player_max_hp
-    ):
-        return "heal_then_continue"
-    return "continue"
-
-
-def should_use_powerup_potion(
-    state: DeluxeState, candidate: Candidate | None,
-) -> bool:
-    """Spend Power-Up when its native 1.25x boost removes a whole turn.
-
-    Enemy Power Down is a DamageMultiplierEffect below 1.0. Candidate damage
-    is the un-debuffed engine value, so a nominally lethal word is not actually
-    lethal while that status remains; the potion replaces/counters it with the
-    positive multiplier.
-    """
-    return bool(
-        candidate is not None
-        and state.attack_potion_available
-        and not state.player_powered_up
-        and candidate.damage * state.player_damage_multiplier < state.hp
-        and candidate.damage * 1.25 >= state.hp
-    )
-
-
-def should_use_purification_potion(
-    state: DeluxeState, candidate: Candidate | None = None,
-) -> bool:
-    """Cleanse blocking ailments without wasting Purify on a finisher."""
-    if state.player_petrified:
-        return True
-    if (
-        state.enemy.startswith("Hydra (")
-        and state.player_has_damage_over_time
-    ):
-        # Hydra chains three heads without an ordinary encounter reset. Cleanse
-        # the live status even when the current word is lethal so it cannot
-        # carry into the final-head transition.
-        return True
-    if candidate is not None and candidate.lethal:
-        return False
-    if state.player_has_damage_over_time:
-        return True
-    return False
-
-
-def boss_finish_strategy(
-    state: DeluxeState, strategy: str, ranked: list[Candidate]
-) -> str:
-    """Avoid valueless overkill animations on a boss's finishing turn."""
-    if not any(candidate.lethal for candidate in ranked):
-        return strategy
-    if state.enemy.startswith("Hydra ("):
-        # Each head awards nothing for excess damage, while Lex still spends
-        # time playing the larger overkill response before the next head.
-        return "minimum-overkill"
-    if is_boss_encounter(state):
-        return "shortest-lethal"
-    return strategy
-
-
 def should_confirm_book_movie_skip(
     state: DeluxeState | None, probe_count: int,
     chapter_override: int | None = None,
@@ -513,30 +282,18 @@ def should_confirm_book_movie_skip(
     )
 
 
-def sphinx_candidate(
-    enemy: str, ranked: list[Candidate]
-) -> tuple[Candidate | None, str | None]:
-    """Return the fixed answer required by a Sphinx riddle."""
-    answer = SPHINX_ANSWERS.get(enemy)
-    if answer is None:
-        return None, None
-    return next((candidate for candidate in ranked if candidate.word == answer), None), answer
-
-
-def sphinx_allows_damage_fallback(enemy: str, candidate: Candidate) -> bool:
-    """Use ordinary combat when a Sphinx answer is absent from the board."""
-    return enemy in SPHINX_ANSWERS
-
-
 def immediate_defeated_reset_reason(
     state: DeluxeState | None,
     defeated_enemy: str,
     already_reset: set[tuple[int, int, int, str]],
     chapter_override: int | None,
 ) -> str | None:
-    """Return a non-boss route reset only after Lua confirms the defeat."""
+    """Return a route reset only after Lua confirms the defeat was committed."""
     if state is None or state.enemy != defeated_enemy:
         return None
+    # Chapter bosses publish DEFEATED only after the following chapter has
+    # started. Resetting at that late edge interrupts the new chapter rather
+    # than skipping the completed encounter.
     if is_chapter_boss_defeat(state):
         return None
     return post_victory_reset_reason(state, already_reset, chapter_override)
@@ -556,15 +313,33 @@ def attack_state_for_event(
 def should_arm_boss_reset_on_zero_health(
     state: DeluxeState | None,
 ) -> bool:
-    """Arm the fastest save-ready menu exit for a completed combat enemy."""
+    """Arm the earliest recoverable main-menu exit after a real boss kill.
+
+    RESET_READY is the first point where the native death animation has settled
+    and the battle menu can safely own input. If quitting beats the save commit,
+    the existing full-health replay check clears the guard and reruns the boss.
+    Codex ends the run directly; Hydra's intermediate heads and Sphinx rounds
+    are continuous encounters and must not leave through the menu. Mummy and
+    Dracula use normal chapter completion until main-menu ownership can be
+    positively verified: Adventure coordinates can select Moxie on their maps.
+    """
     if state is None:
         return False
     normalized = normalize_enemy(state.enemy)
+    sphinx_complete = normalized == "sphinxlastriddle"
+    if not is_boss_encounter(state) and not sphinx_complete:
+        return False
     return not (
-        normalized == "codex"
+        normalized in {"codex", "codexfinalboss", "themummyboss", "draculaboss"}
         or normalized.startswith("hydrahead")
-        or normalized.startswith("sphinx")
+        or (normalized.startswith("sphinx") and not sphinx_complete)
     )
+
+
+def boss_replay_is_fresh(state: DeluxeState, reset_sequence: int | None) -> bool:
+    """A cached pre-kill full-health READY is not evidence of a replay."""
+    return (reset_sequence is not None and state.sequence > reset_sequence
+            and state.hp >= state.max_hp > 0)
 
 
 def enemy_accepts_candidate(state: DeluxeState, candidate: Candidate) -> bool:
@@ -572,7 +347,7 @@ def enemy_accepts_candidate(state: DeluxeState, candidate: Candidate) -> bool:
     enemy = state.enemy.casefold()
     if enemy.startswith((
         "mama roc", "medusa", "angry mob", "nemean lion", "the mummy",
-        "mirage xel",
+        "mirage xel", "fallen wizard hero",
     )):
         return len(candidate.word) > 3
     return True
@@ -603,6 +378,13 @@ def tile_input_delay(state: DeluxeState | None, configured_delay: float) -> floa
         or state.enemy == "Hydra (Main Head)"
     ):
         return max(configured_delay, 0.08)
+    if state is not None and (
+        state.book == 1 and state.chapter == 1 and state.enemy == "War Hound"
+    ):
+        # The first post-tutorial start-game snapshot can precede the rack's
+        # stable MouseUp handoff by a frame. Ten-millisecond clicks have been
+        # observed to vanish here; the retry's 20 ms cadence is reliable.
+        return max(configured_delay, 0.02)
     return configured_delay
 
 
@@ -627,214 +409,6 @@ def dialogue_pulse_suppressed(
         boss_reset_pending or treasure_active
         or chapter_transition or menu_transition or selection_pending
     )
-
-
-def select_and_attack_when_native_ready(
-    controller: X11Keyboard, log_path: Path, board: str, word: str,
-    delay: float, path: tuple[int, ...] | None, timeout: float = 8.0,
-    allow_presentation_skip: bool = True,
-    confirm_each_tile: bool = False,
-) -> bool:
-    """Click Attack only after Deluxe owns the complete intended selection."""
-    controller.last_attack_ready_latency_ms = float("inf")
-    if log_path.exists():
-        existing = list(SELECTION_RE.finditer(
-            log_path.read_text(encoding="utf-8", errors="replace")[-8192:]
-        ))
-        if existing and int(existing[-1].group("count")) != 0:
-            controller.clear_selection(delay)
-            time.sleep(delay)
-    start = log_path.stat().st_size if log_path.exists() else 0
-    def confirm_tile(expected_count: int) -> bool:
-        deadline = time.monotonic() + 0.15
-        while time.monotonic() < deadline:
-            with log_path.open("r", encoding="utf-8", errors="replace") as events:
-                events.seek(start)
-                matches = list(SELECTION_RE.finditer(events.read()))
-            if matches and int(matches[-1].group("count")) >= expected_count:
-                return True
-            time.sleep(0.005)
-        return False
-
-    selection_started_at = time.monotonic()
-    controller.select_word(
-        board, word, delay, path, clear_first=False,
-        confirm_tile=confirm_tile if confirm_each_tile else None,
-    )
-    selection_returned_at = time.monotonic()
-    final_tile_at = getattr(controller, "last_tile_click_sent_at", None)
-    if final_tile_at is not None:
-        log_message(
-            f"Attack timing {word.upper()}: selection_ms="
-            f"{(selection_returned_at - selection_started_at) * 1000:.1f}; "
-            f"final_tile_return_ms="
-            f"{(selection_returned_at - final_tile_at) * 1000:.1f}"
-        )
-    deadline = time.monotonic() + timeout
-    selection_presentation_active = False
-    native_selection_complete = False
-    presentation_skip_attempts = 0
-    with log_path.open("r", encoding="utf-8", errors="replace") as log:
-        log.seek(start)
-        while time.monotonic() < deadline:
-            text = log.read()
-            # Enter can submit the word directly from the valid-word
-            # presentation without producing a separate ATTACK_READY edge.
-            # Treat that native acknowledgement as success immediately;
-            # otherwise a completed attack needlessly waits out this helper's
-            # full timeout before the combat loop can observe the result.
-            if ATTACK_SUBMITTED_RE.search(text) or "User clicked ATTACK" in text:
-                acknowledged_at = time.monotonic()
-                log_message(
-                    f"Attack timing {word.upper()}: submitted during "
-                    "presentation skip; final_tile_to_ack_ms="
-                    f"{((acknowledged_at - final_tile_at) * 1000):.1f}"
-                    if final_tile_at is not None
-                    else f"Attack timing {word.upper()}: submitted during "
-                    "presentation skip."
-                )
-                return True
-            selection_matches = list(SELECTION_RE.finditer(text))
-            if selection_matches:
-                latest_selection = selection_matches[-1]
-                native_selection_complete = (
-                    int(latest_selection.group("count")) == len(path or word)
-                    and latest_selection.group("valid") == "1"
-                )
-            presentation_events = []
-            presentation_events.extend(
-                (match.start(), match.group("source") == "interrupt")
-                for match in DIALOG_ACTIVE_RE.finditer(text)
-            )
-            presentation_events.extend(
-                (match.start(), False)
-                for match in DIALOG_INACTIVE_RE.finditer(text)
-            )
-            for _, selection_presentation_active in sorted(presentation_events):
-                pass
-            if (
-                selection_presentation_active
-                and native_selection_complete
-                and allow_presentation_skip
-                and presentation_skip_attempts < 40
-            ):
-                presentation_skip_attempts += 1
-                if presentation_skip_attempts == 1:
-                    log_message(
-                        f"Attack timing {word.upper()}: valid-word presentation "
-                        "active; starting bounded 10 ms Enter skip."
-                    )
-                controller.click_attack(min(delay, 0.01))
-            matches = list(ATTACK_READY_RE.finditer(text))
-            if matches:
-                latest = matches[-1]
-                if int(latest.group("count")) == len(path or word):
-                    ready_received_at = time.monotonic()
-                    final_to_ready = (
-                        (ready_received_at - final_tile_at) * 1000
-                        if final_tile_at is not None else -1
-                    )
-                    log_message(
-                        f"Attack timing {word.upper()}: ready_received; "
-                        f"final_tile_to_ready_ms={final_to_ready:.1f}; "
-                        f"presentation_skip_attempts={presentation_skip_attempts}"
-                    )
-                    controller.last_attack_ready_latency_ms = final_to_ready
-                    early_ready = 0 <= final_to_ready < 250
-                    input_delay = min(delay, 0.01) if early_ready else delay
-                    input_attempt = 0
-                    input_result = "pending"
-                    while input_attempt < 40:
-                        input_attempt += 1
-                        controller.click_attack(input_delay)
-                        response = log.read()
-                        if ATTACK_SUBMITTED_RE.search(response) or (
-                            "User clicked ATTACK" in response
-                        ):
-                            input_result = "acknowledged"
-                            break
-                        if DIALOG_ACTIVE_RE.search(response):
-                            input_result = "interrupt"
-                            break
-                        # A normal post-presentation readiness edge needs only
-                        # one input; the burst exists solely to cross the brief
-                        # false-idle window exposed immediately after selection.
-                        if not early_ready:
-                            break
-                    enter_at = getattr(
-                        controller, "last_attack_key_sent_at", ready_received_at
-                    )
-                    log_message(
-                        f"Attack timing {word.upper()}: enter_sent; "
-                        f"ready_to_enter_ms={(enter_at - ready_received_at) * 1000:.1f}; "
-                        f"attempts={input_attempt}; result={input_result}"
-                    )
-                    return True
-            # This helper owns a complete valid rack. Generic safe-point
-            # dialogue clicks are intentionally excluded: Enter above can only
-            # advance this selection's presentation and cannot touch a tile.
-            if INCAP_OVERLAY_RE.search(text):
-                return False
-            time.sleep(0.01)
-    return False
-
-
-def activate_powerup_when_native_ready(
-    controller: X11Keyboard, log_path: Path, delay: float,
-    timeout: float = 8.0, retry_after: float = 2.0,
-) -> bool:
-    """Use Power-Up and wait until its native effect yields input ownership.
-
-    A potion click can be rejected during the short encounter handoff even
-    though the new board is already visible. Retry the same inventory slot
-    once, but only while native telemetry still proves that the effect is not
-    active. Never re-click after activation: the remaining wait may represent
-    a real overlay that still owns input.
-    """
-    controller.clear_selection(delay)
-    start = log_path.stat().st_size if log_path.exists() else 0
-    controller.use_powerup_potion(max(0.8, delay))
-    started_at = time.monotonic()
-    deadline = started_at + timeout
-    retry_at = started_at + min(retry_after, max(0.0, timeout / 2))
-    retried = False
-    latest = None
-    with log_path.open("r", encoding="utf-8", errors="replace") as log:
-        log.seek(start)
-        telemetry = ""
-        while time.monotonic() < deadline:
-            # Wine can expose an appended console record across multiple
-            # reads. Preserve the unfinished tail instead of discarding it.
-            telemetry = (telemetry + log.read())[-4096:]
-            matches = list(POWERUP_STATE_RE.finditer(telemetry))
-            if matches:
-                latest = matches[-1]
-                if (
-                    latest.group("active") == "1"
-                    and latest.group("input_ready") == "1"
-                ):
-                    return True
-            if (
-                not retried and time.monotonic() >= retry_at
-                and (latest is None or latest.group("active") == "0")
-            ):
-                log_message(
-                    "Power-Up is still natively inactive; retrying its item "
-                    "click once.", flush=True,
-                )
-                controller.use_powerup_potion(max(0.8, delay))
-                retried = True
-            time.sleep(0.01)
-    if latest is None:
-        detail = "no native Power-Up telemetry observed"
-    else:
-        blocker = latest.group("blocker") or "unspecified"
-        detail = (
-            f"active={latest.group('active')}; "
-            f"input_ready={latest.group('input_ready')}; blocker={blocker}"
-        )
-    log_message(f"Power-Up native confirmation timed out: {detail}.", flush=True)
-    return False
 
 
 def clear_special_transitions_on_chapter_start(
@@ -900,171 +474,112 @@ def completes_early_ready(state: DeluxeState, early_ready_board: str | None) -> 
     return early_ready_board is not None and state.board == early_ready_board
 
 
-def read_seed(log_path: Path) -> tuple[str | None, bool, bool, int | None]:
-    """Recover only the latest board/combat state, never replay every old turn."""
-    board = None
-    ready = False
-    done = False
-    chapter = None
-    if not log_path.exists():
-        return board, ready, done, chapter
-    for line in log_path.read_text(encoding="utf-8", errors="replace").splitlines():
-        match = CHAPTER_RE.search(line)
-        if match:
-            chapter = int(match.group("chapter"))
-            # PopCap carries the final board into the next chapter. Keep the
-            # latest snapshot when Lua has no reason to emit it again.
-            ready = False
-            done = False
-        for event in BOARD_EVENT_RE.finditer(line):
-            board = event.group("board")
-            ready = event.group("kind") == "READY"
-        if "User clicked ATTACK" in line:
-            ready = False
-        if DONE_MARKER in line:
-            done = True
-    return board, ready, done, chapter
+@dataclass
+class PreparedSession:
+    """Everything loaded before following native events; no hidden local handoff."""
+
+    args: argparse.Namespace
+    log_path: Path
+    deluxe_words: list[WordSpec]
+    metal_words: frozenset[str]
+    chapter1_hp: dict
+    transition_corpus: TransitionCorpus
+    decision_overrides: DecisionOverrides
+    controller: X11Keyboard
+    run_log_offset: int
+    timer_state: dict | None
+    telemetry_run_id: str | None
 
 
-def unresolved_play_tutorial(text: str) -> bool:
-    """Recognize PLAY when its event predates the runner's tail cursor."""
-    plays = list(PLAY_TUTORIAL_RE.finditer(text))
-    if not plays:
-        return False
-    play = plays[-1]
-    sequence = int(play.group("sequence"))
-    return not any(
-        int(match.group("sequence")) == sequence and match.start() > play.start()
-        for match in DIALOG_INACTIVE_RE.finditer(text)
-    )
-
-
-def read_latest_dialog(log_path: Path) -> str | None:
-    """Recover the most recently reported dialogue or non-combat screen."""
-    latest = None
-    if not log_path.exists():
-        return latest
-    text = log_path.read_text(encoding="utf-8", errors="replace")
-    events = []
-    events.extend((m.start(), m.group("source")) for m in DIALOG_ACTIVE_RE.finditer(text))
-    events.extend((m.start(), None) for m in DIALOG_INACTIVE_RE.finditer(text))
-    events.extend(
-        (m.start(), "treasure" if m.group("kind") == "treasure" else None)
-        for m in LEGACY_SCREEN_RE.finditer(text)
-    )
-    for _, latest in sorted(events):
-        pass
-    return latest
-
-
-def read_screen_blocker(log_path: Path) -> str | None:
-    """Recover a non-combat screen that must suppress fallback clicks."""
-    latest = read_latest_dialog(log_path)
-    return latest if latest == "treasure" else None
-
-
-def main() -> None:
-    parser = argparse.ArgumentParser(
-        description="Follow lua.log and play each newly generated board"
-    )
-    parser.add_argument("--log", type=Path, required=True)
-    parser.add_argument("--title", default="Bookworm Adventures")
-    parser.add_argument("--layout", choices=("web", "deluxe"), default="web")
-    parser.add_argument(
-        "--strategy",
-        choices=(
-            "chapter-aware", "book1-lookahead", "overkill-tier",
-            "shortest-lethal", "max-damage", "speed-sapphire",
-        ),
-        default="chapter-aware",
-    )
-    parser.add_argument(
-        "--telemetry", type=Path,
-        help="append Deluxe attack timing samples as JSONL",
-    )
-    parser.add_argument(
-        "--book1-corpus", type=Path,
-        help="validated schema-v2 transitions used by book1-lookahead",
-    )
-    parser.add_argument(
-        "--book1-overrides", type=Path,
-        help="exact-state JSON decisions for deterministic branch experiments",
-    )
-    parser.add_argument(
-        "--timer-state", type=Path, default=DEFAULT_TIMER_STATE,
-        help="persistent chapter timer JSON created by new-run",
-    )
-    parser.add_argument(
-        "--delay", type=float, default=0.08,
-        help="delay for non-rack UI actions",
-    )
-    parser.add_argument(
-        "--tile-delay", type=float, default=0.02,
-        help="delay between rack tile events (default: 20 ms)",
-    )
-    parser.add_argument(
-        "--settle", type=float, default=0.15,
-        help="short guard before Attack; Deluxe still submits during tile animation",
-    )
-    parser.add_argument("--poll", type=float, default=0.1)
-    parser.add_argument(
-        "--input-confirm-timeout", type=float, default=1.5,
-        help="seconds to wait for the game's ATTACK acknowledgement before replaying input",
-    )
-    parser.add_argument(
-        "--max-input-attempts", type=int, default=3,
-        help="maximum selection attempts for one chosen word",
-    )
-    parser.add_argument(
-        "--auto-dialog", action=argparse.BooleanOptionalAction, default=True,
-        help="advance supported Lua-confirmed dialogues (default: enabled)",
-    )
-    parser.add_argument(
-        "--auto-menu-reset", action=argparse.BooleanOptionalAction, default=True,
-        help="perform verified boss and route-note menu resets (default: enabled)",
-    )
-    parser.add_argument(
-        "--dialog-stall-delay", type=float, default=2.5,
-        help="probe a dialogue after BOARD remains non-ready for this many seconds",
-    )
-    parser.add_argument(
-        "--dialog-probe-interval", type=float, default=0.8,
-        help="interval between dialogue clicks while Lua continues withholding READY",
-    )
-    parser.add_argument(
-        "--ready-delay", type=float, default=0.1,
-        help="small scheduling delay after Lua confirms tile input is enabled",
-    )
-    parser.add_argument("--max-attacks", type=int, default=1000)
-    parser.add_argument(
-        "--max-scrambles", type=int, default=10,
-        help="stop after this many no-word Scramble fallbacks",
-    )
-    parser.add_argument("--timeout", type=float, default=180.0)
-    parser.add_argument(
-        "--log-level", choices=("DEBUG", "INFO", "WARNING", "ERROR"),
-        default=os.environ.get("BWA_TAS_LOG_LEVEL", "INFO").upper(),
-        help="runner console verbosity (or set BWA_TAS_LOG_LEVEL)",
-    )
-    parser.add_argument(
-        "--log-file", type=Path,
-        help="write a complete DEBUG log for later diagnosis",
-    )
-    args = parser.parse_args()
-    configure_logging(args.log_level, args.log_file)
-
+def prepare_game(args: argparse.Namespace) -> PreparedSession:
+    """Preload solving resources, attach input, and optionally start a fresh profile."""
     log_path = args.log.resolve()
-    # Keep this handle alive for the duration of main(); flock releases it on
-    # every normal exit, exception, SIGINT, or process termination.
-    runner_lock = acquire_runner_lock(
-        log_path.parent.parent / "diagnostics" / "tas-runner.lock"
-    )
+    # All expensive immutable loading happens before profile confirmation and
+    # its timing edge. The same lock/process owns setup and the entire run.
+    deluxe_words = []
+    metal_words = frozenset()
+    chapter1_hp = {}
+    if args.layout == "deluxe":
+        root = Path(__file__).resolve().parent
+        deluxe_words = index_words(list(json.loads(
+            (root / "word_dict.json").read_text(encoding="utf-8")
+        )))
+        metal_words = load_metal_words(
+            root.parent / "runtime/deluxe-modded/.tas-data/metals.luc"
+        )
+        chapter1_hp = load_chapter1_hp_map()
+        if args.telemetry is None:
+            args.telemetry = root.parent / "runtime/deluxe-modded/tas-timing.jsonl"
+        if args.book1_corpus is None:
+            args.book1_corpus = args.telemetry
+        transition_corpus = TransitionCorpus.load(args.book1_corpus)
+    else:
+        transition_corpus = TransitionCorpus()
+    decision_overrides = DecisionOverrides.load(args.book1_overrides)
+    controller = X11Keyboard(args.title, args.layout)
+    run_log_offset = 0
+    if args.new_run:
+        from new_run import last_user, recreate_profile
+        log_message("Solver preloaded; recreating the TAS profile. Timer still starts on name confirmation.", flush=True)
+        run_log_offset = recreate_profile(
+            controller, args.profile or last_user(),
+            from_select_user=args.from_select_user, timer_path=args.timer_state,
+            startup_bridge=False, log_path=log_path,
+        )
     timer_state = None
     if args.timer_state is not None and args.timer_state.exists():
         timer_state = load_timer_state(args.timer_state)
         log_message(f"Chapter timing enabled: {args.timer_state}", flush=True)
-    board, ready, done, chapter = read_seed(log_path)
-    latest_dialog = read_latest_dialog(log_path)
+    telemetry_run_id = timer_state.get("started_at_iso") if timer_state else None
+    if args.experiment:
+        from experiment_session import create_session
+        telemetry_run_id = create_session(log_path.parent)
+        log_message(f"Experiment session: {telemetry_run_id}; race records disabled.", flush=True)
+    return PreparedSession(
+        args=args,
+        log_path=log_path,
+        deluxe_words=deluxe_words,
+        metal_words=metal_words,
+        chapter1_hp=chapter1_hp,
+        transition_corpus=transition_corpus,
+        decision_overrides=decision_overrides,
+        controller=controller,
+        run_log_offset=run_log_offset,
+        timer_state=timer_state,
+        telemetry_run_id=telemetry_run_id,
+    )
+
+
+def follow_game_until_finished(session: PreparedSession) -> None:
+    """Own the optional diagnostic handler for exactly one runner session."""
+    from menu_trace import MenuTrace
+    path = getattr(session.args, 'menu_reset_trace', None)
+    trace = MenuTrace(path, session.telemetry_run_id) if path else None
+    if trace:
+        LOGGER.addHandler(trace)
+    try:
+        _follow_game_until_finished(session, trace)
+    finally:
+        if trace:
+            LOGGER.removeHandler(trace)
+            trace.close()
+
+
+def _follow_game_until_finished(session: PreparedSession, menu_trace=None) -> None:
+    """Follow native events while preserving input ownership and acknowledgement guards."""
+    args = session.args
+    log_path = session.log_path
+    deluxe_words = session.deluxe_words
+    metal_words = session.metal_words
+    chapter1_hp = session.chapter1_hp
+    transition_corpus = session.transition_corpus
+    decision_overrides = session.decision_overrides
+    controller = session.controller
+    run_log_offset = session.run_log_offset
+    timer_state = session.timer_state
+    telemetry_run_id = session.telemetry_run_id
+    board, ready, done, chapter = read_seed(log_path, run_log_offset)
+    latest_dialog = read_latest_dialog(log_path, run_log_offset)
     blocked_screen = latest_dialog if latest_dialog == "treasure" else None
     treasure_selection_started = False
     if ready and blocked_screen == "treasure":
@@ -1084,6 +599,7 @@ def main() -> None:
     initial_log_size = 0
     if args.layout == "deluxe" and log_path.exists():
         with log_path.open("r", encoding="utf-8", errors="replace") as startup_log:
+            startup_log.seek(run_log_offset if log_path.stat().st_size >= run_log_offset else 0)
             initial_log_text = startup_log.read()
             initial_log_size = startup_log.tell()
         # Keep the byte boundary represented by the startup snapshot. Startup
@@ -1096,29 +612,10 @@ def main() -> None:
         log_message(f"{label} is already complete.", flush=True)
         return
 
-    controller = X11Keyboard(args.title, args.layout)
-    decision_overrides = DecisionOverrides.load(args.book1_overrides)
-    submitted_board = None
-    submitted_sequence = None
-    submitted_at = None
-    submitted_attack_at = None
-    kill_timing_logged = False
-    native_attack_authorized = False
-    submitted_candidate: Candidate | None = None
-    submitted_state: DeluxeState | None = None
+    attack = AttackLifecycle()
     last_attack_state: DeluxeState | None = None
-    submitted_strategy: str | None = None
-    submitted_frontier: list[Candidate] = []
-    submitted_book = None
-    submitted_chapter = None
     required_ready_after_overlay = None
-    submitted_word: str | None = None
-    submitted_path: tuple[int, ...] | None = None
-    input_confirmed = True
-    word_presentation_active = False
-    word_presentation_pending_submit = False
-    input_attempts = 0
-    input_confirm_at = float("inf")
+    native_attack_events = []
     tutorial_play_submitted = False
     tutorial_interrupt_active = False
     last_play_letter_clicked: str | None = None
@@ -1205,30 +702,12 @@ def main() -> None:
         )
         controller.dismiss_incapacitation_overlay(args.delay)
     last_boss_reset_key: tuple[int, int, int, str] | None = None
+    last_boss_reset_sequence: int | None = None
     treasure_selection_started = False
     handled_minigame_prompts: set[int] = set()
     pending_minigame_prompt: int | None = None
     minigame_prompt_attempts = 0
     minigame_prompt_retry_at = float("inf")
-    deluxe_words = []
-    metal_words = frozenset()
-    chapter1_hp = {}
-    if args.layout == "deluxe":
-        root = Path(__file__).resolve().parent
-        deluxe_words = index_words(list(json.loads(
-            (root / "word_dict.json").read_text(encoding="utf-8")
-        )))
-        metal_words = load_metal_words(
-            root.parent / "runtime/deluxe-modded/.tas-data/metals.luc"
-        )
-        chapter1_hp = load_chapter1_hp_map()
-        if args.telemetry is None:
-            args.telemetry = root.parent / "runtime/deluxe-modded/tas-timing.jsonl"
-        if args.book1_corpus is None:
-            args.book1_corpus = args.telemetry
-        transition_corpus = TransitionCorpus.load(args.book1_corpus)
-    else:
-        transition_corpus = TransitionCorpus()
     attacks = 0
     scrambles = 0
     deadline = time.monotonic() + args.timeout
@@ -1238,6 +717,8 @@ def main() -> None:
     # Open after seeding and seek to EOF: old boards establish current state but
     # are not replayed as a sequence.
     state_buffer = ""
+    rack_prefetch = RackPrefetch()
+    stream_ready_sequence = deluxe_state.sequence if deluxe_state is not None else -1
     with log_path.open("r", encoding="utf-8", errors="replace") as log:
         # Replay anything appended after the startup snapshot, including native
         # confirmation produced by a startup Purify click.
@@ -1246,13 +727,13 @@ def main() -> None:
             log.seek(0, os.SEEK_END)
         # Close the seed-to-tail race: a non-combat event can arrive after
         # read_seed() but before this cursor is established.
-        startup_text = log_path.read_text(encoding="utf-8", errors="replace")
+        startup_text = read_log_tail(log_path, run_log_offset)
         if lua_runtime_is_waiting(startup_text):
             log_message("Recovering paused Lua runtime with F5.", flush=True)
             controller.resume_lua_runtime(args.delay)
             deadline = time.monotonic() + args.timeout
-        _, refreshed_ready, _, _ = read_seed(log_path)
-        refreshed_dialog = read_latest_dialog(log_path)
+        _, refreshed_ready, _, _ = read_seed(log_path, run_log_offset)
+        refreshed_dialog = read_latest_dialog(log_path, run_log_offset)
         if (
             refreshed_dialog == "interrupt"
             and unresolved_play_tutorial(startup_text)
@@ -1271,7 +752,7 @@ def main() -> None:
             blocked_screen = "treasure"
             active_dialog = None
             refreshed_state = parse_state(
-                log_path.read_text(encoding="utf-8", errors="replace")
+                read_log_tail(log_path, run_log_offset)
             ) if args.layout == "deluxe" else None
             treasure_state = refreshed_state or deluxe_state
             slots = None
@@ -1294,24 +775,16 @@ def main() -> None:
         map_matches = list(CHAPTER_MAP_RE.finditer(
             startup_text
         ))
-        prompt_matches = list(MINIGAME_PROMPT_RE.finditer(startup_text))
-        callback_positions = [
-            match.start() for match in CHAPTER_ACTION_RE.finditer(startup_text)
-            if match.group("action") == "minigame-callback"
-        ]
-        unresolved_prompt = bool(prompt_matches) and (
-            not callback_positions
-            or prompt_matches[-1].start() > callback_positions[-1]
-        )
-        if unresolved_prompt:
+        unresolved_prompt = latest_unresolved_minigame_prompt(startup_text)
+        if unresolved_prompt is not None:
             log_message(
-                "Recovering Lua-confirmed mini-game prompt; choosing No.",
+                "Recovering Lua-confirmed mini-game prompt; choosing Yes to skip it.",
                 flush=True,
             )
             time.sleep(max(0.8, args.delay))
-            controller.decline_minigame(max(0.8, args.delay))
+            controller.confirm_skip_minigame(max(0.8, args.delay))
             pending_minigame_prompt = int(
-                prompt_matches[-1].group("sequence")
+                unresolved_prompt.group("sequence")
             )
             handled_minigame_prompts.add(pending_minigame_prompt)
             minigame_prompt_attempts = 1
@@ -1324,24 +797,30 @@ def main() -> None:
                 flush=True,
             )
             chapter_enter_attempts = 1
-            controller.enter_chapter(max(1.0, args.delay))
+            # CHAPTER_MAP is the native input gate. Do not block the log
+            # follower after clicking: the disabled-map/start-game events are
+            # both safer and faster than a blind one-second guard.
+            controller.enter_chapter(0.0)
             deadline = time.monotonic() + args.timeout
         while True:
             token_is_new = (
                 deluxe_state is not None
-                and deluxe_state.sequence != submitted_sequence
-                if args.layout == "deluxe" else board != submitted_board
+                and deluxe_state.sequence != attack.sequence
+                if args.layout == "deluxe" else board != attack.board
             )
             if (
                 ready and board and token_is_new
+                and (args.layout != "deluxe" or deluxe_state is None
+                     or ready_sequence_is_fresh(deluxe_state.sequence, required_ready_after_overlay))
                 and active_dialog is None and blocked_screen is None
+                and not menu_reentry_pending and not chapter_enter_pending
                 and time.monotonic() >= ready_at
             ):
                 path = None
                 if args.layout == "deluxe":
                     if deluxe_state is None or deluxe_state.board != board:
                         recovered = parse_state(
-                            log_path.read_text(encoding="utf-8", errors="replace")
+                            read_log_tail(log_path, run_log_offset)
                         )
                         if recovered is not None and recovered.board == board:
                             deluxe_state = recovered
@@ -1359,21 +838,30 @@ def main() -> None:
                                 flush=True,
                             )
                             continue
-                    if is_unchanged_combat_snapshot(deluxe_state, submitted_state):
+                    if (attack.acknowledged and attack.native_authorized
+                            and is_unchanged_combat_snapshot(deluxe_state, attack.state)):
                         log_message(
                             f"Ignoring unchanged READY snapshot "
                             f"{deluxe_state.sequence} for {deluxe_state.enemy}.",
                             flush=True,
                         )
-                        submitted_sequence = deluxe_state.sequence
+                        attack.sequence = deluxe_state.sequence
                         ready = False
                         continue
                     rejected_words_context = refresh_rejected_words_context(
                         rejected_words, rejected_words_context, deluxe_state,
                     )
+                    prefetched_words = rack_prefetch.take(deluxe_state.board)
+                    if prefetched_words is not None:
+                        log_message(
+                            f"Using {len(prefetched_words)} prefetched rack words; "
+                            "rescoring against the confirmed live state.", flush=True,
+                        )
                     ranked = [
                         candidate for candidate in candidates(
-                            deluxe_state, deluxe_words, metal_words, args.delay
+                            deluxe_state,
+                            prefetched_words if prefetched_words is not None else deluxe_words,
+                            metal_words, args.delay
                         )
                         if (
                             candidate.word not in rejected_words
@@ -1390,8 +878,8 @@ def main() -> None:
                                 "not on this board; waiting for Lua board rotation.",
                                 flush=True,
                             )
-                            submitted_board = board
-                            submitted_sequence = deluxe_state.sequence
+                            attack.board = board
+                            attack.sequence = deluxe_state.sequence
                             ready = False
                             deadline = time.monotonic() + args.timeout
                             continue
@@ -1406,8 +894,8 @@ def main() -> None:
                             flush=True,
                         )
                         controller.scramble(args.delay)
-                        submitted_board = board
-                        submitted_sequence = deluxe_state.sequence
+                        attack.board = board
+                        attack.sequence = deluxe_state.sequence
                         ready = False
                         deadline = time.monotonic() + args.timeout
                         continue
@@ -1479,8 +967,8 @@ def main() -> None:
                                 "waiting for Lua puzzle-board rotation.",
                                 flush=True,
                             )
-                            submitted_board = board
-                            submitted_sequence = deluxe_state.sequence
+                            attack.board = board
+                            attack.sequence = deluxe_state.sequence
                             ready = False
                             deadline = time.monotonic() + args.timeout
                             continue
@@ -1524,8 +1012,8 @@ def main() -> None:
                     pending_health_potion_state = deluxe_state
                     pending_health_potion_attempts = 1
                     pending_health_potion_at = time.monotonic() + 1.5
-                    submitted_board = board
-                    submitted_sequence = deluxe_state.sequence
+                    attack.board = board
+                    attack.sequence = deluxe_state.sequence
                     ready = False
                     deadline = time.monotonic() + args.timeout
                     continue
@@ -1551,8 +1039,8 @@ def main() -> None:
                             "Power-Up did not reach its native input-ready "
                             "state; leaving the rack untouched.", flush=True,
                         )
-                        submitted_board = board
-                        submitted_sequence = deluxe_state.sequence
+                        attack.board = board
+                        attack.sequence = deluxe_state.sequence
                         ready = False
                         deadline = time.monotonic() + args.timeout
                         continue
@@ -1576,13 +1064,13 @@ def main() -> None:
                     )
                     controller.use_purification_potion(max(0.8, args.delay))
                 attack_started_at = time.monotonic()
-                native_attack_authorized = False
+                attack.native_authorized = False
                 if args.layout == "deluxe":
                     native_ready = select_and_attack_when_native_ready(
                         controller, log_path, board, word,
                         tile_input_delay(deluxe_state, args.tile_delay), path,
                     )
-                    native_attack_authorized = native_ready
+                    attack.native_authorized = native_ready
                     attack_clicked_at = (
                         getattr(
                             controller, "last_attack_key_sent_at",
@@ -1603,20 +1091,16 @@ def main() -> None:
                     attack_clicked_at = getattr(
                         controller, "last_attack_key_sent_at", time.monotonic()
                     )
-                submitted_board = board
-                submitted_word = word
-                submitted_path = path
-                input_confirmed = False
-                input_attempts = 1
+                attack.begin_submission(board, word, path)
                 ready_latency_ms = getattr(
                     controller, "last_attack_ready_latency_ms", float("inf")
                 )
-                if native_attack_authorized and ready_latency_ms < 250:
+                if attack.native_authorized and ready_latency_ms < 250:
                     # This is the engine's brief false-idle gap before some
                     # word presentations. The immediate Enter is worthwhile,
                     # but if it is discarded, preserve the live selection long
                     # enough for Lua to issue the post-presentation edge.
-                    input_confirm_at = time.monotonic() + max(
+                    attack.retry_at = time.monotonic() + max(
                         4.0, args.input_confirm_timeout
                     )
                     log_message(
@@ -1625,23 +1109,29 @@ def main() -> None:
                         "selected rack.",
                         flush=True,
                     )
+                elif not attack.native_authorized:
+                    # The helper already waited for a complete native
+                    # selection. Retry on the next loop iteration instead of
+                    # adding the outer acknowledgement timeout to that miss.
+                    attack.retry_at = time.monotonic()
                 else:
-                    input_confirm_at = (
+                    attack.retry_at = (
                         time.monotonic() + args.input_confirm_timeout
                     )
                 if deluxe_state is not None:
-                    submitted_sequence = deluxe_state.sequence
-                    submitted_book, submitted_chapter = telemetry_context(
+                    attack.sequence = deluxe_state.sequence
+                    attack.book, attack.chapter = telemetry_context(
                         deluxe_state, timer_state,
                     )
-                    submitted_at = attack_started_at
-                    submitted_attack_at = attack_clicked_at
-                    submitted_candidate = selected
-                    submitted_state = deluxe_state
+                    attack.started_at = attack_started_at
+                    attack.attack_sent_at = attack_clicked_at
+                    attack.candidate = selected
+                    attack.state = deluxe_state
+                    native_attack_events = []
                     last_attack_state = deluxe_state
-                    submitted_strategy = effective_strategy
-                    submitted_frontier = list(ranked)
-                    kill_timing_logged = False
+                    attack.strategy = effective_strategy
+                    attack.frontier = list(ranked)
+                    attack.kill_timing_logged = False
                 ready = False
                 deadline = time.monotonic() + args.timeout
 
@@ -1687,7 +1177,7 @@ def main() -> None:
                 if (
                     args.auto_dialog
                     and not ready
-                    and active_dialog is None
+                    and active_dialog in {None, "convpanel"}
                     and blocked_screen is None
                     and not player_incapacitated
                     and boss_reset_state is None
@@ -1701,11 +1191,12 @@ def main() -> None:
                         f"dialogue point ({dialog_probe_count}).",
                         flush=True,
                     )
-                    controller.advance_dialog("interrupt", args.delay)
+                    controller.advance_dialog(
+                        active_dialog or "interrupt", args.delay,
+                    )
                     dialog_probe_at = (
                         time.monotonic() + args.dialog_probe_interval
                     )
-                    deadline = time.monotonic() + args.timeout
                 if (
                     pending_health_potion_state is not None
                     and time.monotonic() >= pending_health_potion_at
@@ -1739,12 +1230,14 @@ def main() -> None:
                     else:
                         menu_reentry_attempts += 1
                         log_message(
-                            "Retrying Adventure after a blocked menu re-entry "
+                            "Retrying Adventure while awaiting Lua map acknowledgement "
                             f"({menu_reentry_attempts}).",
                             flush=True,
                         )
                         controller.start_adventure(args.delay)
-                        menu_reentry_at = time.monotonic() + 2.0
+                        menu_reentry_at = (
+                            time.monotonic() + MENU_REENTRY_RETRY_SECONDS
+                        )
                     deadline = time.monotonic() + args.timeout
                 if should_retry_minigame_prompt(
                     pending_minigame_prompt, minigame_prompt_attempts,
@@ -1752,11 +1245,11 @@ def main() -> None:
                 ):
                     minigame_prompt_attempts += 1
                     log_message(
-                        "Mini-game decline remains unconfirmed; retrying No "
+                        "Mini-game skip remains unconfirmed; retrying Yes "
                         f"({minigame_prompt_attempts}/5).",
                         flush=True,
                     )
-                    controller.decline_minigame(max(0.8, args.delay))
+                    controller.confirm_skip_minigame(max(0.8, args.delay))
                     minigame_prompt_retry_at = time.monotonic() + 1.5
                     deadline = time.monotonic() + args.timeout
                 if chapter_enter_pending and time.monotonic() >= chapter_enter_at:
@@ -1774,7 +1267,7 @@ def main() -> None:
                         time.monotonic() + 3.0
                         if chapter_enter_pending else float("inf")
                     )
-                    controller.enter_chapter(max(1.0, args.delay))
+                    controller.enter_chapter(0.0)
                     dialog_probe_at = time.monotonic() + args.dialog_stall_delay
                     deadline = time.monotonic() + args.timeout
                 if (
@@ -1791,59 +1284,65 @@ def main() -> None:
                     deadline = time.monotonic() + args.timeout
                     time.sleep(args.poll)
                     continue
-                if (
-                    not input_confirmed
-                    and not player_incapacitated
-                    and active_dialog is None
-                    and blocked_screen is None
-                    and time.monotonic() >= input_confirm_at
+                if attack.retry_is_due(
+                    time.monotonic(),
+                    input_blocked=(player_incapacitated or active_dialog is not None
+                                   or blocked_screen is not None),
                 ):
-                    if input_attempts >= args.max_input_attempts:
-                        assert submitted_word is not None
-                        rejected_words.add(submitted_word)
+                    if attack.attempts >= args.max_input_attempts:
+                        assert attack.word is not None
+                        if args.layout == "deluxe":
+                            raise RuntimeError(
+                                f"Native input failed for {attack.word.upper()} after "
+                                f"{attack.attempts} attempts, including confirmed-tile retries; "
+                                "stopping without blacklisting words or sending more clicks"
+                            )
+                        rejected_words.add(attack.word)
                         log_message(
                             f"Blacklisting unacknowledged word "
-                            f"{submitted_word.upper()} after {input_attempts} attempts; "
+                            f"{attack.word.upper()} after {attack.attempts} attempts; "
                             "trying the next candidate.",
                             flush=True,
                         )
                         controller.dismiss_invalid_word_dialog(args.delay)
-                        submitted_sequence = None
-                        submitted_state = None
-                        submitted_candidate = None
-                        submitted_word = None
-                        submitted_path = None
-                        input_confirmed = True
-                        input_confirm_at = float("inf")
+                        attack.sequence = None
+                        attack.state = None
+                        attack.candidate = None
+                        attack.word = None
+                        attack.path = None
+                        attack.acknowledged = True
+                        attack.retry_at = float("inf")
                         ready = True
                         ready_at = time.monotonic() + args.ready_delay
                         continue
-                    assert submitted_word is not None and submitted_board is not None
-                    input_attempts += 1
+                    assert attack.word is not None and attack.board is not None
+                    attack.attempts += 1
                     if timer_state is not None:
                         mark_current_issue(
                             timer_state,
-                            f"input-retry:{submitted_word.upper()}",
+                            f"input-retry:{attack.word.upper()}",
                         )
                         save_timer_state(args.timer_state, timer_state)
                         save_run_history(timer_state)
                     log_message(
                         f"No ATTACK acknowledgement; clearing and retrying "
-                        f"{submitted_word.upper()} ({input_attempts}/{args.max_input_attempts}).",
+                        f"{attack.word.upper()} ({attack.attempts}/{args.max_input_attempts}).",
                         flush=True,
                     )
                     controller.dismiss_invalid_word_dialog(args.delay)
-                    retry_delay = args.tile_delay * input_attempts
+                    retry_delay = args.tile_delay * attack.attempts
                     if args.layout == "deluxe":
                         native_ready = select_and_attack_when_native_ready(
-                            controller, log_path, submitted_board,
-                            submitted_word,
-                            tile_input_delay(submitted_state, retry_delay),
-                            submitted_path,
+                            controller, log_path, attack.board,
+                            attack.word,
+                            tile_input_delay(attack.state, retry_delay),
+                            attack.path,
+                            confirm_each_tile=True,
                         )
+                        attack.native_authorized = native_ready
                         if native_ready:
-                            native_attack_authorized = True
-                            submitted_attack_at = getattr(
+                            attack.native_authorized = True
+                            attack.attack_sent_at = getattr(
                                 controller, "last_attack_key_sent_at",
                                 time.monotonic(),
                             )
@@ -1854,16 +1353,20 @@ def main() -> None:
                             )
                     else:
                         controller.play_word(
-                            submitted_board, submitted_word, retry_delay,
-                            args.settle, submitted_path,
+                            attack.board, attack.word, retry_delay,
+                            args.settle, attack.path,
                         )
-                    input_confirm_at = time.monotonic() + args.input_confirm_timeout
+                    attack.retry_at = time.monotonic() + args.input_confirm_timeout
                 if args.layout == "deluxe":
                     polled_state = parse_state(
-                        log_path.read_text(encoding="utf-8", errors="replace")
+                        read_log_tail(log_path, run_log_offset)
                     )
                     if (
                         polled_state is not None
+                        # A whole-file read can see events appended while a
+                        # blocking input helper ran. Drain those events first;
+                        # they may contain an overlay before this READY.
+                        and polled_state.sequence <= stream_ready_sequence
                         and (
                             deluxe_state is None
                             or polled_state.sequence > deluxe_state.sequence
@@ -1883,6 +1386,7 @@ def main() -> None:
                 continue
 
             line = line.rstrip("\r\n")
+            stream_ready_sequence = streamed_ready_sequence(line, stream_ready_sequence)
             dialog_active = DIALOG_ACTIVE_RE.search(line)
             if dialog_active:
                 active_dialog = dialog_active.group("source")
@@ -1892,13 +1396,13 @@ def main() -> None:
                         treasure_selection_started,
                     )
                 )
-                word_presentation_active = bool(
+                attack.presentation_active = bool(
                     active_dialog == "interrupt"
-                    and not input_confirmed
-                    and native_attack_authorized
+                    and not attack.acknowledged
+                    and attack.native_authorized
                 )
-                if word_presentation_active:
-                    word_presentation_pending_submit = True
+                if attack.presentation_active:
+                    attack.presentation_pending_submit = True
                     log_message(
                         "Completed-word presentation started; preserving the "
                         "selection for its second native Enter edge.", flush=True,
@@ -1909,6 +1413,11 @@ def main() -> None:
                     menu_reentry_at = float("inf")
                     chapter_enter_pending = False
                     chapter_enter_at = float("inf")
+                    # Some post-boss panels publish ACTIVE but no PULSE. Arm
+                    # the bounded safe-point fallback while Lua still proves
+                    # this panel owns input.
+                    dialog_probe_at = time.monotonic() + args.dialog_stall_delay
+                    dialog_probe_count = 0
                 if conversation_after_treasure and boss_reset_state is not None:
                     log_message(
                         "Native post-treasure conversation superseded stale "
@@ -1936,27 +1445,18 @@ def main() -> None:
                         flush=True,
                     )
                 ready = False
-                input_confirm_at = float("inf")
+                attack.retry_at = float("inf")
                 if deluxe_state is not None:
                     required_ready_after_overlay = max(
                         required_ready_after_overlay or -1,
-                        deluxe_state.sequence,
+                        stream_ready_sequence,
                     )
-                if not input_confirmed:
+                if not attack.acknowledged:
                     log_message(
                         "Dialogue interrupted pending tile input; discarding "
                         "it until a newer READY sequence.", flush=True,
                     )
-                    submitted_board = None
-                    submitted_word = None
-                    submitted_path = None
-                    submitted_sequence = None
-                    submitted_state = None
-                    submitted_candidate = None
-                    submitted_at = None
-                    submitted_attack_at = None
-                    input_confirmed = True
-                    input_attempts = 0
+                    attack.discard_interrupted_selection()
                 if (
                     not tutorial_play_submitted
                     and is_initial_play_tutorial(
@@ -1990,25 +1490,33 @@ def main() -> None:
                         f"Native PLAY step {letter} ready (attempt {pulse}); "
                         "clicking it once.", flush=True,
                     )
-                    controller.play_tutorial_step(letter, args.delay)
+                    # IntroTutorial changes mNextLetter synchronously after an
+                    # accepted MouseUp, so Lua authorizes the next coordinate.
+                    # The general 80 ms UI delay only serialized these five
+                    # otherwise independent native steps.
+                    controller.play_tutorial_step(letter, min(args.delay, 0.01))
                     last_play_letter_clicked = letter
                 deadline = time.monotonic() + args.timeout
             dialog_inactive = DIALOG_INACTIVE_RE.search(line)
             if dialog_inactive:
                 active_dialog = None
                 tutorial_interrupt_active = False
-                word_presentation_active = False
+                attack.presentation_active = False
                 if menu_reset_dialog_seen and menu_reentry_pending:
                     log_message(
                         "Post-boss result overlay closed after blocking the "
                         "menu exit; retrying the full battle-menu reset.",
                         flush=True,
                     )
-                    reset_from_battle(controller, RESET_MENU_TIMING)
+                    reset_from_battle(
+                        controller, RESET_MENU_TIMING, telemetry_log=args.log, trace=menu_trace,
+                    )
                     menu_reset_dialog_seen = False
                     menu_reentry_attempts = 0
                     menu_reentry_dialog_clicks = 0
-                    menu_reentry_at = time.monotonic() + 2.0
+                    menu_reentry_at = (
+                        time.monotonic() + MENU_REENTRY_RETRY_SECONDS
+                    )
                     deadline = time.monotonic() + args.timeout
                 if required_ready_after_overlay is not None:
                     log_message(
@@ -2018,11 +1526,11 @@ def main() -> None:
             attack_ready = ATTACK_READY_RE.search(line)
             if (
                 attack_ready
-                and word_presentation_pending_submit
-                and not input_confirmed
-                and submitted_word is not None
+                and attack.presentation_pending_submit
+                and not attack.acknowledged
+                and attack.word is not None
                 and int(attack_ready.group("count"))
-                == len(submitted_path or submitted_word)
+                == len(attack.path or attack.word)
             ):
                 second_ready_at = time.monotonic()
                 controller.click_attack(args.delay)
@@ -2030,7 +1538,7 @@ def main() -> None:
                     controller, "last_attack_key_sent_at", second_ready_at
                 )
                 log_message(
-                    f"Attack timing {submitted_word.upper()}: "
+                    f"Attack timing {attack.word.upper()}: "
                     "post-presentation_enter_sent; "
                     "ready_to_enter_ms="
                     f"{(second_enter_at - second_ready_at) * 1000:.1f}",
@@ -2040,9 +1548,9 @@ def main() -> None:
                     "Completed-word presentation released; submitting the "
                     "preserved selection without retyping.", flush=True,
                 )
-                word_presentation_pending_submit = False
-                submitted_attack_at = second_enter_at
-                input_confirm_at = (
+                attack.presentation_pending_submit = False
+                attack.attack_sent_at = second_enter_at
+                attack.retry_at = (
                     time.monotonic() + args.input_confirm_timeout
                 )
                 deadline = time.monotonic() + args.timeout
@@ -2059,7 +1567,7 @@ def main() -> None:
                     chapter_enter_pending or chapter_enter_at != float("inf"),
                     (menu_reentry_pending or menu_reentry_at != float("inf"))
                     and not recover_blocked_reset,
-                    not input_confirmed and submitted_word is not None,
+                    not attack.acknowledged and attack.word is not None,
                 )
                 # PLAY is submitted through its fixed rack, never by clicking
                 # the generic interrupt target over the lesson.
@@ -2067,7 +1575,7 @@ def main() -> None:
                     board == TUTORIAL_PLAY_BOARD or tutorial_interrupt_active
                 ):
                     suppress = True
-                if word_presentation_active:
+                if attack.presentation_active:
                     suppress = True
                 if suppress:
                     log_message(
@@ -2084,33 +1592,30 @@ def main() -> None:
                         f"Lua dialogue pulse {pulse}: source={source}; "
                         f"clicking {destination}.", flush=True,
                     )
-                    controller.advance_dialog(source, args.delay)
+                    # Lua has already confirmed the exact MouseUp owner. Keep
+                    # only a 10 ms event-delivery guard; waiting the generic
+                    # non-rack UI delay here costs time on every dialogue page.
+                    controller.advance_dialog(source, min(args.delay, 0.01))
+                    dialog_probe_at = (
+                        time.monotonic() + args.dialog_probe_interval
+                    )
             stunned_event = PLAYER_STUNNED_RE.search(line)
             if stunned_event and stunned_event.group("active") == "1":
                 incapacitation = stunned_event.group("kind").casefold()
                 player_incapacitated = True
-                input_confirm_at = float("inf")
+                attack.retry_at = float("inf")
                 ready = False
                 if deluxe_state is not None:
                     required_ready_after_overlay = max(
                         required_ready_after_overlay or -1,
-                        deluxe_state.sequence,
+                        stream_ready_sequence,
                     )
-                if not input_confirmed:
+                if not attack.acknowledged:
                     log_message(
                         "Incapacitation interrupted pending tile input; "
                         "discarding it until a newer READY sequence.", flush=True,
                     )
-                    submitted_board = None
-                    submitted_word = None
-                    submitted_path = None
-                    submitted_sequence = None
-                    submitted_state = None
-                    submitted_candidate = None
-                    submitted_at = None
-                    submitted_attack_at = None
-                    input_confirmed = True
-                    input_attempts = 0
+                    attack.discard_interrupted_selection()
                 purify_available = (
                     stunned_event.group("purify_potion") == "1"
                     if stunned_event.group("purify_potion") is not None
@@ -2263,6 +1768,9 @@ def main() -> None:
             if map_event:
                 selected = int(map_event.group("selected"))
                 map_enabled = map_event.group("enabled") == "true"
+                if menu_trace:
+                    menu_trace.event('chapter_map_observed', selected=selected,
+                                     enabled=map_enabled, source='Lua BookManager')
                 if chapter_map_confirms_menu_reentry(map_enabled):
                     menu_reentry_pending = False
                     menu_reentry_at = float("inf")
@@ -2274,12 +1782,12 @@ def main() -> None:
                         f"(event {chapter_enter_attempts}).",
                         flush=True,
                     )
-                    controller.enter_chapter(max(1.0, args.delay))
+                    controller.enter_chapter(0.0)
                     dialog_probe_at = float("inf")
                     deadline = time.monotonic() + args.timeout
                 else:
                     log_message(
-                        f"Chapter {selected} Enter accepted; waiting for its next screen.",
+                        f"Chapter {selected} map has Enter disabled; waiting for native readiness or the next screen.",
                         flush=True,
                     )
                     chapter_enter_pending = False
@@ -2287,6 +1795,14 @@ def main() -> None:
             action_event = CHAPTER_ACTION_RE.search(line)
             if action_event:
                 action = action_event.group("action")
+                if menu_trace:
+                    menu_trace.event('chapter_callback_observed', action=action)
+                was_menu_reentry = menu_reentry_pending
+                if action == "continue":
+                    menu_reentry_pending = False
+                    menu_reentry_at = float("inf")
+                    chapter_enter_pending = False
+                    chapter_enter_at = float("inf")
                 if action == "minigame-callback":
                     pending_minigame_prompt = None
                     minigame_prompt_retry_at = float("inf")
@@ -2305,6 +1821,15 @@ def main() -> None:
                     menu_reentry_at = float("inf")
                     chapter_enter_pending = False
                     chapter_enter_at = float("inf")
+                    if was_menu_reentry:
+                        # The opening War Hound state can precede its tutorial
+                        # overlay by one log line. Preserve a small native
+                        # handoff window so the overlay wins before rack input.
+                        ready_at = max(
+                            ready_at, time.monotonic() + 1.25,
+                        )
+                        if menu_trace:
+                            menu_trace.event('reentry_ready_guard_armed', seconds=1.25)
                     if (
                         old_boss_reset is not None
                         or old_blocked_screen is not None
@@ -2354,18 +1879,23 @@ def main() -> None:
                 not in handled_minigame_prompts
             ):
                 log_message(
-                    "Lua-confirmed mini-game prompt; choosing No.",
+                    "Lua-confirmed mini-game prompt; choosing Yes to skip it.",
                     flush=True,
                 )
                 # The hook runs as the prompt is being constructed. Give its
-                # buttons one frame-safe pause before clicking No. Return to
+                # buttons one frame-safe pause before clicking Yes. Return to
                 # the log loop immediately afterward; native chapter events
                 # confirm whether the click was accepted.
                 time.sleep(max(0.8, args.delay))
-                controller.decline_minigame(0.0)
+                controller.confirm_skip_minigame(0.0)
                 pending_minigame_prompt = int(
                     minigame_prompt.group("sequence")
                 )
+                # The prompt owns input now, not Adventure or chapter Enter.
+                menu_reentry_pending = False
+                menu_reentry_at = float("inf")
+                chapter_enter_pending = False
+                chapter_enter_at = float("inf")
                 handled_minigame_prompts.add(pending_minigame_prompt)
                 minigame_prompt_attempts = 1
                 minigame_prompt_retry_at = time.monotonic() + 1.5
@@ -2376,12 +1906,12 @@ def main() -> None:
                 blocked_screen = None
                 treasure_selection_started = False
                 active_dialog = None
-                if not input_confirmed:
+                if not attack.acknowledged:
                     # A dialogue can appear after selection but before Attack
                     # becomes clickable. Its blocked time is not a failed input
                     # attempt; restart the full retry budget after it exits.
-                    input_attempts = 1
-                    input_confirm_at = (
+                    attack.attempts = 1
+                    attack.retry_at = (
                         time.monotonic() + args.input_confirm_timeout
                     )
                     log_message(
@@ -2397,6 +1927,7 @@ def main() -> None:
                     )
                 if boss_reset_state is not None and boss_reset_dialog_ready:
                     last_boss_reset_key = encounter_key(boss_reset_state)
+                    last_boss_reset_sequence = max(boss_reset_state.sequence, stream_ready_sequence)
                     reset_encounters.add(last_boss_reset_key)
                     log_message(
                         f"Lua confirmed the post-defeat overlay for "
@@ -2404,18 +1935,22 @@ def main() -> None:
                         "the main menu.",
                         flush=True,
                     )
-                    reset_from_battle(controller, RESET_MENU_TIMING)
+                    reset_from_battle(
+                        controller, RESET_MENU_TIMING, telemetry_log=args.log, trace=menu_trace,
+                    )
                     boss_reset_state = None
                     boss_reset_dialog_ready = False
                     menu_reentry_pending = True
                     menu_reentry_attempts = 0
                     menu_reentry_dialog_clicks = 0
-                    menu_reentry_at = time.monotonic() + 2.0
-                    submitted_sequence = (
+                    menu_reentry_at = (
+                        time.monotonic() + MENU_REENTRY_RETRY_SECONDS
+                    )
+                    attack.sequence = (
                         deluxe_state.sequence if deluxe_state is not None else None
                     )
-                    input_confirmed = True
-                    input_confirm_at = float("inf")
+                    attack.acknowledged = True
+                    attack.retry_at = float("inf")
                     ready = False
                     dialog_probe_at = float("inf")
                     deadline = time.monotonic() + args.timeout
@@ -2436,17 +1971,17 @@ def main() -> None:
                 # Reaching treasure selection proves the preceding combat is
                 # over even if Wine mangled its ATTACK acknowledgement. Never
                 # replay that combat word on this non-combat screen or later.
-                input_confirmed = True
-                input_confirm_at = float("inf")
+                attack.acknowledged = True
+                attack.retry_at = float("inf")
                 dialog_probe_at = float("inf")
                 log_message(
                     "Treasure screen detected; automatic dialogue clicks paused.",
                     flush=True,
                 )
                 if args.auto_dialog and (
-                    submitted_state is not None or deluxe_state is not None
+                    attack.state is not None or deluxe_state is not None
                 ):
-                    treasure_state = submitted_state or deluxe_state
+                    treasure_state = attack.state or deluxe_state
                     assert treasure_state is not None
                     slots = treasure_slots_for_state(treasure_state)
                     if slots is not None:
@@ -2457,20 +1992,26 @@ def main() -> None:
                         )
                         treasure_selection_started = True
                         controller.select_treasures(slots, args.delay)
+            native_event_line = line[line.find("AUTOMATION_"):] if "AUTOMATION_" in line else ""
+            if native_event_line.startswith(("AUTOMATION_ATTACK_ID=", "AUTOMATION_ATTACK_HP=", "AUTOMATION_RNG_RESET=",
+                                "AUTOMATION_DAMAGE_TRACE=", "AUTOMATION_DAMAGE_TABLE=",
+                                "AUTOMATION_READY_ATTACK=")):
+                native_attack_events.append(native_event_line)
+                # Keep malformed/unmatched streams bounded. Raw Lua logs retain all events.
+                native_attack_events = native_attack_events[-64:]
             attack_submitted_event = ATTACK_SUBMITTED_RE.search(line)
             if attack_submitted_event or "User clicked ATTACK" in line:
-                if submitted_attack_at is not None:
+                if attack.attack_sent_at is not None:
                     log_message(
-                        f"Attack timing {(submitted_word or 'unknown').upper()}: "
+                        f"Attack timing {(attack.word or 'unknown').upper()}: "
                         "submitted_ack; "
                         f"enter_to_ack_ms="
-                        f"{(time.monotonic() - submitted_attack_at) * 1000:.1f}"
+                        f"{(time.monotonic() - attack.attack_sent_at) * 1000:.1f}"
                     )
-                input_confirmed = True
-                input_confirm_at = float("inf")
-                if input_attempts > 1:
+                attack.acknowledge()
+                if attack.attempts > 1:
                     log_message(
-                        f"ATTACK acknowledged after {input_attempts} input attempts.",
+                        f"ATTACK acknowledged after {attack.attempts} input attempts.",
                         flush=True,
                     )
                 if attacks >= args.max_attacks:
@@ -2479,45 +2020,43 @@ def main() -> None:
                     )
             zero_health_event = ZERO_HEALTH_RE.search(line)
             if (
-                zero_health_event and not kill_timing_logged
-                and submitted_attack_at is not None
-                and submitted_candidate is not None
-                and submitted_state is not None
-                and zero_health_event.group("enemy") == submitted_state.enemy
+                zero_health_event and not attack.kill_timing_logged
+                and attack.attack_sent_at is not None
+                and attack.candidate is not None
+                and attack.state is not None
+                and zero_health_event.group("enemy") == attack.state.enemy
             ):
                 zero_at = time.monotonic()
                 kill_sample = {
                     "record_type": "attack-to-zero-health",
+                    "native_attack_events": list(native_attack_events),
                     "schema_version": TELEMETRY_SCHEMA_VERSION,
-                    "run_id": (
-                        timer_state.get("started_at_iso")
-                        if timer_state is not None else None
-                    ),
-                    "book": submitted_book,
-                    "chapter": submitted_chapter,
-                    "stage": submitted_state.stage,
-                    "enemy": submitted_state.enemy,
-                    "strategy": submitted_strategy,
-                    "clean": input_attempts == 1,
-                    "action": candidate_payload(submitted_candidate),
+                    "run_id": telemetry_run_id,
+                    "book": attack.book,
+                    "chapter": attack.chapter,
+                    "stage": attack.state.stage,
+                    "enemy": attack.state.enemy,
+                    "strategy": attack.strategy,
+                    "clean": attack.attempts == 1,
+                    "action": candidate_payload(attack.candidate),
                     "timing": {
                         "attack_to_zero_health_seconds": (
-                            zero_at - submitted_attack_at
+                            zero_at - attack.attack_sent_at
                         ),
-                        "input_attempts": input_attempts,
+                        "input_attempts": attack.attempts,
                     },
                 }
                 assert args.telemetry is not None
                 args.telemetry.parent.mkdir(parents=True, exist_ok=True)
                 with args.telemetry.open("a", encoding="utf-8") as output:
                     output.write(json.dumps(kill_sample, sort_keys=True) + "\n")
-                kill_timing_logged = True
+                attack.kill_timing_logged = True
                 log_message(
-                    f"Attack timing {submitted_candidate.word}: "
+                    f"Attack timing {attack.candidate.word}: "
                     "attack_to_zero_health_ms="
-                    f"{(zero_at - submitted_attack_at) * 1000:.1f}; "
-                    f"animation={submitted_candidate.animation_class}; "
-                    f"gems={','.join(submitted_candidate.gem_types) or 'none'}.",
+                    f"{(zero_at - attack.attack_sent_at) * 1000:.1f}; "
+                    f"animation={attack.candidate.animation_class}; "
+                    f"gems={','.join(attack.candidate.gem_types) or 'none'}.",
                     flush=True,
                 )
             death_flags_event = DEATH_FLAGS_RE.search(line)
@@ -2534,7 +2073,7 @@ def main() -> None:
                 )
             zero_health_state = (
                 attack_state_for_event(
-                    submitted_state, last_attack_state,
+                    attack.state, last_attack_state,
                     zero_health_event.group("enemy"),
                 )
                 if zero_health_event else None
@@ -2578,6 +2117,7 @@ def main() -> None:
             reset_ready_event = RESET_READY_RE.search(line)
             if reset_ready_event and boss_reset_state is not None:
                 last_boss_reset_key = encounter_key(boss_reset_state)
+                last_boss_reset_sequence = max(boss_reset_state.sequence, stream_ready_sequence)
                 reset_encounters.add(last_boss_reset_key)
                 log_message(
                     f"Lua confirmed {reset_ready_event.group('enemy')} death animation "
@@ -2585,18 +2125,22 @@ def main() -> None:
                     "through the main menu.",
                     flush=True,
                 )
-                reset_from_battle(controller, RESET_MENU_TIMING)
+                reset_from_battle(
+                    controller, RESET_MENU_TIMING, telemetry_log=args.log, trace=menu_trace,
+                )
                 boss_reset_state = None
                 boss_reset_dialog_ready = False
                 menu_reentry_pending = True
                 menu_reentry_attempts = 0
                 menu_reentry_dialog_clicks = 0
-                menu_reentry_at = time.monotonic() + 2.0
-                submitted_sequence = (
+                menu_reentry_at = (
+                    time.monotonic() + MENU_REENTRY_RETRY_SECONDS
+                )
+                attack.sequence = (
                     deluxe_state.sequence if deluxe_state is not None else None
                 )
-                input_confirmed = True
-                input_confirm_at = float("inf")
+                attack.acknowledged = True
+                attack.retry_at = float("inf")
                 ready = False
                 deadline = time.monotonic() + args.timeout
             defeated_event = DEFEATED_RE.search(line)
@@ -2609,7 +2153,7 @@ def main() -> None:
                 and boss_reset_state is None
             ):
                 defeated_state = attack_state_for_event(
-                    submitted_state, last_attack_state,
+                    attack.state, last_attack_state,
                     defeated_event.group("enemy"),
                 )
                 reset_reason = immediate_defeated_reset_reason(
@@ -2624,19 +2168,23 @@ def main() -> None:
                         f"menu reset {reset_reason}.",
                         flush=True,
                     )
-                    reset_from_battle(controller, RESET_MENU_TIMING)
+                    reset_from_battle(
+                        controller, RESET_MENU_TIMING, telemetry_log=args.log, trace=menu_trace,
+                    )
                     # An ambient Lex line on the main menu can consume the
                     # Adventure click. Retry it until combat telemetry proves
                     # that re-entry completed.
                     menu_reentry_pending = True
                     menu_reentry_attempts = 0
                     menu_reentry_dialog_clicks = 0
-                    menu_reentry_at = time.monotonic() + 2.0
-                    submitted_sequence = (
+                    menu_reentry_at = (
+                        time.monotonic() + MENU_REENTRY_RETRY_SECONDS
+                    )
+                    attack.sequence = (
                         deluxe_state.sequence if deluxe_state is not None else None
                     )
-                    input_confirmed = True
-                    input_confirm_at = float("inf")
+                    attack.acknowledged = True
+                    attack.retry_at = float("inf")
                     ready = False
                     deadline = time.monotonic() + args.timeout
             if args.layout == "deluxe":
@@ -2666,7 +2214,7 @@ def main() -> None:
                 new_key = encounter_key(new_state)
                 if (
                     last_boss_reset_key == new_key
-                    and new_state.hp >= new_state.max_hp > 0
+                    and boss_replay_is_fresh(new_state, last_boss_reset_sequence)
                 ):
                     # Re-entering the same full-health boss means the exit beat
                     # the save commit. Allow one replay instead of deadlocking
@@ -2677,8 +2225,9 @@ def main() -> None:
                     )
                     reset_encounters.discard(new_key)
                     last_boss_reset_key = None
-                    submitted_state = None
-                    submitted_sequence = None
+                    last_boss_reset_sequence = None
+                    attack.state = None
+                    attack.sequence = None
                 deluxe_state = new_state
                 board = new_state.board
                 if completes_early_ready(new_state, early_ready_board):
@@ -2692,20 +2241,30 @@ def main() -> None:
                     )
             match = CHAPTER_RE.search(line)
             if match:
-                if chapter_enter_attempts and submitted_state is not None:
-                    map_enter_encounters.add(encounter_key(submitted_state))
+                if chapter_enter_attempts and attack.state is not None:
+                    map_enter_encounters.add(encounter_key(attack.state))
                 chapter = int(match.group("chapter"))
-                menu_reentry_pending = False
-                menu_reentry_at = float("inf")
+                # A board can be published before the native start-game
+                # callback has finished handing mouse ownership to combat.
+                # Keep a menu re-entry armed until CHAPTER_ACTION confirms
+                # start-game; otherwise the first rack click is consistently
+                # dropped after the every-enemy main-menu skip.
                 chapter_enter_pending = False
                 chapter_enter_at = float("inf")
-                submitted_board = None
+                attack.board = None
                 ready = False
                 log_message(f"Entered Chapter {chapter}.", flush=True)
             for event in BOARD_EVENT_RE.finditer(line):
-                if chapter_enter_attempts and submitted_state is not None:
-                    map_enter_encounters.add(encounter_key(submitted_state))
+                if chapter_enter_attempts and attack.state is not None:
+                    map_enter_encounters.add(encounter_key(attack.state))
                 board = event.group("board")
+                if args.layout == "deluxe" and event.group("kind") == "BOARD":
+                    # BOARD is emitted during refill, before the death/menu
+                    # sequence. Only rack legality is cached: READY still owns
+                    # input and all HP, treasure, gem and tile-state scoring.
+                    if rack_prefetch.prepare(board, deluxe_words, attack.state):
+                        LOGGER.debug("Prefetched %d words for early rack %s.",
+                                     len(rack_prefetch.words), board)
                 if (
                     not tutorial_play_submitted
                     and is_initial_play_tutorial(
@@ -2721,9 +2280,9 @@ def main() -> None:
                 chapter_enter_at = float("inf")
                 # A transition also proves that Attack was accepted if Wine
                 # happened to mangle the acknowledgement line in the console.
-                if event.group("kind") == "BOARD" and not input_confirmed:
-                    input_confirmed = True
-                    input_confirm_at = float("inf")
+                if event.group("kind") == "BOARD" and not attack.acknowledged:
+                    attack.acknowledged = True
+                    attack.retry_at = float("inf")
                     if attacks >= args.max_attacks:
                         raise RuntimeError(
                             f"Stopped after the safety limit of {args.max_attacks} attacks"
@@ -2740,9 +2299,7 @@ def main() -> None:
                             "transition; input and dialogue pulses rearmed.",
                             flush=True,
                         )
-                    ready_sequence = (
-                        deluxe_state.sequence if deluxe_state is not None else -1
-                    )
+                    ready_sequence = stream_ready_sequence
                     if not ready_sequence_is_fresh(
                         ready_sequence, required_ready_after_overlay,
                     ):
@@ -2758,86 +2315,86 @@ def main() -> None:
                             "after overlay exit; rack input rearmed.", flush=True,
                         )
                         required_ready_after_overlay = None
+                    if menu_trace:
+                        menu_trace.event('battle_ready_observed', sequence=ready_sequence)
                     dialog_probe_at = float("inf")
                     dialog_probe_count = 0
                     if (
-                        args.layout == "deluxe" and submitted_at is not None
-                        and submitted_candidate is not None and submitted_state is not None
+                        args.layout == "deluxe" and attack.started_at is not None
+                        and attack.candidate is not None and attack.state is not None
                         and deluxe_state is not None
                     ):
                         sample = {
                             "schema_version": TELEMETRY_SCHEMA_VERSION,
-                            "run_id": (
-                                timer_state.get("started_at_iso")
-                                if timer_state is not None else None
-                            ),
-                            "book": submitted_book,
-                            "chapter": submitted_chapter,
-                            "stage": submitted_state.stage,
-                            "clean": input_attempts == 1,
+                            "native_attack_events": list(native_attack_events),
+                            "run_id": telemetry_run_id,
+                            "book": attack.book,
+                            "chapter": attack.chapter,
+                            "stage": attack.state.stage,
+                            "clean": attack.attempts == 1,
                             "issues": (
-                                [] if input_attempts == 1
-                                else [f"input-attempts:{input_attempts}"]
+                                [] if attack.attempts == 1
+                                else [f"input-attempts:{attack.attempts}"]
                             ),
-                            "strategy": submitted_strategy,
-                            "state_fingerprint": state_fingerprint(submitted_state),
-                            "before": state_payload(submitted_state),
-                            "action": candidate_payload(submitted_candidate),
+                            "strategy": attack.strategy,
+                            "state_fingerprint": state_fingerprint(attack.state),
+                            "before": state_payload(attack.state),
+                            "action": candidate_payload(attack.candidate),
                             "frontier": [
                                 candidate_payload(candidate)
                                 for candidate in pareto_candidates(
-                                    submitted_frontier
+                                    attack.frontier
                                 )
                             ],
                             "after": state_payload(deluxe_state),
                             "timing": {
-                                "ready_seconds": time.monotonic() - submitted_at,
+                                "ready_seconds": time.monotonic() - attack.started_at,
                                 "input_seconds": (
-                                    submitted_attack_at - submitted_at
-                                    if submitted_attack_at is not None else None
+                                    attack.attack_sent_at - attack.started_at
+                                    if attack.attack_sent_at is not None else None
                                 ),
                                 "resolution_seconds": (
-                                    time.monotonic() - submitted_attack_at
-                                    if submitted_attack_at is not None else None
+                                    time.monotonic() - attack.attack_sent_at
+                                    if attack.attack_sent_at is not None else None
                                 ),
-                                "input_attempts": input_attempts,
+                                "input_attempts": attack.attempts,
                             },
                             # Flat v1-compatible fields remain during migration.
-                            "sequence": submitted_state.sequence,
-                            "enemy": submitted_state.enemy,
-                            "hp": submitted_state.hp,
-                            "word": submitted_candidate.word,
-                            "letters": len(submitted_candidate.word),
-                            "damage": submitted_candidate.damage,
-                            "overkill": submitted_candidate.overkill,
-                            "tier": submitted_candidate.tier,
-                            "gems_used": submitted_candidate.gem_count,
-                            "gem_types_used": list(submitted_candidate.gem_types),
+                            "sequence": attack.state.sequence,
+                            "enemy": attack.state.enemy,
+                            "hp": attack.state.hp,
+                            "word": attack.candidate.word,
+                            "letters": len(attack.candidate.word),
+                            "damage": attack.candidate.damage,
+                            "overkill": attack.candidate.overkill,
+                            "tier": attack.candidate.tier,
+                            "gems_used": attack.candidate.gem_count,
+                            "gem_types_used": list(attack.candidate.gem_types),
                             "uses_diamond": (
-                                "diamond" in submitted_candidate.gem_types
+                                "diamond" in attack.candidate.gem_types
                             ),
                             "attack_animation_class": (
-                                submitted_candidate.animation_class
+                                attack.candidate.animation_class
                             ),
-                            "predicted_seconds": submitted_candidate.predicted_time,
-                            "actual_seconds": time.monotonic() - submitted_at,
+                            "predicted_seconds": attack.candidate.predicted_time,
+                            "actual_seconds": time.monotonic() - attack.started_at,
                             "next_sequence": deluxe_state.sequence,
                             "next_enemy": deluxe_state.enemy,
                             "next_hp": deluxe_state.hp,
-                            "enemy_defeated": deluxe_state.enemy != submitted_state.enemy,
+                            "enemy_defeated": deluxe_state.enemy != attack.state.enemy,
                             "observed_damage": (
-                                submitted_state.hp - deluxe_state.hp
-                                if deluxe_state.enemy == submitted_state.enemy else None
+                                attack.state.hp - deluxe_state.hp
+                                if deluxe_state.enemy == attack.state.enemy else None
                             ),
                         }
                         assert args.telemetry is not None
                         args.telemetry.parent.mkdir(parents=True, exist_ok=True)
                         with args.telemetry.open("a", encoding="utf-8") as output:
                             output.write(json.dumps(sample, sort_keys=True) + "\n")
-                        submitted_at = None
-                        submitted_attack_at = None
-                        submitted_strategy = None
-                        submitted_frontier = []
+                        attack.started_at = None
+                        attack.attack_sent_at = None
+                        attack.strategy = None
+                        attack.frontier = []
                     ready = True
                     ready_at = time.monotonic() + args.ready_delay
                     log_message(f"Board ready: {board}", flush=True)
@@ -2849,6 +2406,12 @@ def main() -> None:
                 label = f"Chapter {chapter}" if chapter is not None else "Chapter"
                 log_message(f"{label} complete after {attacks} automated attacks.", flush=True)
                 return
+
+
+def main() -> None:
+    """Compatibility entry point; the readable application lives in tas.py."""
+    from tas import main as run_tas
+    run_tas()
 
 
 if __name__ == "__main__":

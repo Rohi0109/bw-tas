@@ -31,6 +31,7 @@ from continuous_runner import (
     lua_runtime_is_waiting,
     read_latest_dialog, read_screen_blocker,
     ready_sequence_is_fresh,
+    streamed_ready_sequence,
     read_seed, sphinx_candidate,
     select_and_attack_when_native_ready,
     state_is_incapacitated,
@@ -55,6 +56,80 @@ from live_runner import X11Keyboard
 
 
 class ContinuousRunnerTests(unittest.TestCase):
+    def test_chimera_recovery_uses_stream_order_not_polled_snapshot(self):
+        # A whole-file poll already found 53, but the tail cursor is still at 52.
+        polled_sequence = 53
+        sequence = 52
+        sequence = streamed_ready_sequence('AUTOMATION_DIALOG_ACTIVE=interrupt|60|E', sequence)
+        required_after = sequence
+        sequence = streamed_ready_sequence('AUTOMATION_DIALOG_INACTIVE=60|E', sequence)
+        self.assertFalse(ready_sequence_is_fresh(sequence, required_after))
+        sequence = streamed_ready_sequence('> \b AUTOMATION_READY_SEQ=53|E', sequence)
+        self.assertEqual(sequence, polled_sequence)
+        self.assertTrue(ready_sequence_is_fresh(sequence, required_after))
+        self.assertEqual(streamed_ready_sequence('AUTOMATION_READY_SEQ=52|E', sequence), 53)
+
+    def test_confirmed_selection_retries_dropped_tile_before_advancing(self):
+        controller = X11Keyboard.__new__(X11Keyboard)
+        controller.layout = 'deluxe'
+        controller.window = 0
+        controller.focus = lambda: None
+        controller._size = lambda _window: (800, 600)
+        clicks = []
+        controller.click = lambda x, y, delay: clicks.append((x, y))
+        responses = iter([False, True, True, True, True])
+        self.assertTrue(controller.select_word(
+            'TEST/AAAA/AAAA/AAAA', 'TEST', 0, (0, 1, 2, 3),
+            clear_first=False, confirm_tile=lambda _count: next(responses)))
+        self.assertEqual(len(clicks), 5)
+        self.assertEqual(clicks[0], clicks[1])
+
+    def test_confirmed_selection_aborts_without_clicking_remaining_tiles(self):
+        controller = X11Keyboard.__new__(X11Keyboard)
+        controller.layout = 'deluxe'
+        controller.window = 0
+        controller.focus = lambda: None
+        controller._size = lambda _window: (800, 600)
+        clicks = []
+        controller.click = lambda x, y, delay: clicks.append((x, y))
+        self.assertFalse(controller.select_word(
+            'TEST/AAAA/AAAA/AAAA', 'TEST', 0, (0, 1, 2, 3),
+            clear_first=False, confirm_tile=lambda _count: False))
+        self.assertEqual(len(clicks), 3)
+        self.assertEqual(len(set(clicks)), 1)
+
+    def test_failed_confirmed_selection_never_submits_attack(self):
+        with tempfile.TemporaryDirectory() as directory:
+            log_path = Path(directory) / 'lua.log'
+            log_path.write_text('')
+
+            class Controller:
+                def select_word(self, *_args, **kwargs):
+                    assert kwargs['confirm_tile'] is not None
+                    return False
+
+                def click_attack(self, _delay):
+                    raise AssertionError('Must not attack a partial rack')
+
+            self.assertFalse(select_and_attack_when_native_ready(
+                Controller(), log_path, 'TEST/AAAA/AAAA/AAAA', 'TEST',
+                0, (0, 1, 2, 3), confirm_each_tile=True))
+
+    def test_fast_defaults_keep_native_acknowledgement_guards(self):
+        from tas_settings import read_settings
+        from unittest.mock import patch
+
+        with patch('sys.argv', ['runner', '--log', 'unused']):
+            settings = read_settings()
+        self.assertEqual(settings.tile_delay, 0.01)
+        self.assertEqual(settings.poll, 0.01)
+        self.assertEqual(settings.ready_delay, 0.0)
+        source = (
+            Path(__file__).resolve().parents[1] / "continuous_runner.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn("select_and_attack_when_native_ready(", source)
+        self.assertIn("ATTACK_SUBMITTED_RE.search", source)
+
     def test_runner_lock_rejects_a_second_input_process(self):
         with tempfile.TemporaryDirectory() as directory:
             lock_path = Path(directory) / "tas-runner.lock"
@@ -87,18 +162,18 @@ class ContinuousRunnerTests(unittest.TestCase):
         source = (
             Path(__file__).resolve().parents[1] / "continuous_runner.py"
         ).read_text(encoding="utf-8")
-        self.assertIn("state_fingerprint(submitted_state)", source)
+        self.assertIn("state_fingerprint(attack.state)", source)
         self.assertNotIn("state_fingerlog_message", source)
 
     def test_historical_word_interrupt_uses_native_authorization_state(self):
         source = (
             Path(__file__).resolve().parents[1] / "continuous_runner.py"
         ).read_text(encoding="utf-8")
-        self.assertIn("and native_attack_authorized", source)
+        self.assertIn("and attack.native_authorized", source)
         self.assertNotIn(
             'active_dialog == "interrupt"\n                    '
-            "and not input_confirmed\n                    "
-            "and submitted_attack_at is not None",
+            "and not attack.acknowledged\n                    "
+            "and attack.attack_sent_at is not None",
             source,
         )
 
@@ -506,7 +581,7 @@ class ContinuousRunnerTests(unittest.TestCase):
                 alexander, "Trojan Captain", set(), 1,
             )
         )
-        self.assertTrue(should_arm_boss_reset_on_zero_health(alexander))
+        self.assertFalse(should_arm_boss_reset_on_zero_health(alexander))
 
     def test_overlay_cancelled_submission_retains_last_attack_route_identity(self):
         alexander = replace(self.state(7), enemy="Alexander")
@@ -518,7 +593,7 @@ class ContinuousRunnerTests(unittest.TestCase):
             attack_state_for_event(None, alexander, "Polydamas (Boss)"),
         )
 
-    def test_chapter_boss_zero_health_arms_save_ready_reset(self):
+    def test_chapter_boss_arms_recoverable_early_exit(self):
         boss = replace(
             self.state(1), enemy="Polydamas (Boss)", hp=0, max_hp=3, stage=6,
         )
@@ -530,12 +605,33 @@ class ContinuousRunnerTests(unittest.TestCase):
             )
         )
 
+    def test_mummy_defeat_uses_normal_chapter_completion(self):
+        mummy = replace(self.state(1), book=3, chapter=8,
+                        enemy="The Mummy (Boss)", hp=0)
+        self.assertFalse(should_arm_boss_reset_on_zero_health(mummy))
+        self.assertIsNone(immediate_defeated_reset_reason(
+            mummy, mummy.enemy, set(), 8))
+        dracula = replace(mummy, chapter=9, enemy="Dracula (Boss)")
+        self.assertFalse(should_arm_boss_reset_on_zero_health(dracula))
+        self.assertIsNone(immediate_defeated_reset_reason(
+            dracula, dracula.enemy, set(), 9))
+        source = (Path(__file__).resolve().parents[1] / "continuous_runner.py").read_text()
+        self.assertNotIn("should_stop_after_boss_for_inspection", source)
+
+    def test_charybdis_uses_recoverable_early_dialogue_skip(self):
+        charybdis = replace(
+            self.state(1), enemy="Charybdis (Boss)", hp=0, max_hp=8,
+        )
+
+        self.assertTrue(should_arm_boss_reset_on_zero_health(charybdis))
+
     def test_chapter6_griffon_uses_paced_single_click_input(self):
         griffon = replace(
             self.state(1), book=1, chapter=6, enemy="Griffon",
         )
         harpy = replace(griffon, enemy="Harpy")
         earlier_griffon = replace(griffon, chapter=5)
+        war_hound = replace(griffon, chapter=1, enemy="War Hound")
         hydra_head = replace(griffon, chapter=7, enemy="Hydra (Head 5)")
         hydra_main = replace(griffon, chapter=7, enemy="Hydra (Main Head)")
 
@@ -543,6 +639,8 @@ class ContinuousRunnerTests(unittest.TestCase):
         self.assertEqual(tile_input_delay(griffon, 0.1), 0.1)
         self.assertEqual(tile_input_delay(harpy, 0.02), 0.02)
         self.assertEqual(tile_input_delay(earlier_griffon, 0.02), 0.02)
+        self.assertEqual(tile_input_delay(war_hound, 0.01), 0.02)
+        self.assertEqual(tile_input_delay(war_hound, 0.03), 0.03)
         self.assertEqual(tile_input_delay(hydra_head, 0.02), 0.02)
         self.assertEqual(tile_input_delay(hydra_main, 0.02), 0.08)
 
@@ -551,7 +649,14 @@ class ContinuousRunnerTests(unittest.TestCase):
         final = replace(self.state(1), enemy="Sphinx (Last Riddle)")
 
         self.assertFalse(should_arm_boss_reset_on_zero_health(earlier))
-        self.assertFalse(should_arm_boss_reset_on_zero_health(final))
+        self.assertTrue(should_arm_boss_reset_on_zero_health(final))
+
+    def test_only_main_hydra_head_arms_chapter_exit(self):
+        earlier = replace(self.state(1), enemy="Hydra (Head 6)")
+        final = replace(self.state(1), enemy="Hydra (Main Head)")
+
+        self.assertFalse(should_arm_boss_reset_on_zero_health(earlier))
+        self.assertTrue(should_arm_boss_reset_on_zero_health(final))
 
     def test_petrify_edges_include_native_health_state(self):
         started = PLAYER_STUNNED_RE.search(
@@ -649,6 +754,17 @@ class ContinuousRunnerTests(unittest.TestCase):
 
         self.assertFalse(enemy_accepts_candidate(xel, short))
         self.assertTrue(enemy_accepts_candidate(xel, long))
+
+    def test_fallen_wizard_hero_requires_at_least_four_letters(self):
+        short = Candidate("AIR", (0, 1, 2), 2, 1, None, True, 0.6, 0)
+        long = Candidate("AIRS", (0, 1, 2, 3), 3, 2, None, True, 0.7, 0)
+        for name in ("Fallen Wizard Hero", "FALLEN WIZARD HERO"):
+            with self.subTest(enemy=name):
+                enemy = replace(self.state(1), enemy=name)
+                self.assertFalse(enemy_accepts_candidate(enemy, short))
+                self.assertTrue(enemy_accepts_candidate(enemy, long))
+        ordinary = replace(self.state(1), enemy="Trojan Warrior")
+        self.assertTrue(enemy_accepts_candidate(ordinary, short))
 
     def test_rejected_words_clear_on_new_rack_or_enemy(self):
         rejected = {"AVE", "AWE"}
@@ -1060,7 +1176,7 @@ class ContinuousRunnerTests(unittest.TestCase):
         self.assertIn('"campaign complete."', handler)
         self.assertIn("return", handler)
 
-    def test_boss_zero_health_path_arms_safe_reset(self):
+    def test_zero_health_path_does_not_reset_before_defeated(self):
         source = (
             Path(__file__).resolve().parents[1] / "continuous_runner.py"
         ).read_text(encoding="utf-8")
@@ -1070,8 +1186,8 @@ class ContinuousRunnerTests(unittest.TestCase):
             source.index("reset_ready_event = RESET_READY_RE.search(line)")
         ]
         self.assertNotIn("reset_from_battle(controller, MenuTiming())", zero_health_handler)
-        self.assertIn('"waiting for the Lua-confirmed save-ready edge."', zero_health_handler)
-        self.assertIn("boss_reset_state = zero_health_state", zero_health_handler)
+        self.assertIn("should_arm_boss_reset_on_zero_health", zero_health_handler)
+        self.assertNotIn("reset_from_battle", zero_health_handler)
 
     def test_lua_death_flags_capture_intermediate_native_edges(self):
         match = DEATH_FLAGS_RE.search(
@@ -1239,9 +1355,9 @@ class ContinuousRunnerTests(unittest.TestCase):
             boss is not None, screen == "treasure" or selecting, False, False,
         ))
 
-    def test_ready_chapter_map_confirms_menu_reentry(self):
+    def test_any_chapter_map_confirms_menu_reentry(self):
         self.assertTrue(chapter_map_confirms_menu_reentry(True))
-        self.assertFalse(chapter_map_confirms_menu_reentry(False))
+        self.assertTrue(chapter_map_confirms_menu_reentry(False))
 
     def test_confirmed_boss_reset_can_clear_blocking_result_dialogue(self):
         reset_key = (1, 6, 7, "Cerberus (Boss)")
@@ -1331,7 +1447,7 @@ class ContinuousRunnerTests(unittest.TestCase):
         # (blue). Guard against swapping the adjacent green and blue bottles.
         self.assertEqual(clicks, [(144, 341), (220, 341)])
 
-    def test_moxie_offer_is_declined_with_right_side_no_button(self):
+    def test_minigame_skip_uses_left_side_yes_button(self):
         controller = X11Keyboard.__new__(X11Keyboard)
         controller.layout = "deluxe"
         controller.window = 1
@@ -1340,9 +1456,9 @@ class ContinuousRunnerTests(unittest.TestCase):
         clicks = []
         controller.click = lambda x, y, delay: clicks.append((x, y))
 
-        controller.decline_minigame(0)
+        controller.confirm_skip_minigame(0)
 
-        self.assertEqual(clicks, [(468, 409)])
+        self.assertEqual(clicks, [(332, 409)])
 
     def test_incapacitation_overlay_clicks_tile_cleared_before_next_word(self):
         controller = X11Keyboard.__new__(X11Keyboard)

@@ -1,7 +1,8 @@
 import unittest
 
 from deluxe_optimizer import (
-    Candidate, DeluxeState, adjusted_word_length, attack_animation_class,
+    ATTACK_ANIMATION_SECONDS, Candidate, DeluxeState, adjusted_word_length,
+    attack_animation_class,
     candidates, ceil_quarter, choose,
     damage_for, floor_quarter,
     index_words, load_chapter1_hp_map, parse_state, strategy_for_state,
@@ -30,6 +31,57 @@ def state(**overrides):
 
 
 class DeluxeOptimizerTests(unittest.TestCase):
+    def test_native_lex_animation_model_penalizes_obliterating(self):
+        self.assertLess(
+            ATTACK_ANIMATION_SECONDS["normal"],
+            ATTACK_ANIMATION_SECONDS["wow-overkill"],
+        )
+
+    def test_pemphredo_one_hp_rack_prefers_normal_lethal_animation(self):
+        current = state(
+            board="UEAL/ERNI/EYFA/BODN", chapter=10, stage=2,
+            enemy="Pemphredo", hp=1.0, max_hp=24,
+            offense=1.1092373132706,
+            gems=("none", "bonus-u") + ("none",) * 14,
+            tile_powers=(0.0, 0.35) + (0.0,) * 14,
+            treasures=frozenset({
+                "arch of xyzzy", "boots of theseus", "hand of hercules",
+            }),
+            overkill_thresholds=(1.95, 3, 5, 8, 11, 15, 20, 100000),
+        )
+        pool = candidates(
+            current, ["AYE", "UNDEFINABLE"], frozenset(), 0.01,
+        )
+
+        selected, _ = choose(pool, strategy_for_state(current, "chapter-aware"))
+
+        self.assertEqual(selected.word, "AYE")
+        self.assertEqual(selected.animation_class, "normal")
+
+    def test_enyo_rack_avoids_extra_ruby_and_reward_animation(self):
+        gems = ["none"] * 16
+        gems[3] = gems[5] = "ruby"
+        powers = [0.0] * 16
+        powers[3] = powers[5] = 0.5
+        current = state(
+            board="NHAE/ORJA/RYDJ/EOEA", chapter=10, stage=3,
+            enemy="Enyo", hp=7.0, max_hp=25,
+            offense=1.1277372837067,
+            gems=tuple(gems), tile_powers=tuple(powers),
+            treasures=frozenset({
+                "arch of xyzzy", "boots of theseus", "hand of hercules",
+            }),
+            overkill_thresholds=(1.95, 3, 5, 8, 11, 15, 20, 100000),
+        )
+        pool = candidates(
+            current, ["HONORARY", "REENJOYED"], frozenset(), 0.01,
+        )
+
+        selected, _ = choose(pool, strategy_for_state(current, "chapter-aware"))
+
+        self.assertEqual(selected.word, "HONORARY")
+        self.assertEqual(selected.gem_count, 1)
+
     def test_indexed_words_preserve_candidate_results(self):
         current = state(board="TEST/AAAA/AAAA/AAAA")
         words = ["TEST", "SEAT", "MISSING", "TEA"]
@@ -46,8 +98,8 @@ class DeluxeOptimizerTests(unittest.TestCase):
             zero_damage=(True, False, False, False) + (False,) * 12,
         )
 
-        self.assertEqual(damage_for(normal, "TEST", (0, 1, 2, 3), frozenset()), 0.5)
-        self.assertEqual(damage_for(smashed, "TEST", (0, 1, 2, 3), frozenset()), 0.25)
+        self.assertEqual(damage_for(normal, "TEST", (0, 1, 2, 3), frozenset()), 0.75)
+        self.assertEqual(damage_for(smashed, "TEST", (0, 1, 2, 3), frozenset()), 0.5)
 
     def test_specter_acid_regression_with_zero_damage_tile(self):
         current = state(
@@ -258,7 +310,7 @@ class DeluxeOptimizerTests(unittest.TestCase):
             zero_damage=(False, False, False, True) + (False,) * 12,
         )
         self.assertEqual(
-            adjusted_word_length(damaged_q, "ALIQOT", (0, 1, 2, 3, 4, 5)), 6
+            adjusted_word_length(damaged_q, "ALIQOT", (0, 1, 2, 3, 4, 5)), 5
         )
 
     def test_vulcanisms_is_predicted_as_cerberus_finisher(self):
@@ -273,7 +325,7 @@ class DeluxeOptimizerTests(unittest.TestCase):
             damage_for(cerberus, "VULCANISMS", path, frozenset()), 5.5
         )
 
-    def test_chimera_tut_hammer_rounding_regression(self):
+    def test_hammer_arithmetic_uses_corrected_native_base(self):
         chimera = state(
             board="TVIT/TFRI/IUTU/VUQO",
             enemy="Chimera",
@@ -284,21 +336,20 @@ class DeluxeOptimizerTests(unittest.TestCase):
         )
 
         self.assertEqual(
-            damage_for(chimera, "TUT", (0, 9, 3), frozenset()), 0.75
+            damage_for(chimera, "TUT", (0, 9, 3), frozenset()), 1.25
         )
 
     def test_hand_and_metal_damage(self):
         current = state(treasures=frozenset({"hand of hercules"}))
-        # Three letters: .25 base, metal multiplier, then +1 heart, rounded.
+        # Three letters: .5 native base, metal multiplier, then +1 heart.
         self.assertEqual(
             damage_for(current, "AAA", (0, 1, 2), frozenset({"AAA"})),
-            1.5,
+            1.75,
         )
 
-    def test_wooden_parrot_uses_live_r_tile_power_once(self):
-        # The Lua hook runs R through the game's LETTER_BONUSES/ApplyBonus
-        # calculation. Wooden Parrot's extra letter value arrives as tile
-        # power, so the optimizer consumes it once instead of reapplying it.
+    def test_legacy_tile_power_payload_is_consumed_once(self):
+        # Synthetic compatibility check, not a native Parrot capture. Parrot's
+        # LETTER_BONUSES override still needs its own model/trace validation.
         powers = (1.0, 0.0, 1.0) + (0.0,) * 13
         current = state(
             tile_powers=powers,
@@ -307,7 +358,7 @@ class DeluxeOptimizerTests(unittest.TestCase):
 
         self.assertEqual(
             damage_for(current, "RAR", (0, 1, 2), frozenset()),
-            2.25,
+            2.5,
         )
 
     def test_wooden_parrot_does_not_bonus_words_without_r(self):
@@ -315,7 +366,7 @@ class DeluxeOptimizerTests(unittest.TestCase):
 
         self.assertEqual(
             damage_for(current, "AAA", (0, 1, 2), frozenset()),
-            0.25,
+            0.5,
         )
 
     def test_duplicate_letter_uses_stronger_gem_tile(self):

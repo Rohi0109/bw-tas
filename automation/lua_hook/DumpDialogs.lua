@@ -1,4 +1,28 @@
 function BattleEngine:AutomationDumpDialogs()
+  -- An observed HP change is not necessarily direct word damage (e.g. DOT).
+  -- Preserve identity and values without claiming a causal damage breakdown.
+  if gAutomationAttackId ~= nil and self.mEnemyPtr ~= nil and
+      self.mEnemyPtr == gAutomationAttackEnemy and
+      self.mEnemyPtr.mHealth ~= nil and
+      self.mEnemyPtr.mHealth ~= gAutomationAttackHealth then
+    print("AUTOMATION_ATTACK_HP=" .. gAutomationAttackId .. "|" ..
+      tostring(gAutomationAttackHealth) .. "|" ..
+      tostring(self.mEnemyPtr.mHealth) .. "|E")
+    gAutomationAttackHealth = self.mEnemyPtr.mHealth
+  end
+  -- The pause menu itself is native, but its Quit action opens a native
+  -- yes/no dialog exposed through LuaApp.  This is the earliest authoritative
+  -- acknowledgement that Quit To Main Menu accepted the preceding click.
+  local nativeDialog = false
+  if gCApp ~= nil and gCApp.HasDialogs ~= nil then
+    nativeDialog = gCApp:HasDialogs()
+  end
+  if nativeDialog ~= gAutomationNativeDialog then
+    gAutomationNativeDialog = nativeDialog
+    print("AUTOMATION_NATIVE_DIALOG=" ..
+      (nativeDialog and "1" or "0") .. "|E")
+  end
+
   local playerPoweredUp = false
   if self.mPlayerPtr ~= nil and self.mPlayerPtr.mStatusEffects ~= nil then
     for effectKey, effectValue in pairs(self.mPlayerPtr.mStatusEffects) do
@@ -267,6 +291,7 @@ function BattleEngine:AutomationDumpDialogs()
     gAutomationDialogSource = dialogSource
     gAutomationDialogUpdates = 0
     gAutomationDialogPulse = 0
+    gAutomationDialogLastPulseUpdate = nil
     if dialogSource ~= nil then
       gAutomationDialogSequence = gAutomationDialogSequence + 1
       print("AUTOMATION_DIALOG_ACTIVE=" .. dialogSource .. "|" ..
@@ -279,8 +304,14 @@ function BattleEngine:AutomationDumpDialogs()
 
   if dialogSource ~= nil then
     gAutomationDialogUpdates = gAutomationDialogUpdates + 1
-    -- First authorization after three native updates, then every fifteen.
-    if gAutomationDialogUpdates >= 3 and ((gAutomationDialogUpdates - 3) % 15) == 0 then
+    -- The hook can be reached through both UpdateF and Update. Authorize once
+    -- per native gUpdateCnt rather than once per hook invocation, allowing the
+    -- next frame immediately while preventing two queued clicks from leaking
+    -- through a panel that closes on the first one.
+    local pulseUpdate = gUpdateCnt
+    if pulseUpdate == nil then pulseUpdate = gAutomationDialogUpdates end
+    if pulseUpdate ~= gAutomationDialogLastPulseUpdate then
+      gAutomationDialogLastPulseUpdate = pulseUpdate
       gAutomationDialogPulse = gAutomationDialogPulse + 1
       print("AUTOMATION_DIALOG_PULSE=" .. dialogSource .. "|" ..
         gAutomationDialogSequence .. "|" .. gAutomationDialogPulse .. "|E")
