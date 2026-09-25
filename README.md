@@ -8,6 +8,28 @@ evidence.
 The active repository is
 [Rohi0109/bw-tas](https://github.com/Rohi0109/bw-tas).
 
+## Reliability loop
+
+```text
+TAS runner → watchdog → incident packet → Codex repair → validation → safe retry
+```
+
+The optional watchdog monitors runner output and `lua.log` activity, detects
+stalls or failed exits, and writes a bounded incident packet with recent logs,
+repository state, and an optional screenshot. The repair loop gives that packet
+to Codex with a bounded attempt budget and a JSON output schema. The supervisor
+validates the result and restarts the TAS only when the repair explicitly marks
+the patch `retry_safe: true`; otherwise it stops for review.
+
+## Why this is interesting
+
+- **Telemetry-driven automation:** native game events drive state recovery and input timing.
+- **Optimization and decision logic:** word candidates are ranked using board state, damage, route, and timing signals.
+- **Bounded agentic repair:** Codex receives one incident, a focused prompt, and a capped repair budget.
+- **Retry safety:** malformed results or repairs without an explicit safe flag cannot restart the run.
+- **Failure detection:** the watchdog catches stalled logs, timeouts, and non-zero runner exits.
+- **Structured outputs:** incident packets and repair results use stable JSON fields suitable for inspection and automation.
+
 ## Quick start
 
 Run commands from the repository root.

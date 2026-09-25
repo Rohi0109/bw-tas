@@ -6,6 +6,7 @@
 # Python bytecode is local build/test output.
 __pycache__/
 *.pyc
+*.log
 
 *.zip
 *.wasm
