@@ -1,0 +1,16 @@
+{
+  "model": "passive-plain-rack-v1",
+  "initial_state": {
+    "sequence": 1,
+    "board": "TEST/ABCD/EFGH/IJKL",
+    "gems": ["none", "none", "none", "none", "none", "none", "none", "none", "none", "none", "none", "none", "none", "none", "none", "none"],
+    "tile_powers": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    "book": 1, "chapter": 1, "stage": 1,
+    "enemy": "Passive target",
+    "hp": 1.5, "max_hp": 1.5, "offense": 0,
+    "treasures": [], "overkill_thresholds": [0, 1, 2, 3]
+  },
+  "words": ["TEST", "BAD", "BAG", "BEST"],
+  "refill_stream": "TESTTESTTESTTEST",
+  "max_attacks": 10
+}

@@ -155,6 +155,7 @@ PYTHONPATH=automation python3 -m unittest automation/test_watchdog.py -q
 
 ## Further reading
 
+- [In-house simulator and fidelity ledger](SIMULATOR.md)
 - [Project roadmap](../things-to-add-roadmap.md)
 - [RNG and deterministic graph experiments](STATE_GRAPH.md)
 - [Transition and damage validation](TRANSITION_BASELINE.md)
