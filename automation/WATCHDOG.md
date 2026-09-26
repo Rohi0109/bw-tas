@@ -24,8 +24,12 @@ Total per-run timeouts and signal-terminated runners are not retried. Use
 
 This restarts the **TAS runner**, which attaches to the existing game. It does not
 restart the game, restore saves, fix code, or guarantee a stuck game will recover.
-Detection currently measures log changes, not semantic progress: a repeating but
-changing log can evade the stall check. A repository lock prevents two copies of
+Besides the 20-second log silence check, local mode checks for 90 seconds without
+changes in READY board, encounter context, attack HP, or defeated enemy. Sequence
+IDs and dialog/sync heartbeats do not count. Tune `--progress-seconds` for slow
+transitions. This is a progress heuristic, not proof of a stall: unrecognized
+events do not reset it, and alternating recognized states can still evade it.
+A repository lock prevents two copies of
 this local supervisor; it does not lock out independently launched controllers.
 
 Diagnostics are saved beside each incident as `*.local-diagnosis.json`. Inspect

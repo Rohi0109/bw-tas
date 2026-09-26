@@ -16,6 +16,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from failure_packet import build_packet, write_packet
+from telemetry_progress import TelemetryProgress
 
 
 def log_stamp(path: Path) -> tuple[int, int] | None:
@@ -62,9 +63,12 @@ def run_watchdog(
     stall_seconds: float, timeout_seconds: float | None, poll_seconds: float,
     capture_screenshots: bool = False,
     quiet: bool = False, status_path: Path | None = None,
+    progress_seconds: float | None = None,
 ) -> tuple[int, Path | None]:
     started = time.monotonic()
     last_change = started
+    last_progress = started
+    progress = TelemetryProgress(log) if progress_seconds is not None else None
     stamp = log_stamp(log)
     output: deque[str] = deque(maxlen=100)
     process = subprocess.Popen(
@@ -139,6 +143,8 @@ def run_watchdog(
             if current != stamp:
                 stamp = current
                 last_change = time.monotonic()
+            if progress is not None and progress.poll():
+                last_progress = time.monotonic()
 
             now = time.monotonic()
             if now - last_status_at >= 5:
@@ -149,6 +155,9 @@ def run_watchdog(
                 break
             if now - last_change >= stall_seconds:
                 reason = f"lua log unchanged for {stall_seconds:g} seconds"
+                break
+            if progress_seconds is not None and now - last_progress >= progress_seconds:
+                reason = f"telemetry state unchanged for {progress_seconds:g} seconds"
                 break
     except BaseException:
         stop_process(process)

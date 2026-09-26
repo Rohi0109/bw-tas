@@ -32,11 +32,12 @@ def restart_allowed(code, packet, restarts, limit):
     reason = packet.get('reason', '')
     return (restarts < limit and code > 0
             and (reason.startswith('lua log unchanged for ')
+                 or reason.startswith('telemetry state unchanged for ')
                  or reason.startswith('runner exited with code ')))
 
 
 def supervise(*, command, repo, log, incidents, model, max_restarts,
-              stall_seconds, timeout_seconds, cooldown_seconds):
+              stall_seconds, timeout_seconds, cooldown_seconds, progress_seconds=90):
     incidents.mkdir(parents=True, exist_ok=True)
     # A fixed repo lock prevents duplicate local supervisors even when their
     # incident directories differ. Existing external controllers must be stopped.
@@ -53,6 +54,7 @@ def supervise(*, command, repo, log, incidents, model, max_restarts,
                 command=command, repo=repo, log=log, incidents=incidents,
                 stall_seconds=stall_seconds, timeout_seconds=timeout_seconds,
                 poll_seconds=.25, capture_screenshots=False, quiet=True,
+                progress_seconds=progress_seconds,
                 status_path=incidents / 'local-status.json')
             if path is None:
                 return code
@@ -83,13 +85,14 @@ def main():
     parser.add_argument('--model', default='deepseek-r1:1.5b')
     parser.add_argument('--max-restarts', type=int, default=1)
     parser.add_argument('--stall-seconds', type=float, default=20)
+    parser.add_argument('--progress-seconds', type=float, default=90)
     parser.add_argument('--timeout-seconds', type=float, default=None)
     parser.add_argument('--cooldown-seconds', type=float, default=5)
     parser.add_argument('command', nargs=argparse.REMAINDER)
     args = parser.parse_args()
     if not 0 <= args.max_restarts <= 3:
         parser.error('max-restarts must be 0..3')
-    for value in (args.stall_seconds, args.cooldown_seconds, args.timeout_seconds):
+    for value in (args.stall_seconds, args.progress_seconds, args.cooldown_seconds, args.timeout_seconds):
         if value is not None and (not math.isfinite(value) or value <= 0):
             parser.error('durations must be finite and positive')
     repo = args.repo.resolve()
@@ -100,7 +103,8 @@ def main():
     return supervise(command=command, repo=repo, log=resolve(args.log),
                      incidents=resolve(args.incidents), model=args.model,
                      max_restarts=args.max_restarts, stall_seconds=args.stall_seconds,
-                     timeout_seconds=args.timeout_seconds, cooldown_seconds=args.cooldown_seconds)
+                     timeout_seconds=args.timeout_seconds, cooldown_seconds=args.cooldown_seconds,
+                     progress_seconds=args.progress_seconds)
 
 
 if __name__ == '__main__':
