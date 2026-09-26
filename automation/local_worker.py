@@ -39,9 +39,9 @@ def validate_result(content):
     return result
 
 
-def run(task, contexts, model, tokens, timeout):
+def run(task, contexts, model, tokens, timeout, *, context_size=16384):
     payload = dict(model=model, stream=False, think=False, format=SCHEMA,
-                   options=dict(temperature=0, num_predict=tokens, num_ctx=16384),
+                   options=dict(temperature=0, num_predict=tokens, num_ctx=context_size),
                    messages=[dict(role='system', content=(
                        'You are a coding research assistant. Complete the small task using only '
                        'the supplied evidence. Return JSON with summary, proposal, uncertainties '

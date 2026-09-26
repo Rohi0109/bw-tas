@@ -1,5 +1,42 @@
 # TAS watchdog
 
+## Local telemetry supervision (no Codex calls)
+
+With the game already running and no other TAS controller active:
+
+```bash
+python3 automation/local_watchdog.py
+```
+
+This launches `run-deluxe-speedrun-auto.sh`, monitors `lua.log`, and writes
+`runtime/incidents/local-status.json`. A stale log or runner crash produces an
+incident and a short local Ollama diagnosis using `deepseek-r1:1.5b` with a 4K
+context. Screenshots are disabled. The model only receives bounded log excerpts;
+it cannot execute commands or edit files.
+
+The supervisor allows one runner restart after a five-second cooldown, then
+stops on another failure regardless of incident signature. Diagnosis is advisory:
+unavailable Ollama, malformed output, or a model suggestion cannot expand this
+budget. The diagnosis has a 120-second client timeout; restart follows diagnosis.
+Total per-run timeouts and signal-terminated runners are not retried. Use
+`--max-restarts 0` for diagnosis only, or `--max-restarts 2` for two retries.
+`--timeout-seconds` sets a per-run wall-clock limit.
+
+This restarts the **TAS runner**, which attaches to the existing game. It does not
+restart the game, restore saves, fix code, or guarantee a stuck game will recover.
+Detection currently measures log changes, not semantic progress: a repeating but
+changing log can evade the stall check. A repository lock prevents two copies of
+this local supervisor; it does not lock out independently launched controllers.
+
+Diagnostics are saved beside each incident as `*.local-diagnosis.json`. Inspect
+these for debugging when bounded retries fail. For other runner commands:
+
+```bash
+python3 automation/local_watchdog.py --max-restarts 1 -- ./run-deluxe-speedrun-auto.sh --strategy max-damage
+```
+
+## Codex code repair
+
 Run the fully automated TAS repair loop from the repository root:
 
 ```bash
