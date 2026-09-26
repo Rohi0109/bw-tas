@@ -42,6 +42,22 @@ assumptions. This is a decision test harness, not a native battle emulator.
 
 ## Implementation gates
 
+Implemented primitive checks: [engine RNG](NATIVE_RNG.md),
+[letter eligibility/weight/selection kernels](NATIVE_PICKER.md) now have
+independent x86 comparisons. [Staged damage](NATIVE_DAMAGE.md) ports word/gem
+formulas separately from enemy resolution. Complete board projection, refill
+ordering, draw scheduling and combat remain open.
+
+Inventory an installation without extracting or modifying it:
+
+```sh
+python3 speedrun/simulator_sources.py --source runtime/deluxe-modded \
+  --output /tmp/bwa-source-inventory.json
+```
+
+The report includes EXE/PAK hashes, all script-member hashes, experiment-manifest
+mismatches and reset-hook string presence. Presence is not execution proof.
+
 1. Inventory sources and record evidence, unknowns and exact-build identity.
 2. Recover and test small pure mechanics against independent native fixtures.
 3. Compose a deterministic turn engine with explicit state and RNG snapshots.
@@ -122,6 +138,10 @@ instance to same-encounter validation. Never pool builds silently.
 - The bytecode disassembly renderer's table operands disagree with its decoding
   helpers. Validate operand interpretation against known methods/constants
   before translating new rules; readable disassembly alone is insufficient.
+- `luc_transcode.py` deliberately substitutes markers for custom FLOOR and
+  table-iteration instructions to aid decompilation. Its output is not a
+  runnable replacement for the native VM. A headless script executor needs
+  independently tested opcode semantics and native object/API implementations.
 
 Offline next step: separate weighted value, base damage, tile bonuses, enemy
 modifiers and HP application. Build explicit turn/effect state with injected
