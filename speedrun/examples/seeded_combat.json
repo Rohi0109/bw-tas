@@ -1,0 +1,11 @@
+{
+  "model": "seeded-plain-combat-v1",
+  "board": "TEST/ABCD/EFGH/IJKL",
+  "player_hp": 5,
+  "enemy_hp": 2,
+  "enemy_attack": 0.5,
+  "offense": 0,
+  "words": ["TEST", "BAD", "BAG", "BEST", "BED", "FED", "FAD", "HAD", "HAT", "LAD", "LET", "JET", "JAB", "TAB", "GET"],
+  "exclusions": [],
+  "seed": 123
+}

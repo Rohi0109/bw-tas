@@ -5,7 +5,43 @@ actions offline, then validate promising routes against the native game.
 Full-game fidelity is not established. Existing telemetry omits hidden state,
 and historical successor racks cannot be reused as alternative-action outcomes.
 
-## Run the first offline harness
+## Run a seeded offline encounter
+
+```sh
+PYTHONPATH=speedrun python3 speedrun/offline_combat.py \
+  speedrun/examples/seeded_combat.json --output /tmp/bwa-combat.json
+```
+
+This executable model connects native RNG, letter eligibility/weights, gravity,
+staged plain-word damage, automatic word selection and scripted retaliation.
+The example completes in three turns without installed game assets or manually
+supplied refill letters. Reports contain ordered damage/refill/retaliation events,
+raw letter draws, final HP, and a complete checkpoint including RNG state.
+
+To stop after one turn and resume (use new output filenames):
+
+```sh
+PYTHONPATH=speedrun python3 speedrun/offline_combat.py \
+  speedrun/examples/seeded_combat.json --max-turns 1 --output /tmp/bwa-first.json
+PYTHONPATH=speedrun python3 speedrun/offline_combat.py \
+  /tmp/bwa-first.json --resume --output /tmp/bwa-rest.json
+```
+
+`--strategy shortest-lethal` selects the shortest lethal word when available;
+otherwise both strategies maximize immediate modeled damage. The Python
+`step(checkpoint, word)` API supports independent alternative-action branches.
+Unsupported state fields (including gems/statuses/treasures) are rejected.
+
+**This is a working synthetic encounter simulator, not complete native gameplay.**
+The explicit `seeded-plain-combat-v1` model assumes one RNG draw per refill tile,
+column-major insertion, no extra letter frequencies, a supplied exclusion table
+(empty in the example), and constant enemy damage after refill. These scheduling
+and enemy rules are scenario assumptions, not recovered native behavior. Words
+come from the scenario allowlist. Lethal attacks terminate before refill/rewards;
+the reported terminal board is unresolved. No campaign or timing is modeled.
+Checkpoints reproduce this simulator's state, not a native game save.
+
+## Run the supplied-refill comparison harness
 
 ```sh
 PYTHONPATH=speedrun python3 speedrun/scenario_simulator.py \
