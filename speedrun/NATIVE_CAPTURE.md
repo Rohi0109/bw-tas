@@ -95,5 +95,10 @@ streams as causally aligned merely because they were collected together.**
 5. Capture repeated identical-state trials before using records as full-turn
    differential fixtures. Unsupported hidden state must fail the eligibility gate.
 
-No game, screenshot, or live controller was launched during this infrastructure
-validation. The isolated native RNG probe is the only native execution performed.
+The initial infrastructure validation used only the isolated native RNG probe.
+A subsequent isolated Wine launch reached the game window under a parent GDB
+process, but produced no verified live draw/encounter trace before handoff. No
+screenshots or live TAS controller were used. The debugger's first-draw gate
+handling was then tested on the standalone probe: 700 draws matched in each of
+the pre-draw-start and first-draw-gate modes. See the current
+[Claude simulator handoff](../CLAUDE_SIM_HANDOFF.md) for launch findings and next steps.

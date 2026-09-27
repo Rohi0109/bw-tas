@@ -1,5 +1,9 @@
 # Bookworm Adventures Deluxe TAS handoff
 
+> Historical live-TAS notes follow. For the current internal simulator task,
+> branch context, native validation plan and Claude Code continuation prompt,
+> read [CLAUDE_SIM_HANDOFF.md](CLAUDE_SIM_HANDOFF.md).
+
 ## Current objective
 
 Build a full-game, unattended Bookworm Adventures Deluxe TAS targeting under 36
