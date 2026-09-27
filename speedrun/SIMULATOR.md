@@ -5,6 +5,10 @@ actions offline, then validate promising routes against the native game.
 Full-game fidelity is not established. Existing telemetry omits hidden state,
 and historical successor racks cannot be reused as alternative-action outcomes.
 
+[Native capture and replay](NATIVE_CAPTURE.md) now provides a debugger RNG trace,
+first-divergence verifier, independently executed 32-bit probe, and isolated
+pre-submit scalar telemetry staging. Full native game-turn capture is still pending.
+
 The [declarative campaign engine](CAMPAIGN_SIMULATOR.md) now provides enemy
 urgency selection, six simplified effects, encounter/reward progression and an
 explicit shared RNG schedule. Its example runs through two encounters. Native
