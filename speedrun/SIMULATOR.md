@@ -5,6 +5,12 @@ actions offline, then validate promising routes against the native game.
 Full-game fidelity is not established. Existing telemetry omits hidden state,
 and historical successor racks cannot be reused as alternative-action outcomes.
 
+The [declarative campaign engine](CAMPAIGN_SIMULATOR.md) now provides enemy
+urgency selection, six simplified effects, encounter/reward progression and an
+explicit shared RNG schedule. Its example runs through two encounters. Native
+AI overrides, effect ordering, progression rules and draw scheduling still need
+independent implementation/validation; reports mark `native_parity: false`.
+
 ## Run a seeded offline encounter
 
 ```sh

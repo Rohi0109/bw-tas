@@ -1,0 +1,29 @@
+{
+  "model": "declarative-campaign-v1",
+  "initial": {
+    "model": "seeded-plain-combat-v1",
+    "board": "TEST/ABCD/EFGH/IJKL",
+    "player_hp": 5, "enemy_hp": 1, "enemy_attack": 0,
+    "offense": 0, "seed": 123, "exclusions": [],
+    "words": ["TEST", "BAD", "BAG", "BEST", "BED", "FED", "FAD", "HAD", "HAT", "LAD", "LET", "JET", "JAB", "TAB", "GET"]
+  },
+  "player_effects": [],
+  "rng_schedule": {"before-player": 0, "before-refill": 0, "before-enemy": 0, "after-enemy": 1, "encounter": 0},
+  "encounters": [
+    {
+      "name": "Training guard", "book": 1, "chapter": 1, "hp": 1.5,
+      "effects": [], "reward": {"xp": 1, "heal": 0.25},
+      "attacks": [
+        {"name": "Jab", "min": 0, "max": -1, "damage": 0.25, "effects": []},
+        {"name": "Poison", "min": 2, "max": 3, "damage": 0.25,
+         "effects": [{"kind": "poison", "turns": 2, "value": 0.25}]}
+      ]
+    },
+    {
+      "name": "Training captain", "book": 1, "chapter": 2, "hp": 0.5,
+      "effects": [{"kind": "regen", "turns": 2, "value": 0.25}],
+      "reward": {"xp": 2, "heal": 0},
+      "attacks": [{"name": "Strike", "min": 0, "max": 0, "damage": 0.5, "effects": []}]
+    }
+  ]
+}
