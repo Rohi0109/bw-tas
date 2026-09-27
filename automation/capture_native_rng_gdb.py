@@ -71,7 +71,14 @@ try:
               build=json.loads(os.environ['BWA_CAPTURE_BUILD']),
               limitations=['Debugger pauses alter timing; no native timing claims.',
                            'Engine RNG only; not QRand/CRT or a whole-game checkpoint.']))
+    # Parent launch can stop at the first draw with a temporary hardware gate.
+    for gate in gdb.breakpoints() or []:
+        if gate.location == f'*{START:#x}':
+            gate.delete()
     breakpoints = [Entry(f'*{START:#x}', internal=True), Returned(f'*{RETURN:#x}', internal=True)]
+    if int(gdb.parse_and_eval('$pc')) == START:
+        if breakpoints[0].stop():
+            raise ValueError(failure)
     gdb.execute('continue')
     emit(dict(kind='end', complete=count == limit and failure is None,
               draws=count, error=failure, pending=pending is not None))
