@@ -172,8 +172,11 @@ try:
             bp.delete()
         except Exception:
             pass
+    # Kill the inferior (Wine + game) so the process tree is bounded.
+    # The Python harness also kills the whole process group, but this ensures
+    # cleanup even if the harness path is not taken (e.g. GDB batch exit).
     try:
-        gdb.execute('detach')
+        gdb.execute('kill')
     except gdb.error:
         pass
 except Exception as exc:

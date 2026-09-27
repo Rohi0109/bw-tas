@@ -127,6 +127,36 @@ class ValidateFixtureTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             validate_fixture(f)
 
+    def test_empty_pre_submit_raises(self):
+        f = _minimal_fixture(pre_submit={})
+        with self.assertRaises(ValueError):
+            validate_fixture(f)
+
+    def test_empty_observed_raises(self):
+        f = _minimal_fixture(observed={})
+        with self.assertRaises(ValueError):
+            validate_fixture(f)
+
+    def test_pre_submit_missing_player_hp_raises(self):
+        f = _minimal_fixture(pre_submit={'enemy_hp': 5})
+        with self.assertRaises(ValueError):
+            validate_fixture(f)
+
+    def test_pre_submit_missing_enemy_hp_raises(self):
+        f = _minimal_fixture(pre_submit={'player_hp': 10})
+        with self.assertRaises(ValueError):
+            validate_fixture(f)
+
+    def test_pre_submit_non_numeric_hp_raises(self):
+        f = _minimal_fixture(pre_submit={'player_hp': 'ten', 'enemy_hp': 5})
+        with self.assertRaises(ValueError):
+            validate_fixture(f)
+
+    def test_observed_missing_field_raises(self):
+        f = _minimal_fixture(observed={'player_hp': 9})
+        with self.assertRaises(ValueError):
+            validate_fixture(f)
+
 
 class ValidateBuildIdentityTests(unittest.TestCase):
 

@@ -3,155 +3,151 @@
 Evidence basis: handoff-documented bytecode locations in the pinned Deluxe build
 (7fa527a5...). Prototypes are zero-based.
 
-- CreatureBaseClass.luc proto 28: attack selection (choose_attack semantics)
-- attacks/AttackBaseClass.luc protos 5/6: GetUrgency / CanAttack base implementations
+- CreatureBaseClass.luc proto 28: attack selection
+- attacks/AttackBaseClass.luc protos 5/6: GetUrgency / CanAttack
 - common.luc proto 31: UrgencyChooser
 
 What is NOT native-verified:
-- Tie-breaking order within the same urgency level (index-order used here is an
-  approximation; native may use QRand or a different ordering).
-- The exact role of mAlreadyPerformed: treated here as an ineligibility flag, but
-  native semantics have not been independently confirmed via bytecode.
+- Tie-breaking inside the weighted band (QRand vs engine RNG vs ordering).
+- The exact role of mAlreadyPerformed: treated here as an ineligibility flag.
 - Per-enemy CanAttack Lua overrides (boss phases, special enemies).
-- QRand streams used for chance-based attacks.
 - No native encounter fixtures confirm these rules end-to-end.
-
-None of these functions claim native-game parity. They replace the inline
-urgency/choose_attack approximation in campaign_simulator.py with a named,
-testable, documented module. Import them there once native fixtures confirm the
-semantics.
 """
 from __future__ import annotations
 
+import math
 from enum import IntEnum
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from native_rng import NativeRng
+from typing import Callable, Optional
 
 
 class UrgencyLevel(IntEnum):
-    """Three-level urgency matching the documented Lua GetUrgency pattern.
+    """Three-level classification derived from the 0-100 urgency_weight scale.
 
-    CreatureBaseClass.luc proto 28 selects attacks by urgency; HIGH (due)
-    attacks take priority. The 0-100 scale in AttackBaseClass (protos 5/6) maps
-    onto three tiers for selection purposes: below-min is not eligible, at-min
-    is MEDIUM, and at-or-past-max is HIGH.
-
-    Approximation: the native implementation may use the full 0-100 scale for
-    weighted random selection rather than collapsing to three levels.
+    LOW:    weight == 0 (not yet eligible; counter < min).
+    MEDIUM: 0 < weight < 100 (eligible, not overdue).
+    HIGH:   weight >= 100 (overdue; counter >= max and max > 0, or max == min).
     """
-    LOW = 1
-    MEDIUM = 2
-    HIGH = 3
+    LOW = 0
+    MEDIUM = 1
+    HIGH = 2
 
 
-def get_urgency(attack: dict, counter: int) -> UrgencyLevel:
-    """Return the urgency level of an attack given its current use counter.
+def urgency_weight(attack: dict, counter: int) -> int:
+    """Return urgency as a 0-100 integer.
 
-    Derived from AttackBaseClass GetUrgency (proto 5/6) and the thresholds
-    used in CreatureBaseClass selection (proto 28).
+    Mirrors campaign_simulator.urgency() exactly, which recovers the formula in
+    AttackBaseClass GetUrgency (protos 5/6).
 
-    Rules (approximated from handoff evidence; not independently bytecode-verified):
-    - counter >= attack['max'] and max > 0 → HIGH (attack is overdue)
-    - counter >= attack['min']             → MEDIUM (attack is eligible)
-    - counter <  attack['min']             → LOW (not yet eligible)
+    0: not eligible (counter < min).
+    100: overdue (counter >= max > 0, or max == min, or max < min as no-bound sentinel).
+    1..99: eligible, not yet overdue.
 
-    Native caveat: the full urgency formula in AttackBaseClass uses a 0-100
-    percentage scale. The three-level enum here captures the selection-relevant
-    thresholds but loses the weighted probability within the MEDIUM band.
+    max == 0 with min > 0 is treated as max < min (no-upper-bound sentinel → weight=1).
     """
     minimum = attack['min']
     maximum = attack['max']
-    if maximum > 0 and counter >= maximum:
+    if counter < minimum:
+        return 0
+    if maximum == minimum:
+        return 100
+    if maximum < minimum:
+        return 1
+    return min(100, max(1, math.floor(100 * (counter - minimum + 1) / (maximum - minimum + 1))))
+
+
+def get_urgency(attack: dict, counter: int) -> UrgencyLevel:
+    """Classify urgency using the 0-100 scale; for documentation and tests."""
+    w = urgency_weight(attack, counter)
+    if w == 0:
+        return UrgencyLevel.LOW
+    if w >= 100:
         return UrgencyLevel.HIGH
-    if counter >= minimum:
-        return UrgencyLevel.MEDIUM
-    return UrgencyLevel.LOW
+    return UrgencyLevel.MEDIUM
 
 
 def _is_eligible(attack: dict, counter: int) -> bool:
-    """An attack is eligible for selection if it meets minimum counter threshold,
-    is not marked inactive, and has not already been performed this round.
-
-    mAlreadyPerformed semantics: treated as an ineligibility flag (attack cannot
-    be re-selected once performed in the current round). This interpretation is
-    an approximation; the native CanAttack override per enemy has not been
-    independently verified.
-    """
     if attack.get('state') == 'inactive':
         return False
     if attack.get('already_performed', False):
         return False
-    return counter >= attack['min']
+    return urgency_weight(attack, counter) > 0
 
 
 def choose_attack(
     attacks: list[dict],
-    rng: 'NativeRng | None',
     counters: list[int],
-) -> int | None:
+    draw: Optional[Callable[[str], int]] = None,
+) -> Optional[int]:
     """Select the attack index the enemy will use this turn.
 
-    Derived from CreatureBaseClass.luc proto 28 (attack selection) and
-    common.luc proto 31 (UrgencyChooser), as documented in the handoff.
+    Derived from CreatureBaseClass.luc proto 28 and common.luc proto 31 (UrgencyChooser),
+    preserving the weighted urgency and RNG consumption behaviour from campaign_simulator.
 
-    Selection rules (approximated; no native encounter fixtures yet):
-    1. Filter to eligible attacks (see _is_eligible).
-    2. Among eligible attacks, find those with the highest urgency level.
-    3. If exactly one HIGH-urgency attack: select it without consuming an RNG draw
-       (the native UrgencyChooser skips the draw for a sole due attack).
-    4. If multiple attacks share the highest urgency: break ties by lowest index.
-       Approximation: native may use QRand here; index-order is a stand-in.
-       The `rng` parameter is accepted but NOT consumed here; callers that recover
-       native tie-breaking behaviour should extend this function.
-    5. If no eligible attacks: return None (enemy waits).
+    Selection order:
+    1. Compute 0-100 urgency weight for each eligible attack.
+    2. Due attacks (weight >= 100): if exactly one, return it without consuming a draw.
+       If multiple, consume draw('ai-due') and index into the due list.
+    3. No due attacks: consume draw('ai-weighted') for weighted random selection over
+       the 0-99 weight distribution. If total weight is zero (all ineligible), return None.
+    4. If only one eligible attack total, return it without a draw regardless of level.
 
     Args:
-        attacks:  List of attack definition dicts (keys: name, min, max, damage,
-                  state, already_performed, rate_counter).
-        rng:      Native RNG instance. Accepted for interface compatibility but
-                  not consumed by the current approximation. Pass None if unknown.
+        attacks:  Attack definition dicts (min, max, state, already_performed, damage, ...).
         counters: Per-attack use counters, same length as attacks.
+        draw:     Callable(label: str) -> int.  Must be provided when a randomised choice
+                  is actually needed (multiple due or weighted selection); may be None when
+                  a single eligible attack or no eligible attack obviates randomness.
 
     Returns:
-        Index into attacks of the chosen attack, or None.
+        Index of the chosen attack, or None if no attack is eligible.
+
+    Approximations (not native-verified):
+        - draw() is expected to return a native engine RNG value; the exact label/consumer
+          string is an approximation.
+        - mAlreadyPerformed semantics and per-enemy CanAttack overrides are unconfirmed.
     """
     if len(attacks) != len(counters):
         raise ValueError('attacks and counters must have the same length')
 
     eligible = [
-        (i, get_urgency(attacks[i], counters[i]))
+        (i, urgency_weight(attacks[i], counters[i]))
         for i in range(len(attacks))
         if _is_eligible(attacks[i], counters[i])
     ]
     if not eligible:
         return None
+    if len(eligible) == 1:
+        return eligible[0][0]
 
-    best_level = max(level for _, level in eligible)
-    candidates = [i for i, level in eligible if level == best_level]
+    due = [i for i, w in eligible if w >= 100]
+    if len(due) == 1:
+        return due[0]
+    if due:
+        if draw is None:
+            raise ValueError('draw required to break tie among multiple due attacks')
+        return due[draw('ai-due') % len(due)]
 
-    # Tie-break: lowest index wins (approximation; native may use QRand).
-    return candidates[0]
+    total = sum(w for _, w in eligible)
+    if not total:
+        return None
+    if draw is None:
+        raise ValueError('draw required for weighted attack selection')
+    value = draw('ai-weighted') % total
+    for i, weight in eligible:
+        if value < weight:
+            return i
+        value -= weight
+    raise AssertionError('Unreachable: weighted selection fell through')
 
 
-def tick_counters(counters: list[int], active_attack_index: int | None) -> list[int]:
-    """Update per-attack use counters after a turn.
+def tick_counters(counters: list[int], active_attack_index: Optional[int]) -> list[int]:
+    """Increment all counters; reset the active attack's counter to 0.
 
-    Derived from CreatureBaseClass.luc proto 28 counter management as described
-    in the handoff (campaign_simulator.py implements the same policy inline).
+    Mirrors campaign_simulator.py inline counter policy (proto 28).
+    Returns a new list; input is not mutated.
 
-    Rules:
-    - All counters are incremented by 1 each turn (including skipped enemy turns).
-    - The counter for the attack that was just used resets to 0 after the
-      increment, so it starts the next round at 0, not 1.
-    - If active_attack_index is None (no attack selected), all counters increment.
-
-    Returns a new list; the input is not mutated.
-
-    Approximation: whether counters increment on a skipped enemy turn is a
-    scenario policy inherited from campaign_simulator.py, not independently
-    native-verified.
+    Approximation: whether counters increment on a skipped enemy turn is a scenario
+    policy inherited from campaign_simulator.py, not independently native-verified.
     """
     result = [c + 1 for c in counters]
     if active_attack_index is not None:

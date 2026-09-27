@@ -25,9 +25,12 @@ FAKE_EXE_HASH = hashlib.sha256(FAKE_EXE_BYTES).hexdigest()
 FAKE_PAK_HASH = hashlib.sha256(FAKE_PAK_BYTES).hexdigest()
 
 
-def _write_fake_game(game_dir: Path):
+def _write_fake_game(game_dir: Path, with_marker: bool = True):
     (game_dir / 'BookwormAdventures.exe').write_bytes(FAKE_EXE_BYTES)
     (game_dir / 'main.pak').write_bytes(FAKE_PAK_BYTES)
+    if with_marker:
+        (game_dir / 'sim-capture-manifest.json').write_text(
+            '{"note":"test-fixture"}\n')
 
 
 class ProcessGuardTests(unittest.TestCase):
@@ -127,15 +130,21 @@ class BuildIdentityTests(unittest.TestCase):
             g = Path(d) / 'game'
             g.mkdir()
             _write_fake_game(g)
+            prefix = Path(d) / 'prefix'
+            prefix.mkdir()
             result = subprocess.run(
                 [sys.executable, str(Path(__file__).parent / 'launch_capture.py'),
                  '--game-dir', str(g),
-                 '--wine-prefix', str(Path(d) / 'prefix'),
+                 '--wine-prefix', str(prefix),
                  '--output-dir', str(Path(d) / 'out')],
                 capture_output=True, text=True)
-            # Wrong hash because fake EXE bytes ≠ EXE_HASH
             self.assertNotEqual(result.returncode, 0)
-            self.assertIn('Unsupported EXE build', result.stderr)
+            # Hash mismatch or staging marker missing — either is a correct rejection.
+            self.assertTrue(
+                'Unsupported EXE build' in result.stderr or
+                'sim-capture-manifest' in result.stderr or
+                'default Wine prefix' in result.stderr,
+                result.stderr)
 
     def test_sha256_helper(self):
         with tempfile.TemporaryDirectory() as d:
@@ -150,9 +159,10 @@ class ManifestTests(unittest.TestCase):
         self._tmp = tempfile.TemporaryDirectory()
         game = Path(self._tmp.name) / 'game'
         game.mkdir()
-        # Write an EXE with the pinned hash by patching the hash constant
-        (game / 'BookwormAdventures.exe').write_bytes(FAKE_EXE_BYTES)
-        (game / 'main.pak').write_bytes(FAKE_PAK_BYTES)
+        _write_fake_game(game, with_marker=True)
+        # Isolated prefix must exist and differ from default (~/.wine)
+        prefix = Path(self._tmp.name) / 'prefix'
+        prefix.mkdir()
         return game
 
     def tearDown(self):

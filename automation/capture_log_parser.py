@@ -12,64 +12,88 @@ Record format emitted by DumpSimulationState.lua:
   AUTOMATION_SIM_EFFECT=<id>|<owner>|<key>|<field>|<value>|E
   AUTOMATION_SIM_UNSUPPORTED=<id>|<owner>|<reason>|E
   AUTOMATION_SIM_END=<id>|E
+
+Quarantine triggers (all produce a non-None quarantine_reason):
+  - BEGIN without END (truncated block)
+  - END without BEGIN
+  - BEGIN/END id mismatch (ambiguous boundary)
+  - Duplicate attack_id (keep first, quarantine repeat)
+  - attack_id below highest seen (session restart)
+  - Any field row whose embedded id differs from the block's BEGIN id
+  - Any field row with a conflicting value for the same (kind, owner, ...) key
+  - Any UNSUPPORTED marker inside the block
+  - Any parse errors (malformed row)
 """
 import re
+from dataclasses import dataclass, field as dc_field
 from typing import Iterable, Optional
-from dataclasses import dataclass, field
 
 _PREFIX = 'AUTOMATION_SIM_'
 _BEGIN_RE = re.compile(r'^AUTOMATION_SIM_BEGIN=(\d+)\|E$')
 _END_RE = re.compile(r'^AUTOMATION_SIM_END=(\d+)\|E$')
 _FIELD_RE = re.compile(r'^AUTOMATION_SIM_(\w+)=(.+)\|E$')
-_CONSOLE_RE = re.compile(r'^\x1b\[|\r$')
+_ANSI_RE = re.compile(r'^\x1b\[[0-9;]*[A-Za-z]')
 
 
 @dataclass
 class ParsedRecord:
     attack_id: int
-    fields: dict
+    fields: dict        # canonical_key → value string; empty on quarantine
     quarantine_reason: Optional[str] = None
 
 
+def _strip_ansi(line: str) -> str:
+    """Remove a leading ANSI escape sequence (e.g. from Wine console redraws)."""
+    return _ANSI_RE.sub('', line)
+
+
 def _clean_line(raw: str) -> str:
-    """Normalise a raw log line: strip trailing whitespace, unescape literal \\n."""
+    """Normalise: strip trailing whitespace, unescape literal \\n sequences."""
     return raw.rstrip().replace('\\n', '\n')
 
 
 def _is_noise(line: str) -> bool:
-    """True for Wine console redraw sequences and blank lines."""
+    """True for blank lines and Wine console redraw sequences."""
     if not line:
         return True
-    if line == '\r' or _CONSOLE_RE.match(line):
+    if line == '\r':
         return True
     return False
 
 
 def parse_sim_log(lines: Iterable[str]) -> list[ParsedRecord]:
-    """Parse sim log lines and return all ParsedRecords (good and quarantined)."""
+    """Parse sim log lines and return all ParsedRecords (good and quarantined).
+
+    Strips leading ANSI escapes before checking for _PREFIX so that
+    console-prefixed AUTOMATION_SIM lines are recovered rather than silently
+    dropped.  All quarantine reasons are explicit strings; callers can split
+    with partition_sim_log().
+    """
     records: list[ParsedRecord] = []
     seen_ids: set[int] = set()
     max_seen_id: Optional[int] = None
 
     pending_id: Optional[int] = None
-    pending_fields: dict = {}
-    pending_rows: list[str] = []
+    pending_fields: dict = {}       # canonical_key → value string
+    pending_errors: list[str] = []  # accumulated quarantine reasons within block
 
     def flush_pending(reason: Optional[str]) -> None:
-        nonlocal pending_id, pending_fields, pending_rows
+        nonlocal pending_id, pending_fields, pending_errors
         if pending_id is not None:
+            all_reasons = ([reason] if reason else []) + pending_errors
             records.append(ParsedRecord(
                 attack_id=pending_id,
-                fields={k: v for k, v in pending_fields.items()
-                        if not (isinstance(k, str) and k.startswith('_'))},
-                quarantine_reason=reason,
+                fields=dict(pending_fields) if not all_reasons else {},
+                quarantine_reason='; '.join(all_reasons) if all_reasons else None,
             ))
         pending_id = None
         pending_fields = {}
-        pending_rows = []
+        pending_errors = []
 
     for raw in lines:
         line = _clean_line(raw)
+        # Strip leading ANSI escape so a console-prefixed sim line is recoverable.
+        line = _strip_ansi(line)
         if _is_noise(line):
             continue
         if not line.startswith(_PREFIX):
@@ -79,28 +103,18 @@ def parse_sim_log(lines: Iterable[str]) -> list[ParsedRecord]:
         if begin_m:
             attack_id = int(begin_m.group(1))
             if pending_id is not None:
-                # Previous block was not closed — truncated
                 flush_pending('truncated: BEGIN without END')
-            # Session restart: new id is lower than the highest we've seen
+            pending_id = attack_id
+            pending_fields = {}
+            pending_errors = []
             if max_seen_id is not None and attack_id < max_seen_id:
-                # Quarantine everything accumulated so far with the old id, if any
-                # (already flushed above if there was a pending)
-                # Mark the new block as a session restart — will quarantine on commit
-                pending_id = attack_id
-                pending_fields = {}
-                pending_rows = [line]
-                pending_fields['_session_restart'] = True
-            else:
-                pending_id = attack_id
-                pending_fields = {}
-                pending_rows = [line]
+                pending_errors.append('session restart: attack_id below previous maximum')
             continue
 
         end_m = _END_RE.match(line)
         if end_m:
             end_id = int(end_m.group(1))
             if pending_id is None:
-                # END without BEGIN
                 records.append(ParsedRecord(
                     attack_id=end_id,
                     fields={},
@@ -108,54 +122,77 @@ def parse_sim_log(lines: Iterable[str]) -> list[ParsedRecord]:
                 ))
                 continue
             if end_id != pending_id:
-                # Conflicting IDs — quarantine this block
                 flush_pending(f'ambiguous boundary: BEGIN id={pending_id} END id={end_id}')
                 continue
 
             attack_id = pending_id
-            reason: Optional[str] = None
+            if attack_id in seen_ids:
+                pending_errors.append(f'duplicate attack_id={attack_id}')
 
-            if pending_fields.get('_session_restart'):
-                reason = 'session restart: attack_id below previous maximum'
-            elif attack_id in seen_ids:
-                reason = f'duplicate attack_id={attack_id}'
-
-            if reason is None:
+            if not pending_errors:
                 seen_ids.add(attack_id)
                 if max_seen_id is None or attack_id > max_seen_id:
                     max_seen_id = attack_id
 
             records.append(ParsedRecord(
                 attack_id=attack_id,
-                fields={k: v for k, v in pending_fields.items()
-                        if not (isinstance(k, str) and k.startswith('_'))},
-                quarantine_reason=reason,
+                fields=dict(pending_fields) if not pending_errors else {},
+                quarantine_reason='; '.join(pending_errors) if pending_errors else None,
             ))
             pending_id = None
             pending_fields = {}
-            pending_rows = []
+            pending_errors = []
             continue
 
-        # Other AUTOMATION_SIM_ lines inside a block
+        # Other AUTOMATION_SIM_ field rows inside a block
         field_m = _FIELD_RE.match(line)
-        if field_m and pending_id is not None:
-            kind = field_m.group(1)
-            rest = field_m.group(2)
-            parts = rest.split('|')
-            # First part is the attack id; verify it matches
-            try:
-                row_id = int(parts[0])
-            except (ValueError, IndexError):
-                pending_fields.setdefault('_parse_errors', []).append(line)
-                continue
-            if row_id != pending_id:
-                pending_fields.setdefault('_id_mismatches', []).append(line)
-                continue
-            key = (kind,) + tuple(parts[1:])
-            if key in pending_fields:
-                pending_fields.setdefault('_duplicates', []).append(line)
-            else:
-                pending_fields[key] = True
+        if field_m is None or pending_id is None:
+            continue
+
+        kind = field_m.group(1)
+        rest = field_m.group(2)
+        parts = rest.split('|')
+
+        # First part is the embedded attack id
+        try:
+            row_id = int(parts[0])
+        except (ValueError, IndexError):
+            pending_errors.append(f'parse error: malformed row: {line!r}')
+            continue
+
+        if row_id != pending_id:
+            pending_errors.append(
+                f'id mismatch in {kind} row: block={pending_id} row={row_id}')
+            continue
+
+        # UNSUPPORTED rows signal hidden state; quarantine the whole block.
+        if kind == 'UNSUPPORTED':
+            reason = '|'.join(parts[1:]) if len(parts) > 1 else 'unknown'
+            pending_errors.append(f'unsupported state: {reason}')
+            continue
+
+        # Build a canonical key that excludes the value so conflicts are detectable.
+        # CREATURE: parts = [id, owner, field, value]      → key=(CREATURE, owner, field)
+        # ATTACK:   parts = [id, owner, atk_key, field, value] → key=(ATTACK, owner, atk_key, field)
+        # EFFECT:   parts = [id, owner, eff_key, field, value] → key=(EFFECT, owner, eff_key, field)
+        # Others:   all dimension parts form the key, last part is the value.
+        if len(parts) < 3:
+            pending_errors.append(f'parse error: too few parts in {kind} row: {line!r}')
+            continue
+
+        value = parts[-1]
+        # key = (kind, *dimension_parts_excluding_value)
+        canonical_key = (kind,) + tuple(parts[1:-1])
+
+        if canonical_key in pending_fields:
+            existing = pending_fields[canonical_key]
+            if existing != value:
+                pending_errors.append(
+                    f'conflicting values for {canonical_key}: '
+                    f'{existing!r} vs {value!r}')
+            # Exact duplicate (same value): silently skip.
+        else:
+            pending_fields[canonical_key] = value
 
     # Any unclosed pending block at EOF
     if pending_id is not None:

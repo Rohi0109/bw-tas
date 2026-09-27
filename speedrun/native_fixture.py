@@ -149,11 +149,24 @@ def _validate_rng_interval(interval):
         )
 
 
+_PRE_SUBMIT_REQUIRED = {'player_hp', 'enemy_hp'}
+_OBSERVED_REQUIRED = {'player_hp', 'enemy_hp'}
+
+
 def _validate_pre_submit(pre_submit):
     if not isinstance(pre_submit, dict):
         raise ValueError('pre_submit must be a dict')
+    missing = _PRE_SUBMIT_REQUIRED - set(pre_submit)
+    if missing:
+        raise ValueError(f'pre_submit missing required fields: {missing}')
+    for key in _PRE_SUBMIT_REQUIRED:
+        if not isinstance(pre_submit[key], (int, float)) or isinstance(pre_submit[key], bool):
+            raise ValueError(f'pre_submit[{key!r}] must be a number')
 
 
 def _validate_observed(observed):
     if not isinstance(observed, dict):
         raise ValueError('observed must be a dict')
+    missing = _OBSERVED_REQUIRED - set(observed)
+    if missing:
+        raise ValueError(f'observed missing required fields: {missing}')
