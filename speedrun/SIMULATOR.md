@@ -205,3 +205,54 @@ Related evidence: [STATE_GRAPH](STATE_GRAPH.md),
 [TRANSITION_BASELINE](TRANSITION_BASELINE.md),
 [native damage audit](audit_native_damage.py), and
 [transition replay](simulate_transitions.py).
+
+## Encounter state inventory — 2026-09-27
+
+### Fields required for P2 plain encounter (captured / missing)
+
+| Field | Source | Status |
+| --- | --- | --- |
+| board | DumpBoard.lua | Available |
+| player_hp, player_max_hp | DumpSimulationState.lua | Available |
+| player_offense (mOffenseBonusPct) | DumpSimulationState.lua | Available |
+| player_damage_buffer | DumpSimulationState.lua | Available |
+| enemy_hp, enemy_max_hp, enemy_name | DumpSimulationState.lua | Available |
+| enemy_attacks (all fields) | DumpSimulationState.lua | Available |
+| enemy_counters | (not in current hook) | Missing — need per-attack use counter |
+| engine_rng (words+cursor) | capture_native_rng_gdb.py | Available |
+| engine_rng_draw_index | capture_native_rng_gdb.py | Available (per-draw index) |
+| qrand_state | not captured | UNSUPPORTED — affects attack tie-breaking |
+| player_effects, enemy_effects | DumpSimulationState.lua scalars | Available but queue state UNSUPPORTED |
+| gems, tile_powers | DumpBoard.lua | Available; any non-none → ineligible |
+
+Key gaps for P2: enemy_counters (per-attack use counter vs mRateCounter) not emitted by
+current hook; qrand_state permanently unsupported until a QRand capture mechanism exists.
+
+`encounter_state.py` implements `build_encounter_state`, `encounter_eligibility`,
+`serialise`, and `deserialise`; 26 tests cover eligibility classification, round-trip
+serialisation, and input validation.
+
+## Native enemy AI — 2026-09-27
+
+### AI semantics recovered
+
+`native_enemy_ai.py` ports the recoverable enemy selection semantics to testable
+Python. Evidence source: handoff-documented bytecode proto indexes (CreatureBaseClass
+proto 28, AttackBaseClass protos 5/6, common proto 31) plus the inline approximation
+in `campaign_simulator.py`. No independent bytecode execution or native encounter
+fixture has confirmed these rules end-to-end.
+
+- `UrgencyLevel` (HIGH/MEDIUM/LOW): thresholds at counter >= max and counter >= min,
+  derived from handoff proto 28 evidence. The full native 0-100 percentage scale
+  from AttackBaseClass is collapsed to three selection-relevant tiers; weighted
+  probability within the MEDIUM band is not modeled.
+- `choose_attack`: highest-urgency-wins selection; sole HIGH attack skips the draw
+  (matching campaign_simulator.py's UrgencyChooser policy). Index-order tie-breaking
+  is an approximation — native may use QRand.
+- `tick_counters`: all counters increment each turn; the chosen attack resets to 0.
+
+**Unsupported:** QRand tie-breaking, per-enemy CanAttack Lua overrides, boss-phase
+transitions, special-enemy no-attack behavior, mAlreadyPerformed native semantics.
+
+**24 unit tests** exercise eligibility, urgency boundaries, tie-breaking, counter
+update and edge cases. Tests confirm the declared model only; no native oracle.
