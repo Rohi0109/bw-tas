@@ -83,17 +83,61 @@ Existing board/selected-slot/damage telemetry remains available. It does not yet
 join the debugger's draw index to the Lua attack ID. **Do not treat these two
 streams as causally aligned merely because they were collected together.**
 
+## Parent-launch harness — 2026-09-27
+
+`automation/launch_capture.py` replaces manual GDB invocation for the
+ptrace_scope=1 case. It uses GDB as process parent (not sibling attach):
+
+```sh
+python3 automation/launch_capture.py \
+  --game-dir  runtime/experiments/sim-capture-v1 \
+  --wine-prefix runtime/experiments/sim-capture-prefix \
+  --output-dir runtime/experiments/run-$(date +%Y%m%dT%H%M%S) \
+  --draws 700 --timeout 300
+```
+
+The harness:
+- Checks for duplicate controllers via `/proc` maps before launching.
+- Verifies EXE/PAK hashes before starting GDB.
+- Starts `gdb --nx --quiet --batch -ex 'source launch_capture_gdb.py' --args wine ...`
+- `launch_capture_gdb.py` watches `gdb.events.new_objfile` for the game binary,
+  sets a one-shot hardware gate at `0x5ab4b0`, then activates Entry/Returned
+  capture (same logic as `capture_native_rng_gdb.py`).
+- Enforces `--timeout` wall-clock limit; SIGTERMs the GDB tree on expiry.
+- Writes `run-manifest.json` and a combined GDB+game `gdb-combined.log`.
+- Lua pre-submit scalars appear in `gdb-combined.log` (Wine stdout mixed with
+  GDB output); parse with `automation/capture_log_parser.py`.
+
+Output is verified the same way as probe captures:
+```sh
+python3 speedrun/verify_rng_capture.py \
+  runtime/experiments/run-.../rng-capture.jsonl \
+  --output /tmp/verify.json
+```
+
+**Remaining gap for P0 gate**: the hardware gate at `0x5ab4b0` fires on the
+first engine RNG draw in the live game. The game must progress past the main
+menu to produce RNG draws. Navigate to a battle manually or run the TAS
+controller against the isolated window (it is isolated from the normal install;
+no duplicate controller restriction applies). Once draws begin, the harness
+captures them autonomously and detaches at the draw budget.
+
+Confirm the Lua scalar hook (`DumpSimulationState.lua`) executes by checking
+`gdb-combined.log` for `AUTOMATION_SIM_BEGIN=` lines after the battle starts.
+That satisfies the second part of the P0 gate.
+
 ## Next acceptance gate
 
-1. Launch the staged copy with an isolated Wine prefix/profile and a supported
-   debugger attachment path; never run two controllers against the same window.
-2. Confirm the pre-submit scalar records execute correctly in one plain encounter.
-3. Add a shared attack-boundary identifier to native RNG events and a post-turn
-   hidden-state snapshot; validate console redraw deduplication and missing events.
+1. Run `launch_capture.py` against the staged install; navigate to a battle;
+   confirm 700 draws with `verify_rng_capture.py` — zero divergence required.
+2. Confirm `AUTOMATION_SIM_BEGIN/END` lines appear in `gdb-combined.log`;
+   run `capture_log_parser.py` against that log; no quarantined records.
+3. Add a shared attack-boundary identifier linking RNG draw indexes to Lua
+   attack IDs; add post-turn hidden-state snapshot; validate deduplication.
 4. Establish full state restoration or explicitly limit the trial to observable
    primitives. An RNG snapshot alone is not a game checkpoint.
 5. Capture repeated identical-state trials before using records as full-turn
-   differential fixtures. Unsupported hidden state must fail the eligibility gate.
+   differential fixtures. Use `speedrun/encounter_state.py` eligibility gate.
 
 The initial infrastructure validation used only the isolated native RNG probe.
 A subsequent isolated Wine launch reached the game window under a parent GDB
