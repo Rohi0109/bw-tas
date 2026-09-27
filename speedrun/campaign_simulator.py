@@ -33,6 +33,8 @@ def validate_checkpoint(state):
         number(state[key], key)
     if state['player_hp'] > state['player_max_hp']:
         raise ValueError('Player HP exceeds maximum')
+    if state['player_max_hp'] != state['definition']['initial']['player_hp']:
+        raise ValueError('Checkpoint maximum HP differs from campaign definition')
     for key in ('encounter','turn','xp','rng_draws'):
         integer(state[key], key)
     for owner in ('player','enemy'):
@@ -43,18 +45,30 @@ def validate_checkpoint(state):
         raise ValueError('Invalid campaign status')
     if state['encounter'] > count or (state['encounter'] == count) != (state['status'] == 'campaign-complete'):
         raise ValueError('Invalid campaign boundary')
+    if state['status'] == 'campaign-complete' and (state['enemy_hp'] != 0 or state['player_hp'] == 0):
+        raise ValueError('Completed campaign requires a surviving player and defeated enemy')
     if state['status'] == 'running' and (state['player_hp'] == 0 or state['enemy_hp'] == 0):
         raise ValueError('Running checkpoint has a defeated combatant')
     if state['status'] == 'player-defeated' and state['player_hp'] != 0:
         raise ValueError('Defeated player must have zero HP')
-    if state['encounter'] < count:
-        enemy = state['definition']['encounters'][state['encounter']]
-        if len(state['counters']) != len(enemy['attacks']) or state['enemy_hp'] > enemy['hp']:
-            raise ValueError('Checkpoint does not match encounter')
+    enemy = state['definition']['encounters'][min(state['encounter'], count-1)]
+    if len(state['counters']) != len(enemy['attacks']) or state['enemy_hp'] > enemy['hp']:
+        raise ValueError('Checkpoint does not match encounter')
+    expected_xp = sum(e['reward']['xp'] for e in state['definition']['encounters'][:state['encounter']])
+    if state['xp'] != expected_xp:
+        raise ValueError('Checkpoint XP differs from completed encounter rewards')
+    if state['status'] == 'no-playable-word':
+        if (state['player_hp'] == 0 or state['enemy_hp'] == 0
+                or any(path_for(state['board'], word) is not None
+                       for word in state['definition']['initial']['words'])):
+            raise ValueError('Checkpoint no-playable-word status contradicts state')
     for counter in state['counters']:
         integer(counter, 'attack counter')
     rng = NativeRng()
     rng.restore(NativeRngState(**state['rng']))
+    expected_cursor = (state['rng_draws']-1) % 624 + 1 if state['rng_draws'] else 624
+    if rng.snapshot().cursor != expected_cursor:
+        raise ValueError('RNG draw count disagrees with checkpoint cursor')
 
 
 def number(value, name, minimum=0):

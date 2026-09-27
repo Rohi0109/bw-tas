@@ -84,6 +84,34 @@ class CampaignTests(unittest.TestCase):
         state['counters'] = []
         with self.assertRaises(ValueError): simulate(state)
 
+    def test_fabricated_terminal_statuses_rejected(self):
+        for changes in [dict(status='campaign-complete', encounter=2),
+                        dict(status='no-playable-word'), dict(xp=999),
+                        dict(player_max_hp=100), dict(rng_draws=999)]:
+            with self.subTest(changes=changes):
+                state = create(self.definition())
+                state.update(changes)
+                with self.assertRaises(ValueError): simulate(state)
+
+    def test_completed_checkpoint_is_valid_but_reward_corruption_is_not(self):
+        completed = simulate(create(self.definition()))
+        self.assertEqual(simulate(completed['checkpoint'])['status'], 'campaign-complete')
+        completed['checkpoint']['xp'] += 1
+        with self.assertRaises(ValueError): simulate(completed['checkpoint'])
+
+    def test_draw_ledger_crosses_twist_and_replays(self):
+        definition = self.definition()
+        definition['rng_schedule']['before-player'] = 625
+        initial = create(definition)
+        first, events = step(initial)
+        draws = [e for e in events if e['kind']=='rng']
+        from native_rng import NativeRng
+        oracle = NativeRng(definition['initial']['seed'])
+        self.assertEqual([e['value'] for e in draws], [oracle.next_rand() for _ in draws])
+        self.assertEqual([e['index'] for e in draws], list(range(1,len(draws)+1)))
+        self.assertEqual(first['rng']['cursor'], oracle.snapshot().cursor)
+        simulate(first)  # Import validation accepts the post-twist cursor.
+
 
 if __name__ == '__main__':
     unittest.main()
