@@ -15,6 +15,7 @@ Rules:
   - Teacher-forced fixtures (recorded draw schedule used as input) must be
     labeled 'teacher_forced: true' and excluded from full-turn parity totals.
 """
+import math
 from enum import Enum
 
 SCHEMA_VERSION = 1
@@ -149,7 +150,7 @@ def _validate_rng_interval(interval):
         )
 
 
-_PRE_SUBMIT_REQUIRED = {'player_hp', 'enemy_hp'}
+_PRE_SUBMIT_REQUIRED = {'player_hp', 'enemy_hp', 'board', 'selected_action', 'combat_state', 'rng_snapshot'}
 _OBSERVED_REQUIRED = {'player_hp', 'enemy_hp'}
 
 
@@ -159,9 +160,31 @@ def _validate_pre_submit(pre_submit):
     missing = _PRE_SUBMIT_REQUIRED - set(pre_submit)
     if missing:
         raise ValueError(f'pre_submit missing required fields: {missing}')
-    for key in _PRE_SUBMIT_REQUIRED:
-        if not isinstance(pre_submit[key], (int, float)) or isinstance(pre_submit[key], bool):
+    for key in ('player_hp', 'enemy_hp'):
+        v = pre_submit[key]
+        if not isinstance(v, (int, float)) or isinstance(v, bool):
             raise ValueError(f'pre_submit[{key!r}] must be a number')
+        if not math.isfinite(v):
+            raise ValueError(f'pre_submit[{key!r}] must be finite, got {v!r}')
+        if v < 0:
+            raise ValueError(f'pre_submit[{key!r}] must be non-negative, got {v!r}')
+    board = pre_submit['board']
+    if not isinstance(board, list) or not board:
+        raise ValueError("pre_submit['board'] must be a non-empty list")
+    action = pre_submit['selected_action']
+    if not isinstance(action, str) or not action:
+        raise ValueError("pre_submit['selected_action'] must be a non-empty string")
+    state = pre_submit['combat_state']
+    if not isinstance(state, str) or not state:
+        raise ValueError("pre_submit['combat_state'] must be a non-empty string")
+    snap = pre_submit['rng_snapshot']
+    if not isinstance(snap, dict):
+        raise ValueError("pre_submit['rng_snapshot'] must be a dict")
+    if 'words' not in snap or not isinstance(snap['words'], list):
+        raise ValueError("pre_submit['rng_snapshot']['words'] must be a list")
+    if ('cursor' not in snap or not isinstance(snap['cursor'], int)
+            or isinstance(snap['cursor'], bool)):
+        raise ValueError("pre_submit['rng_snapshot']['cursor'] must be an integer")
 
 
 def _validate_observed(observed):
@@ -170,3 +193,11 @@ def _validate_observed(observed):
     missing = _OBSERVED_REQUIRED - set(observed)
     if missing:
         raise ValueError(f'observed missing required fields: {missing}')
+    for key in ('player_hp', 'enemy_hp'):
+        v = observed[key]
+        if not isinstance(v, (int, float)) or isinstance(v, bool):
+            raise ValueError(f'observed[{key!r}] must be a number')
+        if not math.isfinite(v):
+            raise ValueError(f'observed[{key!r}] must be finite, got {v!r}')
+        if v < 0:
+            raise ValueError(f'observed[{key!r}] must be non-negative, got {v!r}')

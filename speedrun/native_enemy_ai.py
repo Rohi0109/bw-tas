@@ -89,14 +89,17 @@ def choose_attack(
        If multiple, consume draw('ai-due') and index into the due list.
     3. No due attacks: consume draw('ai-weighted') for weighted random selection over
        the 0-99 weight distribution. If total weight is zero (all ineligible), return None.
-    4. If only one eligible attack total, return it without a draw regardless of level.
+
+    Note: a single non-due eligible attack (weight 1-99) still consumes draw('ai-weighted').
+    Only a sole DUE attack (weight >= 100) skips the draw (handled in step 2 above).
 
     Args:
         attacks:  Attack definition dicts (min, max, state, already_performed, damage, ...).
         counters: Per-attack use counters, same length as attacks.
         draw:     Callable(label: str) -> int.  Must be provided when a randomised choice
-                  is actually needed (multiple due or weighted selection); may be None when
-                  a single eligible attack or no eligible attack obviates randomness.
+                  is actually needed (multiple due, or weighted selection including a single
+                  non-due eligible attack); may be None only when a sole due attack or no
+                  eligible attack obviates randomness.
 
     Returns:
         Index of the chosen attack, or None if no attack is eligible.
@@ -116,8 +119,6 @@ def choose_attack(
     ]
     if not eligible:
         return None
-    if len(eligible) == 1:
-        return eligible[0][0]
 
     due = [i for i, w in eligible if w >= 100]
     if len(due) == 1:

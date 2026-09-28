@@ -28,6 +28,11 @@ EXE_HASH = '7fa527a59ff1108b98b0d18b0625d280029c0fd6c5fb3f91bb2f168b95968c67'
 PROC_ROOT = Path('/proc')
 STAGED_MARKER = 'sim-capture-manifest.json'
 DEFAULT_WINE_PREFIX = Path.home() / '.wine'
+STAGED_PROVENANCE_VALUE = 'prepare_sim_capture'
+_REPO_ROOT = Path(__file__).parent.parent
+NORMAL_GAME_DIR = (_REPO_ROOT / 'runtime' / 'deluxe-modded').resolve()
+NORMAL_WINE_PREFIX = (_REPO_ROOT / 'runtime' / 'wineprefix').resolve()
+CLEANUP_GRACE_S = 2
 
 
 def _pids_mapping_exe(exe_path: Path) -> list[int]:
@@ -50,6 +55,19 @@ def _pids_mapping_exe(exe_path: Path) -> list[int]:
 
 def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _is_pgid_alive(pgid: int) -> bool:
+    """True if any process in the given group is still running."""
+    try:
+        os.killpg(pgid, 0)
+        return True
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True  # group exists, we lack permission to signal it
+    except OSError:
+        return False
 
 
 def _killpg_safe(pgid: int, sig: int) -> None:
@@ -97,9 +115,29 @@ def main():
             f'--game-dir does not contain {STAGED_MARKER}; '
             'run prepare_sim_capture.py first to create an isolated staged copy')
 
+    # Validate staged provenance so only prepare_sim_capture.py installs are accepted.
+    try:
+        staged_manifest = json.loads(marker.read_text())
+    except (json.JSONDecodeError, OSError) as exc:
+        parser.error(f'{STAGED_MARKER} is not valid JSON: {exc}')
+    if staged_manifest.get('staged_by') != STAGED_PROVENANCE_VALUE:
+        parser.error(
+            f'{STAGED_MARKER} lacks staged_by={STAGED_PROVENANCE_VALUE!r}; '
+            'only installs prepared by prepare_sim_capture.py are accepted')
+
     for path in (exe, pak):
         if not path.exists():
             parser.error(f'Required file not found: {path}')
+
+    # Reject the normal project installation and Wine prefix.
+    if game == NORMAL_GAME_DIR:
+        parser.error(
+            '--game-dir is the normal project installation (runtime/deluxe-modded); '
+            'only the staged capture copy prepared by prepare_sim_capture.py is accepted')
+    if prefix == NORMAL_WINE_PREFIX:
+        parser.error(
+            '--wine-prefix is the normal project Wine prefix (runtime/wineprefix); '
+            'supply an isolated prefix for this capture session')
 
     # Refuse if game-dir and wine-prefix are the same path.
     if game == prefix:
@@ -205,6 +243,9 @@ def main():
         elif pgid is not None:
             # GDB exited but may have detached descendants (Wine, game server).
             _killpg_safe(pgid, signal.SIGTERM)
+            time.sleep(CLEANUP_GRACE_S)
+            if _is_pgid_alive(pgid):
+                _killpg_safe(pgid, signal.SIGKILL)
 
     elapsed = time.monotonic() - start_mono
     manifest['elapsed_s'] = round(elapsed, 2)

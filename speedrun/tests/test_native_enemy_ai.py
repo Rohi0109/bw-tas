@@ -101,21 +101,33 @@ class GetUrgencyTests(unittest.TestCase):
 
 class ChooseAttackTests(unittest.TestCase):
     def test_single_eligible_attack_no_draw_needed(self):
-        # Single eligible: no draw consumed regardless of draw=None.
-        attacks = [atk(min=0, max=5)]
-        self.assertEqual(choose_attack(attacks, [2], None), 0)
+        # Single eligible DUE attack (weight=100): no draw consumed.
+        attacks = [atk(min=2, max=5)]  # at counter=5, weight=100 (due)
+        self.assertEqual(choose_attack(attacks, [5], None), 0)
 
     def test_no_eligible_attacks_returns_none(self):
         attacks = [atk(min=5, max=10)]
         self.assertIsNone(choose_attack(attacks, [2], None))
 
+    def test_single_non_due_eligible_consumes_draw(self):
+        # A sole non-due eligible attack must still consume ai-weighted draw.
+        attacks = [atk(min=0, max=5)]  # counter=2, weight=50 (non-due)
+        result = choose_attack(attacks, [2], draw_returning(0))
+        self.assertEqual(result, 0)
+
+    def test_single_non_due_eligible_none_draw_raises(self):
+        # draw=None raises ValueError when only a weighted draw could decide.
+        attacks = [atk(min=0, max=5)]  # counter=2, weight=50 (non-due)
+        with self.assertRaises(ValueError):
+            choose_attack(attacks, [2], None)
+
     def test_inactive_attack_not_eligible(self):
         attacks = [atk(min=0, max=5, state='inactive'), atk(min=0, max=5)]
-        self.assertEqual(choose_attack(attacks, [3, 3], None), 1)
+        self.assertEqual(choose_attack(attacks, [3, 3], draw_returning(0)), 1)
 
     def test_already_performed_not_eligible(self):
         attacks = [atk(min=0, max=5, already_performed=True), atk(min=0, max=5)]
-        self.assertEqual(choose_attack(attacks, [3, 3], None), 1)
+        self.assertEqual(choose_attack(attacks, [3, 3], draw_returning(0)), 1)
 
     def test_all_attacks_ineligible_returns_none(self):
         attacks = [atk(min=5, max=10, name='X'), atk(min=8, max=12, name='Y')]

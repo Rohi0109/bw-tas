@@ -42,7 +42,8 @@ def prepare(source, output):
             raise ValueError('Expected exactly one script replacement')
         shutil.copytree(source, output, ignore=shutil.ignore_patterns('*.log','*.jsonl','.tas-*','*.lock'))
         shutil.copy2(pak, output/'main.pak')
-    manifest = dict(executable_sha256=digest(output/'BookwormAdventures.exe'),
+    manifest = dict(staged_by='prepare_sim_capture',
+                    executable_sha256=digest(output/'BookwormAdventures.exe'),
                     source_pak_sha256=digest(source/'main.pak'),
                     capture_pak_sha256=digest(output/'main.pak'),
                     hook_sha256=digest(ROOT/'automation/lua_hook/DumpSimulationState.lua'),

@@ -6,6 +6,7 @@ validation, manifest writing, and timeout handling via subprocess mocks.
 import hashlib
 import json
 import os
+import signal
 import subprocess
 import sys
 import tempfile
@@ -18,6 +19,9 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 import launch_capture
 
+_REPO_ROOT = Path(__file__).parent.parent
+NORMAL_WINE_PREFIX_PATH = _REPO_ROOT / 'runtime' / 'wineprefix'
+NORMAL_GAME_DIR_PATH = _REPO_ROOT / 'runtime' / 'deluxe-modded'
 
 FAKE_EXE_BYTES = b'MZfake-exe'
 FAKE_PAK_BYTES = b'fake-pak'
@@ -30,7 +34,7 @@ def _write_fake_game(game_dir: Path, with_marker: bool = True):
     (game_dir / 'main.pak').write_bytes(FAKE_PAK_BYTES)
     if with_marker:
         (game_dir / 'sim-capture-manifest.json').write_text(
-            '{"note":"test-fixture"}\n')
+            '{"staged_by":"prepare_sim_capture","note":"test-fixture"}\n')
 
 
 class ProcessGuardTests(unittest.TestCase):
@@ -152,6 +156,30 @@ class BuildIdentityTests(unittest.TestCase):
             p.write_bytes(b'hello')
             self.assertEqual(launch_capture._sha256(p),
                              hashlib.sha256(b'hello').hexdigest())
+
+
+class NormalProfileProtectionTests(unittest.TestCase):
+    def _run(self, args):
+        result = subprocess.run(
+            [sys.executable, str(Path(__file__).parent / 'launch_capture.py')] + args,
+            capture_output=True, text=True)
+        return result
+
+    def test_normal_wine_prefix_rejected(self):
+        with tempfile.TemporaryDirectory() as d:
+            g = Path(d) / 'game'
+            g.mkdir()
+            _write_fake_game(g)
+            result = self._run([
+                '--game-dir', str(g),
+                '--wine-prefix', str(NORMAL_WINE_PREFIX_PATH),
+                '--output-dir', str(Path(d) / 'out'),
+            ])
+            self.assertNotEqual(result.returncode, 0)
+            self.assertTrue(
+                'wineprefix' in result.stderr or 'normal project' in result.stderr
+                or 'sim-capture-manifest' in result.stderr,
+                f'Expected rejection message, got: {result.stderr}')
 
 
 class ManifestTests(unittest.TestCase):
@@ -280,6 +308,33 @@ class ManifestTests(unittest.TestCase):
         # The guard is tested via subprocess without mocks: just verify error text
         # is present OR the command fails (either hash or guard error)
         self.assertNotEqual(result.returncode, 0)
+
+
+class ProcessGroupCleanupTests(unittest.TestCase):
+    def test_stubborn_child_killed_by_sigkill(self):
+        # Verify _is_pgid_alive and SIGKILL path work end-to-end with a real process.
+        child = subprocess.Popen(
+            [sys.executable, '-c',
+             'import signal, time; signal.signal(signal.SIGTERM, signal.SIG_IGN); time.sleep(60)'],
+            start_new_session=True)
+        pgid = child.pid
+        try:
+            launch_capture._killpg_safe(pgid, signal.SIGTERM)
+            time.sleep(0.2)
+            self.assertTrue(
+                launch_capture._is_pgid_alive(pgid),
+                'child should still be alive after SIGTERM it ignores')
+            launch_capture._killpg_safe(pgid, signal.SIGKILL)
+            child.wait(timeout=5)
+            self.assertFalse(
+                launch_capture._is_pgid_alive(pgid),
+                'child should be dead after SIGKILL')
+        finally:
+            launch_capture._killpg_safe(pgid, signal.SIGKILL)
+            try:
+                child.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                pass
 
 
 if __name__ == '__main__':

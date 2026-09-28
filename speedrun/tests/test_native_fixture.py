@@ -22,7 +22,14 @@ def _minimal_fixture(**overrides) -> dict:
         'encounter_instance': 0,
         'attack_id': 1,
         'rng_interval': {'first': 10, 'last': 15},
-        'pre_submit': {'player_hp': 10, 'enemy_hp': 5},
+        'pre_submit': {
+            'player_hp': 10,
+            'enemy_hp': 5,
+            'board': ['t', 'e', 's', 't'],
+            'selected_action': 'TEST',
+            'combat_state': 'normal',
+            'rng_snapshot': {'words': [0] * 624, 'cursor': 0},
+        },
         'observed': {'player_hp': 9, 'enemy_hp': 0},
         'unsupported_state': [],
         'teacher_forced': False,
@@ -154,6 +161,49 @@ class ValidateFixtureTests(unittest.TestCase):
 
     def test_observed_missing_field_raises(self):
         f = _minimal_fixture(observed={'player_hp': 9})
+        with self.assertRaises(ValueError):
+            validate_fixture(f)
+
+    def test_pre_submit_nan_hp_raises(self):
+        ps = dict(_minimal_fixture()['pre_submit'])
+        ps['player_hp'] = float('nan')
+        f = _minimal_fixture(pre_submit=ps)
+        with self.assertRaises(ValueError):
+            validate_fixture(f)
+
+    def test_pre_submit_negative_hp_raises(self):
+        ps = dict(_minimal_fixture()['pre_submit'])
+        ps['enemy_hp'] = -1
+        f = _minimal_fixture(pre_submit=ps)
+        with self.assertRaises(ValueError):
+            validate_fixture(f)
+
+    def test_pre_submit_missing_board_raises(self):
+        ps = dict(_minimal_fixture()['pre_submit'])
+        del ps['board']
+        f = _minimal_fixture(pre_submit=ps)
+        with self.assertRaises(ValueError):
+            validate_fixture(f)
+
+    def test_pre_submit_missing_rng_snapshot_raises(self):
+        ps = dict(_minimal_fixture()['pre_submit'])
+        del ps['rng_snapshot']
+        f = _minimal_fixture(pre_submit=ps)
+        with self.assertRaises(ValueError):
+            validate_fixture(f)
+
+    def test_observed_non_numeric_hp_raises(self):
+        f = _minimal_fixture(observed={'player_hp': 'nine', 'enemy_hp': 0})
+        with self.assertRaises(ValueError):
+            validate_fixture(f)
+
+    def test_observed_none_hp_raises(self):
+        f = _minimal_fixture(observed={'player_hp': None, 'enemy_hp': 0})
+        with self.assertRaises(ValueError):
+            validate_fixture(f)
+
+    def test_observed_negative_hp_raises(self):
+        f = _minimal_fixture(observed={'player_hp': -1, 'enemy_hp': 0})
         with self.assertRaises(ValueError):
             validate_fixture(f)
 

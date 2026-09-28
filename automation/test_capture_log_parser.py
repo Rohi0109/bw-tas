@@ -76,7 +76,9 @@ class ParseSimLogTests(unittest.TestCase):
         # is sufficient for a complete block — either way it must produce a record.
         self.assertIsNotNone(records)
 
-    def test_escaped_newlines_in_values_tolerated(self):
+    def test_escaped_newlines_in_values_quarantine_block(self):
+        # A value containing literal \\n (backslash-n) gets split by _split_raw_line
+        # into an incomplete sub-line that fails to match the field regex → quarantine.
         lines = [
             'AUTOMATION_SIM_BEGIN=2|E',
             r'AUTOMATION_SIM_CREATURE=2|player|mName|Lex\nicon|E',
@@ -85,7 +87,7 @@ class ParseSimLogTests(unittest.TestCase):
         ]
         records = parse_sim_log(lines)
         self.assertEqual(len(records), 1)
-        self.assertIsNone(records[0].quarantine_reason)
+        self.assertIsNotNone(records[0].quarantine_reason)
 
     def test_session_restart_quarantines_new_lower_id(self):
         records = parse_sim_log(_block(5) + _block(3))
@@ -206,6 +208,41 @@ class ParseSimLogTests(unittest.TestCase):
         ]
         records = parse_sim_log(lines)
         self.assertEqual(records[0].fields, {})
+
+    def test_backspace_prefix_recovered(self):
+        # Lines with leading backspace characters before the sim prefix are recovered.
+        lines = [
+            '\x08\x08AUTOMATION_SIM_BEGIN=11|E',
+            'AUTOMATION_SIM_CREATURE=11|player|mHealth|10|E',
+            'AUTOMATION_SIM_CREATURE=11|enemy|mHealth|5|E',
+            '\x08AUTOMATION_SIM_END=11|E',
+        ]
+        records = parse_sim_log(lines)
+        self.assertEqual(len(records), 1)
+        self.assertIsNone(records[0].quarantine_reason)
+
+    def test_escaped_rn_splits_multiple_records(self):
+        # A single raw line with \\n between records produces one good record.
+        raw_line = ('AUTOMATION_SIM_BEGIN=12|E\\n'
+                    'AUTOMATION_SIM_CREATURE=12|player|mHealth|10|E\\n'
+                    'AUTOMATION_SIM_CREATURE=12|enemy|mHealth|5|E\\n'
+                    'AUTOMATION_SIM_END=12|E')
+        records = parse_sim_log([raw_line])
+        self.assertEqual(len(records), 1)
+        self.assertIsNone(records[0].quarantine_reason)
+
+    def test_missing_field_terminator_quarantines_block(self):
+        # A field row missing |E terminator inside a block quarantines it.
+        lines = [
+            'AUTOMATION_SIM_BEGIN=13|E',
+            'AUTOMATION_SIM_CREATURE=13|player|mHealth|10',  # no |E
+            'AUTOMATION_SIM_CREATURE=13|enemy|mHealth|5|E',
+            'AUTOMATION_SIM_END=13|E',
+        ]
+        records = parse_sim_log(lines)
+        self.assertEqual(len(records), 1)
+        self.assertIsNotNone(records[0].quarantine_reason)
+        self.assertIn('malformed', records[0].quarantine_reason)
 
 
 if __name__ == '__main__':
