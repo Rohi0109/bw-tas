@@ -208,6 +208,10 @@ def build_encounter_state(data: dict) -> 'EncounterState':
             v = normalised[req_key]
             if not isinstance(v, int) or isinstance(v, bool):
                 raise ValueError(f'enemy_attacks[{i}][{req_key!r}] must be an integer')
+        if 'damage' in normalised:
+            d = normalised['damage']
+            if not isinstance(d, (int, float)) or isinstance(d, bool) or not math.isfinite(float(d)):
+                raise ValueError(f'enemy_attacks[{i}][\'damage\'] must be a finite number, got {d!r}')
         if 'rate_counter' in normalised:
             if normalised['rate_counter'] != counters[i]:
                 raise ValueError(

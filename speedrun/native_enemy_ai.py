@@ -102,11 +102,15 @@ def _to_int(v, field: str) -> int:
 
 def _to_float(v, field: str) -> float:
     if isinstance(v, (int, float)) and not isinstance(v, bool):
-        return float(v)
-    try:
-        return float(v)
-    except (TypeError, ValueError):
-        raise ValueError(f'{field!r}: cannot convert {v!r} to float')
+        result = float(v)
+    else:
+        try:
+            result = float(v)
+        except (TypeError, ValueError):
+            raise ValueError(f'{field!r}: cannot convert {v!r} to float')
+    if not math.isfinite(result):
+        raise ValueError(f'{field!r}: non-finite float {result!r} not accepted')
+    return result
 
 
 def convert_hook_attack_types(raw: dict) -> dict:
@@ -125,6 +129,22 @@ def convert_hook_attack_types(raw: dict) -> dict:
             result[k] = _to_float(v, k)
         else:
             result[k] = v  # pass through (name fields etc.)
+    return result
+
+
+def assemble_hook_attacks(raw_attacks: list[dict]) -> list[dict]:
+    """Convert a list of string-valued hook attack dicts (as produced by
+    capture_log_parser) to type-converted dicts suitable for build_encounter_state.
+
+    Each entry passes through convert_hook_attack_types. Raises ValueError on
+    the first entry that contains nil/non-finite/invalid values.
+    """
+    result = []
+    for i, raw in enumerate(raw_attacks):
+        try:
+            result.append(convert_hook_attack_types(raw))
+        except ValueError as exc:
+            raise ValueError(f'raw_attacks[{i}]: {exc}')
     return result
 
 

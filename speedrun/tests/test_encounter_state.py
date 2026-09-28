@@ -258,6 +258,20 @@ class AttackNormalisationTests(unittest.TestCase):
         state = build_encounter_state(data)
         self.assertEqual(state.enemy_attacks[0]['min'], 1)
 
+    def test_nan_damage_in_canonical_attack_rejected(self):
+        data = _plain_data()
+        data['enemy_attacks'] = [{'min': 1, 'max': 1, 'damage': float('nan')}]
+        data['enemy_counters'] = [0]
+        with self.assertRaises(ValueError):
+            build_encounter_state(data)
+
+    def test_inf_damage_in_canonical_attack_rejected(self):
+        data = _plain_data()
+        data['enemy_attacks'] = [{'min': 1, 'max': 1, 'damage': float('inf')}]
+        data['enemy_counters'] = [0]
+        with self.assertRaises(ValueError):
+            build_encounter_state(data)
+
 
 if __name__ == '__main__':
     unittest.main()

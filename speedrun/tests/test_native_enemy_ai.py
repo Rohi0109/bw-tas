@@ -1,7 +1,13 @@
+import sys
+import os
 import unittest
+
+# Allow importing from the automation package (two levels up from speedrun/tests/)
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'automation'))
 
 from native_enemy_ai import (
     UrgencyLevel,
+    assemble_hook_attacks,
     choose_attack,
     convert_hook_attack_types,
     get_urgency,
@@ -306,6 +312,119 @@ class TypeConversionTests(unittest.TestCase):
         typed = convert_hook_attack_types(raw)
         canonical = normalise_attack(typed)
         result = choose_attack([canonical], [1], None)
+        self.assertIsNone(result)
+
+    def test_nan_damage_rejected_at_conversion(self):
+        with self.assertRaises(ValueError):
+            convert_hook_attack_types({'mMin': '1', 'mMax': '1', 'mDamage': 'nan'})
+
+    def test_inf_damage_rejected_at_conversion(self):
+        with self.assertRaises(ValueError):
+            convert_hook_attack_types({'mMin': '1', 'mMax': '1', 'mDamage': 'inf'})
+
+    def test_neg_inf_damage_rejected_at_conversion(self):
+        with self.assertRaises(ValueError):
+            convert_hook_attack_types({'mMin': '1', 'mMax': '1', 'mDamage': '-inf'})
+
+
+class ParserToStateIntegrationTests(unittest.TestCase):
+    """Integration: capture_log_parser output → assemble_hook_attacks → normalise_attack → choose_attack.
+
+    The capture_log_parser (automation/capture_log_parser.py) emits ParsedRecord objects
+    whose .fields dict uses structured tuple keys:
+        ('ATTACK', owner, atk_key, field_name) → value_string
+
+    Per-attack sub-fields are NOT grouped into per-attack dicts by the parser itself —
+    the parser accumulates all ATTACK rows into a flat dict keyed by these tuples.
+    There is no parser-level step that collects mMin/mMax/mDamage etc. for a given
+    atk_key into a single dict; that grouping is left to the caller.
+
+    Therefore this test operates at the boundary that IS wired: it receives
+    already-grouped attack field dicts (as a caller of the parser would assemble them
+    after iterating ParsedRecord.fields) and passes them through
+    assemble_hook_attacks → normalise_attack → choose_attack.
+
+    A future test can exercise parse_sim_log end-to-end once a grouping helper
+    is added that converts ParsedRecord.fields into per-attack dicts.
+    """
+
+    def _group_attack_fields(self, fields: dict, owner: str, atk_key: str) -> dict:
+        """Extract a single attack's fields from a ParsedRecord.fields dict.
+
+        Collects all entries whose key matches ('ATTACK', owner, atk_key, field_name)
+        and returns {field_name: value_string}.
+        """
+        result = {}
+        for k, v in fields.items():
+            if (isinstance(k, tuple) and len(k) == 4
+                    and k[0] == 'ATTACK' and k[1] == owner and k[2] == atk_key):
+                result[k[3]] = v
+        return result
+
+    def test_already_performed_true_excludes_attack_via_assemble(self):
+        """already_performed=True from grouped parser output must exclude the attack."""
+        # Simulate what a caller would assemble from ParsedRecord.fields after
+        # calling parse_sim_log and grouping per-attack fields by atk_key.
+        raw_attack = {
+            'mMin': '1',
+            'mMax': '5',
+            'mDamage': '2.0',
+            'mAlreadyPerformed': 'true',
+            'mRateCounter': '2',
+            'mState': '0',
+        }
+        typed = assemble_hook_attacks([raw_attack])
+        canonical = normalise_attack(typed[0])
+        result = choose_attack([canonical], [2], None)
+        self.assertIsNone(result)
+
+    def test_already_performed_false_includes_attack_via_assemble(self):
+        """already_performed=False from grouped parser output must keep the attack eligible."""
+        raw_attack = {
+            'mMin': '1',
+            'mMax': '5',
+            'mDamage': '2.0',
+            'mAlreadyPerformed': 'false',
+            'mRateCounter': '2',
+            'mState': '0',
+        }
+        typed = assemble_hook_attacks([raw_attack])
+        canonical = normalise_attack(typed[0])
+        # counter=2 >= min=1 → eligible
+        result = choose_attack([canonical], [2], lambda label: 0)
+        self.assertEqual(result, 0)
+
+    def test_parse_sim_log_produces_grouped_fields_for_attack(self):
+        """parse_sim_log recovers ATTACK rows; grouping by atk_key yields the raw dict."""
+        from capture_log_parser import parse_sim_log, partition_sim_log
+
+        # Construct minimal log lines for one complete sim block with one attack entry.
+        log_lines = [
+            'AUTOMATION_SIM_BEGIN=1|E',
+            'AUTOMATION_SIM_ATTACK=1|enemy|0|mMin|1|E',
+            'AUTOMATION_SIM_ATTACK=1|enemy|0|mMax|5|E',
+            'AUTOMATION_SIM_ATTACK=1|enemy|0|mDamage|2.0|E',
+            'AUTOMATION_SIM_ATTACK=1|enemy|0|mAlreadyPerformed|true|E',
+            'AUTOMATION_SIM_ATTACK=1|enemy|0|mRateCounter|2|E',
+            'AUTOMATION_SIM_ATTACK=1|enemy|0|mState|0|E',
+            'AUTOMATION_SIM_END=1|E',
+        ]
+        records = parse_sim_log(log_lines)
+        good, _ = partition_sim_log(records)
+        self.assertEqual(len(good), 1)
+
+        # Group attack fields for owner='enemy', atk_key='0'
+        raw_attack = self._group_attack_fields(good[0].fields, 'enemy', '0')
+        self.assertEqual(raw_attack.get('mMin'), '1')
+        self.assertEqual(raw_attack.get('mMax'), '5')
+        self.assertEqual(raw_attack.get('mDamage'), '2.0')
+        self.assertEqual(raw_attack.get('mAlreadyPerformed'), 'true')
+
+        # Full pipeline: grouped fields → assemble → normalise → choose_attack
+        typed = assemble_hook_attacks([raw_attack])
+        canonical = normalise_attack(typed[0])
+        # already_performed=True → no attack chosen
+        result = choose_attack([canonical], [2], None)
         self.assertIsNone(result)
 
 
