@@ -78,6 +78,25 @@ def _killpg_safe(pgid: int, sig: int) -> None:
         pass
 
 
+def _cleanup_process_group(proc, pgid: int) -> None:
+    """Terminate the owned process group; SIGKILL-escalate if SIGTERM is insufficient.
+
+    Two branches:
+    - proc still running: SIGKILL immediately (unexpected state, abort hard).
+    - proc already exited (normal GDB completion): SIGTERM → grace → SIGKILL if alive.
+    """
+    if proc is not None and proc.poll() is None:
+        if pgid is not None:
+            _killpg_safe(pgid, signal.SIGKILL)
+        proc.kill()
+        proc.wait()
+    elif pgid is not None:
+        _killpg_safe(pgid, signal.SIGTERM)
+        time.sleep(CLEANUP_GRACE_S)
+        if _is_pgid_alive(pgid):
+            _killpg_safe(pgid, signal.SIGKILL)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -234,18 +253,7 @@ def main():
         manifest['launch_error'] = str(exc)
         exit_code = 1
     finally:
-        # Ensure nothing is left running regardless of how we got here.
-        if proc is not None and proc.poll() is None:
-            if pgid is not None:
-                _killpg_safe(pgid, signal.SIGKILL)
-            proc.kill()
-            proc.wait()
-        elif pgid is not None:
-            # GDB exited but may have detached descendants (Wine, game server).
-            _killpg_safe(pgid, signal.SIGTERM)
-            time.sleep(CLEANUP_GRACE_S)
-            if _is_pgid_alive(pgid):
-                _killpg_safe(pgid, signal.SIGKILL)
+        _cleanup_process_group(proc, pgid)
 
     elapsed = time.monotonic() - start_mono
     manifest['elapsed_s'] = round(elapsed, 2)

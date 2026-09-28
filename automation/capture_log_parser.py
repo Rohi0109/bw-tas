@@ -57,9 +57,22 @@ def _split_raw_line(raw: str) -> list[str]:
     return [s for s in cleaned.split('\n') if s]
 
 
+def _apply_backspaces(s: str) -> str:
+    """Simulate terminal line-buffer: each \\x08 (backspace) erases the preceding char."""
+    buf = []
+    for ch in s:
+        if ch == '\b':
+            if buf:
+                buf.pop()
+        else:
+            buf.append(ch)
+    return ''.join(buf)
+
+
 def _strip_prefix_noise(line: str) -> str:
-    """Strip leading ANSI escapes and control characters (backspace, CR, etc.)."""
+    """Strip ANSI escapes, simulate backspace erasure, then leading control chars."""
     line = _ANSI_RE.sub('', line)
+    line = _apply_backspaces(line)
     line = _LEADING_CTRL_RE.sub('', line)
     return line
 

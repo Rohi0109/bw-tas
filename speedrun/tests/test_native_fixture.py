@@ -23,11 +23,10 @@ def _minimal_fixture(**overrides) -> dict:
         'attack_id': 1,
         'rng_interval': {'first': 10, 'last': 15},
         'pre_submit': {
-            'player_hp': 10,
-            'enemy_hp': 5,
-            'board': ['t', 'e', 's', 't'],
+            'player_hp': 10.0,
+            'enemy_hp': 5.0,
+            'board': 'ABCD/EFGH/IJKL/MNOP',
             'selected_action': 'TEST',
-            'combat_state': 'normal',
             'rng_snapshot': {'words': [0] * 624, 'cursor': 0},
         },
         'observed': {'player_hp': 9, 'enemy_hp': 0},
@@ -204,6 +203,48 @@ class ValidateFixtureTests(unittest.TestCase):
 
     def test_observed_negative_hp_raises(self):
         f = _minimal_fixture(observed={'player_hp': -1, 'enemy_hp': 0})
+        with self.assertRaises(ValueError):
+            validate_fixture(f)
+
+    def test_pre_submit_board_not_string_raises(self):
+        ps = dict(_minimal_fixture()['pre_submit'])
+        ps['board'] = [None]  # list instead of string
+        f = _minimal_fixture(pre_submit=ps)
+        with self.assertRaises(ValueError):
+            validate_fixture(f)
+
+    def test_pre_submit_board_wrong_format_raises(self):
+        ps = dict(_minimal_fixture()['pre_submit'])
+        ps['board'] = 'not_a_board'
+        f = _minimal_fixture(pre_submit=ps)
+        with self.assertRaises(ValueError):
+            validate_fixture(f)
+
+    def test_pre_submit_action_with_underscore_raises(self):
+        ps = dict(_minimal_fixture()['pre_submit'])
+        ps['selected_action'] = 'NOT_A_WORD'  # underscore not allowed
+        f = _minimal_fixture(pre_submit=ps)
+        with self.assertRaises(ValueError):
+            validate_fixture(f)
+
+    def test_pre_submit_rng_empty_words_raises(self):
+        ps = dict(_minimal_fixture()['pre_submit'])
+        ps['rng_snapshot'] = {'words': [], 'cursor': 0}
+        f = _minimal_fixture(pre_submit=ps)
+        with self.assertRaises(ValueError):
+            validate_fixture(f)
+
+    def test_pre_submit_rng_negative_cursor_raises(self):
+        ps = dict(_minimal_fixture()['pre_submit'])
+        ps['rng_snapshot'] = {'words': [0] * 624, 'cursor': -999}
+        f = _minimal_fixture(pre_submit=ps)
+        with self.assertRaises(ValueError):
+            validate_fixture(f)
+
+    def test_pre_submit_rng_out_of_range_word_raises(self):
+        ps = dict(_minimal_fixture()['pre_submit'])
+        ps['rng_snapshot'] = {'words': [-1] + [0] * 623, 'cursor': 0}
+        f = _minimal_fixture(pre_submit=ps)
         with self.assertRaises(ValueError):
             validate_fixture(f)
 

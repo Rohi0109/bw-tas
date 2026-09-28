@@ -16,7 +16,9 @@ Rules:
     labeled 'teacher_forced: true' and excluded from full-turn parity totals.
 """
 import math
+import re
 from enum import Enum
+from encounter_state import _BOARD_RE, _validate_engine_rng
 
 SCHEMA_VERSION = 1
 
@@ -150,8 +152,11 @@ def _validate_rng_interval(interval):
         )
 
 
-_PRE_SUBMIT_REQUIRED = {'player_hp', 'enemy_hp', 'board', 'selected_action', 'combat_state', 'rng_snapshot'}
+_PRE_SUBMIT_REQUIRED = {'player_hp', 'enemy_hp', 'board', 'selected_action', 'rng_snapshot'}
 _OBSERVED_REQUIRED = {'player_hp', 'enemy_hp'}
+
+
+_ACTION_RE = re.compile(r'[A-Z]{2,}')
 
 
 def _validate_pre_submit(pre_submit):
@@ -169,22 +174,14 @@ def _validate_pre_submit(pre_submit):
         if v < 0:
             raise ValueError(f'pre_submit[{key!r}] must be non-negative, got {v!r}')
     board = pre_submit['board']
-    if not isinstance(board, list) or not board:
-        raise ValueError("pre_submit['board'] must be a non-empty list")
+    if not isinstance(board, str) or not _BOARD_RE.fullmatch(board):
+        raise ValueError("pre_submit['board'] must match [A-Z]{4}(/[A-Z]{4}){3}, "
+                         f"e.g. 'ABCD/EFGH/IJKL/MNOP'; got {board!r}")
     action = pre_submit['selected_action']
-    if not isinstance(action, str) or not action:
-        raise ValueError("pre_submit['selected_action'] must be a non-empty string")
-    state = pre_submit['combat_state']
-    if not isinstance(state, str) or not state:
-        raise ValueError("pre_submit['combat_state'] must be a non-empty string")
-    snap = pre_submit['rng_snapshot']
-    if not isinstance(snap, dict):
-        raise ValueError("pre_submit['rng_snapshot'] must be a dict")
-    if 'words' not in snap or not isinstance(snap['words'], list):
-        raise ValueError("pre_submit['rng_snapshot']['words'] must be a list")
-    if ('cursor' not in snap or not isinstance(snap['cursor'], int)
-            or isinstance(snap['cursor'], bool)):
-        raise ValueError("pre_submit['rng_snapshot']['cursor'] must be an integer")
+    if not isinstance(action, str) or not _ACTION_RE.fullmatch(action):
+        raise ValueError("pre_submit['selected_action'] must be 2+ uppercase letters "
+                         f"(A-Z only); got {action!r}")
+    _validate_engine_rng(pre_submit['rng_snapshot'], 'pre_submit.rng_snapshot')
 
 
 def _validate_observed(observed):

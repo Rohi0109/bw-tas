@@ -312,28 +312,48 @@ class ManifestTests(unittest.TestCase):
 
 class ProcessGroupCleanupTests(unittest.TestCase):
     def test_stubborn_child_killed_by_sigkill(self):
-        # Verify _is_pgid_alive and SIGKILL path work end-to-end with a real process.
+        """_cleanup_process_group escalates to SIGKILL for a SIGTERM-ignoring child.
+
+        Uses a temp-file readiness handshake to guarantee the SIGTERM handler
+        is installed before cleanup runs (avoids zombie false-positive).
+        Calls the real _cleanup_process_group to exercise the production path.
+        """
+        import tempfile
+        ready_path = tempfile.mktemp(suffix='.ready')
         child = subprocess.Popen(
             [sys.executable, '-c',
-             'import signal, time; signal.signal(signal.SIGTERM, signal.SIG_IGN); time.sleep(60)'],
+             f'import signal, time; '
+             f'signal.signal(signal.SIGTERM, signal.SIG_IGN); '
+             f'open({ready_path!r}, "w").close(); '
+             f'time.sleep(60)'],
             start_new_session=True)
         pgid = child.pid
+        mock_proc = MagicMock()
+        mock_proc.poll.return_value = 0  # simulate GDB already exited
+
         try:
-            launch_capture._killpg_safe(pgid, signal.SIGTERM)
-            time.sleep(0.2)
-            self.assertTrue(
-                launch_capture._is_pgid_alive(pgid),
-                'child should still be alive after SIGTERM it ignores')
-            launch_capture._killpg_safe(pgid, signal.SIGKILL)
+            # Wait until child has installed its SIGTERM handler.
+            deadline = time.monotonic() + 5.0
+            while not os.path.exists(ready_path) and time.monotonic() < deadline:
+                time.sleep(0.05)
+            self.assertTrue(os.path.exists(ready_path),
+                            'child did not signal readiness within 5 s')
+
+            # Exercise the real cleanup path (GDB-already-exited branch).
+            launch_capture._cleanup_process_group(mock_proc, pgid)
+
             child.wait(timeout=5)
-            self.assertFalse(
-                launch_capture._is_pgid_alive(pgid),
-                'child should be dead after SIGKILL')
+            self.assertFalse(launch_capture._is_pgid_alive(pgid),
+                             'process group should be dead after _cleanup_process_group')
         finally:
             launch_capture._killpg_safe(pgid, signal.SIGKILL)
             try:
                 child.wait(timeout=2)
             except subprocess.TimeoutExpired:
+                pass
+            try:
+                os.unlink(ready_path)
+            except OSError:
                 pass
 
 

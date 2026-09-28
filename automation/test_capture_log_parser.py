@@ -244,6 +244,21 @@ class ParseSimLogTests(unittest.TestCase):
         self.assertIsNotNone(records[0].quarantine_reason)
         self.assertIn('malformed', records[0].quarantine_reason)
 
+    def test_real_console_prompt_framing_recovered(self):
+        # Wine console emits '> \b \b\b \b' before each line; backspace simulation
+        # must erase the prompt chars so the AUTOMATION_SIM content is recovered.
+        # All records concatenated in one raw line separated by \\r\\n.
+        raw = ('> \b \b\b \bAUTOMATION_SIM_BEGIN=14|E\\r\\n'
+               '> \b \b\b \bAUTOMATION_SIM_CREATURE=14|player|mHealth|10|E\\r\\n'
+               '> \b \b\b \bAUTOMATION_SIM_CREATURE=14|enemy|mHealth|5|E\\r\\n'
+               '> \b \b\b \bAUTOMATION_SIM_ATTACK=14|enemy|1|mMin|2|E\\r\\n'
+               '> \b \b\b \bAUTOMATION_SIM_END=14|E\\r\\n')
+        records = parse_sim_log([raw])
+        self.assertEqual(len(records), 1)
+        self.assertIsNone(records[0].quarantine_reason)
+        self.assertIn(('CREATURE', 'player', 'mHealth'), records[0].fields)
+        self.assertIn(('ATTACK', 'enemy', '1', 'mMin'), records[0].fields)
+
 
 if __name__ == '__main__':
     unittest.main()
