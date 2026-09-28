@@ -10,6 +10,8 @@ Coverage:
   5. native_state_raw present → unsupported_fields contains 'attack_state_mapping_unconfirmed'.
   6. assemble_captures_from_log: quarantined records land in result['quarantined'];
      valid records with mState have eligibility != 'eligible'.
+  7. Negative tests for Finding 1-4 integration findings.
+  8. Success-path test: complete hook-format fields → correct fixture.
 """
 import sys
 import os
@@ -76,6 +78,10 @@ def _make_fields(attacks: list[dict],
     to value strings.  The resulting fields dict uses tuple keys exactly as
     parse_sim_log produces them.
 
+    Creature fields use the actual Lua hook field names emitted by
+    DumpSimulationState.lua: mHealth, mMaxHealth, mOffenseBonusPct,
+    mDamageBuffer, mName.
+
     Creature fields, RNG, board, gems, and tile powers are included by default
     so that assemble_encounter_from_fields can build a complete pre_submit.
     """
@@ -88,25 +94,26 @@ def _make_fields(attacks: list[dict],
             fields[('ATTACK', owner, atk_key, field_name)] = value
 
     if include_creature:
-        # Player creature fields
-        for lua_name, dest_name, value in [
-            ('player_hp', 'player_hp', '100.0'),
-            ('player_max_hp', 'player_max_hp', '100.0'),
-            ('player_offense', 'player_offense', '10.0'),
-            ('player_damage_buffer', 'player_damage_buffer', '0.0'),
+        # Player creature fields — using actual Lua hook field names
+        for lua_name, value in [
+            ('mHealth',          '100.0'),
+            ('mMaxHealth',       '100.0'),
+            ('mOffenseBonusPct', '10.0'),
+            ('mDamageBuffer',    '0.0'),
         ]:
             fields[('CREATURE', 'player', lua_name)] = value
-        # Enemy creature fields
-        for lua_name, dest_name, value in [
-            ('enemy_hp', 'enemy_hp', '80.0'),
-            ('enemy_max_hp', 'enemy_max_hp', '80.0'),
-            ('enemy_offense', 'enemy_offense', '5.0'),
-            ('enemy_damage_buffer', 'enemy_damage_buffer', '0.0'),
+        # Enemy creature fields — using actual Lua hook field names
+        for lua_name, value in [
+            ('mHealth',          '80.0'),
+            ('mMaxHealth',       '80.0'),
+            ('mOffenseBonusPct', '5.0'),
+            ('mDamageBuffer',    '0.0'),
         ]:
             fields[('CREATURE', 'enemy', lua_name)] = value
 
     if include_enemy_name:
-        fields[('CREATURE', 'enemy', 'enemy_name')] = 'TestEnemy'
+        # Enemy name: ('CREATURE', 'enemy', 'mName') -> str
+        fields[('CREATURE', 'enemy', 'mName')] = 'TestEnemy'
 
     if include_board:
         fields[('BOARD',)] = board
@@ -176,7 +183,7 @@ class GroupLogAttacksTests(unittest.TestCase):
 
     def test_non_attack_keys_ignored(self):
         fields = {
-            ('CREATURE', 'enemy', 'hp'): '80',
+            ('CREATURE', 'enemy', 'mHealth'): '80',
             ('ATTACK', 'enemy', '0', 'mMin'): '1',
             ('BOARD',): 'ABCD/EFGH/IJKL/MNOP',
         }
@@ -201,6 +208,36 @@ class GroupLogAttacksTests(unittest.TestCase):
         result = group_log_attacks(fields)
         self.assertIn('_owner', result[0])
         self.assertIn('_atk_key', result[0])
+
+    # Finding 3: owner_filter parameter
+    def test_owner_filter_enemy_excludes_player(self):
+        """owner_filter='enemy' excludes player attacks."""
+        fields = {
+            ('ATTACK', 'enemy', '0', 'mMin'): '1',
+            ('ATTACK', 'player', '0', 'mMin'): '3',
+        }
+        result = group_log_attacks(fields, owner_filter='enemy')
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]['_owner'], 'enemy')
+
+    def test_owner_filter_none_returns_all(self):
+        """owner_filter=None returns all owners."""
+        fields = {
+            ('ATTACK', 'enemy', '0', 'mMin'): '1',
+            ('ATTACK', 'player', '0', 'mMin'): '3',
+        }
+        result = group_log_attacks(fields, owner_filter=None)
+        self.assertEqual(len(result), 2)
+
+    def test_owner_filter_player_returns_only_player(self):
+        """owner_filter='player' returns only player attacks."""
+        fields = {
+            ('ATTACK', 'enemy', '0', 'mMin'): '1',
+            ('ATTACK', 'player', '0', 'mMin'): '3',
+        }
+        result = group_log_attacks(fields, owner_filter='player')
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]['_owner'], 'player')
 
 
 # ---------------------------------------------------------------------------
@@ -238,6 +275,29 @@ class AssembleEncounterAlreadyPerformedFalseTests(unittest.TestCase):
         counters = fixture['pre_submit']['enemy_counters']
         # mRateCounter='2' → int 2
         self.assertEqual(counters, [2])
+
+    def test_creature_fields_mapped_from_lua_names(self):
+        """Creature fields use mHealth/mMaxHealth/mOffenseBonusPct/mDamageBuffer."""
+        fixture = assemble_encounter_from_fields(self.fields, _EXTRA)
+        pre = fixture['pre_submit']
+        self.assertEqual(pre['player_hp'], 100.0)
+        self.assertEqual(pre['player_max_hp'], 100.0)
+        self.assertEqual(pre['player_offense'], 10.0)
+        self.assertEqual(pre['player_damage_buffer'], 0.0)
+        self.assertEqual(pre['enemy_hp'], 80.0)
+        self.assertEqual(pre['enemy_max_hp'], 80.0)
+        self.assertEqual(pre['enemy_offense'], 5.0)
+        self.assertEqual(pre['enemy_damage_buffer'], 0.0)
+        self.assertEqual(pre['enemy_name'], 'TestEnemy')
+
+    def test_invented_creature_field_names_not_mapped(self):
+        """Invented field names like 'player_hp' as Lua names produce no mapping."""
+        fields = dict(self.fields)
+        # Add an invented-name creature field that the old buggy code would have read.
+        fields[('CREATURE', 'player', 'player_hp')] = '999.0'
+        fixture = assemble_encounter_from_fields(fields, _EXTRA)
+        # The real mHealth field ('100.0') must win, not the invented name.
+        self.assertEqual(fixture['pre_submit']['player_hp'], 100.0)
 
 
 # ---------------------------------------------------------------------------
@@ -424,7 +484,15 @@ def _make_complete_log_lines(attack_id: int, mstate: str = '0',
                               extra_lines: list = None) -> list[str]:
     """Construct log lines that parse_sim_log will accept as a complete valid block.
 
-    The block contains one attack with all standard fields.
+    The block contains one enemy attack with all standard fields, plus creature
+    fields using actual Lua hook field names (mHealth, mMaxHealth, etc.), and
+    RNG state.  Board/gems/tile_powers are NOT included because the current
+    DumpSimulationState.lua hook does not emit those rows in a format the parser
+    can accept (BOARD requires 3+ parts; see capture_log_parser.py).
+
+    assemble_captures_from_log on these lines will produce eligibility='error'
+    (due to missing board/gems/tile_powers in pre_submit) for tests that only
+    need to verify quarantine/valid split or non-eligible outcomes.
     """
     id_str = str(attack_id)
     lines = [
@@ -435,11 +503,20 @@ def _make_complete_log_lines(attack_id: int, mstate: str = '0',
         f'AUTOMATION_SIM_ATTACK={id_str}|enemy|0|mAlreadyPerformed|false|E',
         f'AUTOMATION_SIM_ATTACK={id_str}|enemy|0|mRateCounter|0|E',
         f'AUTOMATION_SIM_ATTACK={id_str}|enemy|0|mState|{mstate}|E',
-        f'AUTOMATION_SIM_END={id_str}|E',
+        # Creature fields — actual Lua hook field names
+        f'AUTOMATION_SIM_CREATURE={id_str}|player|mHealth|100.0|E',
+        f'AUTOMATION_SIM_CREATURE={id_str}|player|mMaxHealth|100.0|E',
+        f'AUTOMATION_SIM_CREATURE={id_str}|player|mOffenseBonusPct|10.0|E',
+        f'AUTOMATION_SIM_CREATURE={id_str}|player|mDamageBuffer|0.0|E',
+        f'AUTOMATION_SIM_CREATURE={id_str}|enemy|mHealth|80.0|E',
+        f'AUTOMATION_SIM_CREATURE={id_str}|enemy|mMaxHealth|80.0|E',
+        f'AUTOMATION_SIM_CREATURE={id_str}|enemy|mOffenseBonusPct|5.0|E',
+        f'AUTOMATION_SIM_CREATURE={id_str}|enemy|mDamageBuffer|0.0|E',
+        f'AUTOMATION_SIM_CREATURE={id_str}|enemy|mName|TestEnemy|E',
     ]
     if extra_lines:
-        # Insert before END
-        lines = lines[:-1] + extra_lines + [lines[-1]]
+        lines = lines + extra_lines
+    lines.append(f'AUTOMATION_SIM_END={id_str}|E')
     return lines
 
 
@@ -594,6 +671,267 @@ class ParseSimLogWireFormatTests(unittest.TestCase):
         by_key = {a['_atk_key']: a for a in attacks}
         self.assertEqual(by_key['0']['mMin'], '1')
         self.assertEqual(by_key['1']['mMin'], '2')
+
+
+# ---------------------------------------------------------------------------
+# Negative tests for Findings 1-4
+# ---------------------------------------------------------------------------
+
+class FindingNegativeTests(unittest.TestCase):
+    """Negative tests for the four integration findings."""
+
+    # --- Finding 2: Partial RNG → unsupported, NOT eligible ---
+
+    def test_partial_rng_adds_rng_incomplete_to_unsupported(self):
+        """Partial RNG (fewer than 624 words) must add 'rng_incomplete' to unsupported_state."""
+        atk = _minimal_attack()
+        fields = _make_fields([atk], include_rng=True)
+        # Remove most RNG word entries to simulate incomplete capture.
+        rng_keys = [k for k in fields if isinstance(k, tuple) and k[0] == 'ENGINE_RNG'
+                    and len(k) == 3 and k[1] == 'words']
+        # Keep only first 1 word, delete the rest.
+        for k in rng_keys[1:]:
+            del fields[k]
+        fixture = assemble_encounter_from_fields(fields, _EXTRA)
+        self.assertIn('rng_incomplete', fixture['unsupported_state'])
+
+    def test_partial_rng_omits_engine_rng_from_pre_submit(self):
+        """Partial RNG must not add engine_rng to pre_submit."""
+        atk = _minimal_attack()
+        fields = _make_fields([atk], include_rng=True)
+        rng_keys = [k for k in fields if isinstance(k, tuple) and k[0] == 'ENGINE_RNG'
+                    and len(k) == 3 and k[1] == 'words']
+        for k in rng_keys[1:]:
+            del fields[k]
+        fixture = assemble_encounter_from_fields(fields, _EXTRA)
+        self.assertNotIn('engine_rng', fixture['pre_submit'])
+
+    def test_partial_rng_not_eligible(self):
+        """Partial RNG → validate_fixture must NOT return ELIGIBLE."""
+        from native_fixture import validate_fixture, FixtureEligibility
+        atk = _minimal_attack()
+        fields = _make_fields([atk], include_rng=True)
+        rng_keys = [k for k in fields if isinstance(k, tuple) and k[0] == 'ENGINE_RNG'
+                    and len(k) == 3 and k[1] == 'words']
+        for k in rng_keys[1:]:
+            del fields[k]
+        fixture = assemble_encounter_from_fields(fields, _EXTRA)
+        # validate_fixture raises ValueError when engine_rng is missing from pre_submit
+        # (because build_encounter_state requires it). That is the correct behaviour.
+        try:
+            result = validate_fixture(fixture)
+            self.assertNotEqual(result, FixtureEligibility.ELIGIBLE)
+        except ValueError:
+            pass  # Missing engine_rng causes a ValueError — also acceptable
+
+    # --- Finding 2: Missing mRateCounter → unsupported ---
+
+    def test_missing_rate_counter_adds_attack_counter_missing(self):
+        """Attack without mRateCounter → 'attack_counter_missing' in unsupported_state."""
+        atk = {
+            'mMin': '1',
+            'mMax': '5',
+            'mDamage': '2.0',
+            'mAlreadyPerformed': 'false',
+            'mState': '0',
+            # mRateCounter intentionally absent
+        }
+        fields = _make_fields([atk])
+        fixture = assemble_encounter_from_fields(fields, _EXTRA)
+        self.assertIn('attack_counter_missing', fixture['unsupported_state'])
+
+    def test_missing_rate_counter_omits_enemy_counters(self):
+        """Attack without mRateCounter must not populate enemy_counters in pre_submit."""
+        atk = {
+            'mMin': '1',
+            'mMax': '5',
+            'mDamage': '2.0',
+            'mAlreadyPerformed': 'false',
+            'mState': '0',
+        }
+        fields = _make_fields([atk])
+        fixture = assemble_encounter_from_fields(fields, _EXTRA)
+        self.assertNotIn('enemy_counters', fixture['pre_submit'])
+
+    # --- Finding 2: EFFECT row present → effects_unsupported ---
+
+    def test_effect_row_adds_effects_unsupported(self):
+        """EFFECT tuple key in fields → 'effects_unsupported' in unsupported_state."""
+        atk = _minimal_attack()
+        fields = _make_fields([atk])
+        # Add an EFFECT row using the actual parser tuple format.
+        fields[('EFFECT', 'player', '1', 'mDuration')] = '5'
+        fixture = assemble_encounter_from_fields(fields, _EXTRA)
+        self.assertIn('effects_unsupported', fixture['unsupported_state'])
+
+    def test_effect_row_still_produces_empty_effect_lists(self):
+        """Even with EFFECT rows, player_effects and enemy_effects are empty lists."""
+        atk = _minimal_attack()
+        fields = _make_fields([atk])
+        fields[('EFFECT', 'player', '1', 'mDuration')] = '5'
+        fixture = assemble_encounter_from_fields(fields, _EXTRA)
+        self.assertEqual(fixture['pre_submit']['player_effects'], [])
+        self.assertEqual(fixture['pre_submit']['enemy_effects'], [])
+
+    # --- Finding 3: Player attack in fields → excluded from enemy_attacks ---
+
+    def test_player_attack_excluded_from_enemy_attacks(self):
+        """Player attack tuple keys must not appear in enemy_attacks."""
+        enemy_atk = _minimal_attack(rate_counter='2')
+        fields = _make_fields([enemy_atk], owner='enemy')
+        # Add a player attack with different field values.
+        player_atk = _minimal_attack(min_='10', max_='20', rate_counter='5')
+        for field_name, value in player_atk.items():
+            fields[('ATTACK', 'player', '0', field_name)] = value
+        fixture = assemble_encounter_from_fields(fields, _EXTRA)
+        # Only one enemy attack; the player attack must not be included.
+        self.assertEqual(len(fixture['pre_submit']['enemy_attacks']), 1)
+        # Verify enemy_counters comes from the enemy attack's mRateCounter, not the player's.
+        self.assertEqual(fixture['pre_submit']['enemy_counters'], [2])
+
+    def test_player_attack_only_fields_yields_no_enemy_attacks(self):
+        """Fields with only player attacks produce an empty enemy_attacks list."""
+        player_atk = _minimal_attack(rate_counter='5')
+        fields = _make_fields([], owner='enemy')  # no attacks
+        for field_name, value in player_atk.items():
+            fields[('ATTACK', 'player', '0', field_name)] = value
+        fixture = assemble_encounter_from_fields(fields, _EXTRA)
+        self.assertEqual(fixture['pre_submit']['enemy_attacks'], [])
+
+    # --- Finding 4: teacher_forced preserved from extra ---
+
+    def test_teacher_forced_true_preserved(self):
+        """teacher_forced=True in extra must be preserved in the assembled fixture."""
+        atk = _minimal_attack()
+        fields = _make_fields([atk])
+        extra = dict(_EXTRA, teacher_forced=True)
+        fixture = assemble_encounter_from_fields(fields, extra)
+        self.assertTrue(fixture['teacher_forced'])
+
+    def test_teacher_forced_false_is_default(self):
+        """teacher_forced defaults to False when not in extra."""
+        atk = _minimal_attack()
+        fields = _make_fields([atk])
+        extra = {k: v for k, v in _EXTRA.items() if k != 'teacher_forced'}
+        fixture = assemble_encounter_from_fields(fields, extra)
+        self.assertFalse(fixture['teacher_forced'])
+
+    # --- Finding 4: unsupported_state from extra preserved and merged ---
+
+    def test_unsupported_state_from_extra_preserved(self):
+        """unsupported_state from extra must appear in the fixture's unsupported_state."""
+        atk = _minimal_attack()
+        fields = _make_fields([atk])
+        extra = dict(_EXTRA, unsupported_state=['uncaptured'])
+        fixture = assemble_encounter_from_fields(fields, extra)
+        self.assertIn('uncaptured', fixture['unsupported_state'])
+
+    def test_unsupported_state_merged_with_assembly_reasons(self):
+        """Assembly-discovered reasons must be merged with extra's unsupported_state."""
+        atk = {
+            'mMin': '1', 'mMax': '5', 'mDamage': '2.0',
+            'mAlreadyPerformed': 'false', 'mState': '0',
+            # No mRateCounter → assembly adds 'attack_counter_missing'
+        }
+        fields = _make_fields([atk])
+        extra = dict(_EXTRA, unsupported_state=['uncaptured'])
+        fixture = assemble_encounter_from_fields(fields, extra)
+        self.assertIn('uncaptured', fixture['unsupported_state'])
+        self.assertIn('attack_counter_missing', fixture['unsupported_state'])
+
+    def test_unsupported_state_no_duplicates_from_merge(self):
+        """If a reason appears in both extra and assembly, it appears only once."""
+        atk = {
+            'mMin': '1', 'mMax': '5', 'mDamage': '2.0',
+            'mAlreadyPerformed': 'false', 'mState': '0',
+        }
+        fields = _make_fields([atk])
+        # Pre-set 'attack_counter_missing' in extra; assembly will also discover it.
+        extra = dict(_EXTRA, unsupported_state=['attack_counter_missing'])
+        fixture = assemble_encounter_from_fields(fields, extra)
+        count = fixture['unsupported_state'].count('attack_counter_missing')
+        self.assertEqual(count, 1)
+
+    # --- Finding 4: teacher_forced=True with unsupported_state merged ---
+
+    def test_teacher_forced_and_unsupported_state_both_preserved(self):
+        """teacher_forced=True and unsupported_state=['uncaptured'] both survive assembly."""
+        atk = _minimal_attack()
+        fields = _make_fields([atk])
+        extra = dict(_EXTRA, teacher_forced=True, unsupported_state=['uncaptured'])
+        fixture = assemble_encounter_from_fields(fields, extra)
+        self.assertTrue(fixture['teacher_forced'])
+        self.assertIn('uncaptured', fixture['unsupported_state'])
+
+
+# ---------------------------------------------------------------------------
+# Success-path test: complete hook-format fields → correct fixture
+# ---------------------------------------------------------------------------
+
+class SuccessPathTest(unittest.TestCase):
+    """Complete hook-format creature + attack + board + RNG → valid assembled fixture.
+
+    Tests assemble_encounter_from_fields directly (using _make_fields which
+    builds a fields dict in memory).  The log-based pipeline (assemble_captures_from_log)
+    is tested separately via AssembleCapturesFromLogTests; board/gems/tile_powers
+    are not currently emitted by DumpSimulationState.lua in a parser-compatible
+    format, so only the direct dict path can produce a fully complete pre_submit.
+    """
+
+    def test_complete_fields_assemble_to_correct_fixture(self):
+        """All hook-format fields present → fixture with correct field values."""
+        from native_fixture import validate_fixture, FixtureEligibility
+
+        atk = _minimal_attack(already_performed='false', rate_counter='3',
+                               min_='2', max_='6', damage='3.5', state='0')
+        fields = _make_fields([atk])
+        fixture = assemble_encounter_from_fields(fields, _EXTRA)
+
+        # Structural correctness — creature fields mapped from Lua hook names.
+        pre = fixture['pre_submit']
+        self.assertEqual(pre['player_hp'], 100.0)
+        self.assertEqual(pre['player_max_hp'], 100.0)
+        self.assertEqual(pre['player_offense'], 10.0)
+        self.assertEqual(pre['player_damage_buffer'], 0.0)
+        self.assertEqual(pre['enemy_hp'], 80.0)
+        self.assertEqual(pre['enemy_max_hp'], 80.0)
+        self.assertEqual(pre['enemy_offense'], 5.0)
+        self.assertEqual(pre['enemy_damage_buffer'], 0.0)
+        self.assertEqual(pre['enemy_name'], 'TestEnemy')
+        self.assertIn('engine_rng', pre)
+        self.assertEqual(len(pre['engine_rng']['words']), 624)
+        self.assertEqual(len(pre['enemy_attacks']), 1)
+        self.assertEqual(pre['enemy_counters'], [3])
+
+        # mState present → not eligible (attack_state_mapping_unconfirmed in unsupported).
+        eligibility = validate_fixture(fixture)
+        self.assertNotEqual(eligibility, FixtureEligibility.ELIGIBLE,
+                            msg='mState present must prevent eligibility')
+
+    def test_complete_fields_unsupported_reason_is_attack_state_mapping(self):
+        """With mState present, unsupported_fields from assemble_captures_from_log
+        must include 'attack_state_mapping_unconfirmed'.
+        """
+        from native_enemy_ai import normalise_attack
+
+        atk = _minimal_attack(already_performed='false', rate_counter='3',
+                               min_='2', max_='6', damage='3.5', state='0')
+        fields = _make_fields([atk])
+        fixture = assemble_encounter_from_fields(fields, _EXTRA)
+
+        # Re-derive unsupported_fields as assemble_captures_from_log does.
+        normalised_atks = []
+        for a in fixture['pre_submit']['enemy_attacks']:
+            try:
+                normalised_atks.append(normalise_attack(a))
+            except ValueError:
+                pass
+        unsupported_fields = list(fixture.get('unsupported_state', []))
+        if any('native_state_raw' in a for a in normalised_atks):
+            if 'attack_state_mapping_unconfirmed' not in unsupported_fields:
+                unsupported_fields.append('attack_state_mapping_unconfirmed')
+
+        self.assertIn('attack_state_mapping_unconfirmed', unsupported_fields)
 
 
 if __name__ == '__main__':

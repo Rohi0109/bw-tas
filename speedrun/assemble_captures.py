@@ -38,13 +38,22 @@ def _to_float_safe(v: str, name: str) -> float:
         raise ValueError(f'{name}: cannot convert {v!r} to float')
 
 
-def group_log_attacks(fields: dict) -> list[dict]:
+def group_log_attacks(fields: dict, owner_filter: 'str | None' = None) -> list[dict]:
     """Extract and group ATTACK sub-field entries from a ParsedRecord.fields dict.
 
     The parser stores each ATTACK row under a tuple key:
         ('ATTACK', owner, atk_key, field_name) -> value_string
 
-    This function collects all such entries, groups them by (owner, atk_key),
+    Owner strings used by the parser / DumpSimulationState.lua:
+        'enemy'  — enemy attacks (the set the AI chooses from)
+        'player' — player attacks (not used by the AI model; excluded by default)
+
+    Args:
+        fields:       ParsedRecord.fields dict with tuple keys.
+        owner_filter: When given, only return attack dicts for this owner string.
+                      Pass 'enemy' to exclude player attacks.  None returns all owners.
+
+    This function collects all matching entries, groups them by (owner, atk_key),
     and returns a list of raw string-valued attack dicts sorted by (owner, atk_key)
     for stable ordering.  Each dict maps field_name -> value_string and also
     carries '_owner' and '_atk_key' metadata so callers can derive enemy_counters
@@ -59,6 +68,8 @@ def group_log_attacks(fields: dict) -> list[dict]:
         if not (isinstance(k, tuple) and len(k) == 4 and k[0] == 'ATTACK'):
             continue
         _, owner, atk_key, field_name = k
+        if owner_filter is not None and owner != owner_filter:
+            continue
         slot_key = (owner, atk_key)
         if slot_key not in grouped:
             grouped[slot_key] = {'_owner': owner, '_atk_key': atk_key}
@@ -78,6 +89,9 @@ def assemble_encounter_from_fields(fields: dict, extra: dict) -> dict:
                 come from the log alone:
                     schema_version, build, session_id, encounter_instance,
                     attack_id, rng_interval, selected_action, observed.
+                Also carries optional classification flags:
+                    teacher_forced (bool, default False)
+                    unsupported_state (list of str, default [])
                 Any of these may be absent; missing entries are not synthesised
                 (the caller should mark the resulting fixture incomplete).
 
@@ -86,21 +100,36 @@ def assemble_encounter_from_fields(fields: dict, extra: dict) -> dict:
         fields or extra is omitted — do NOT synthesise missing data to reach
         eligibility.
 
+    Notes on per-record provenance (selected_action, rng_interval, observed):
+        These values apply to a specific attack boundary.  If the caller supplies
+        multiple records from the same log file, each record may need different
+        values.  The caller is responsible for providing the correct extra dict per
+        record.  assemble_captures_from_log passes the same extra to all records
+        in a file; callers with per-record variation should call
+        assemble_encounter_from_fields directly with a per-record extra dict.
+
+    Notes on attack_id:
+        If extra contains 'attack_id', it is compared against the parser's
+        rec.attack_id (when the caller passes it as extra['_rec_attack_id']).
+        A conflict raises ValueError.
+
     Notes on enemy_counters derivation:
         After convert+normalise, each attack dict may contain 'rate_counter'
         (the captured mRateCounter value).  enemy_counters is derived from
-        these values in the same order as enemy_attacks.  If an attack has no
-        mRateCounter in the log, we default to 0 (the counter was at its
-        initial/reset state when captured; this is a documented assumption
-        rather than synthesised data, since 0 is the only safe default that
-        does not promote eligibility artificially).
-
-        build_encounter_state validates that each attack's rate_counter matches
-        the parallel enemy_counters entry, so any inconsistency will surface
-        as a ValueError rather than being silently accepted.
+        these values in the same order as enemy_attacks.  If an attack is
+        missing mRateCounter in the log, 'attack_counter_missing' is added to
+        unsupported_fields and enemy_counters is NOT derived (so validate_fixture
+        can reject the incomplete fixture properly).
     """
-    # --- Extract raw attack dicts from ATTACK tuple keys ---
-    raw_attacks = group_log_attacks(fields)
+    # Collect unsupported reasons discovered during assembly.
+    # These will be MERGED with extra.get('unsupported_state', []) at the end.
+    assembly_unsupported: list[str] = []
+
+    # -----------------------------------------------------------------------
+    # Finding 3: Only group enemy attacks — exclude player attacks.
+    # Parser owner strings: 'enemy' for enemy attacks, 'player' for player attacks.
+    # -----------------------------------------------------------------------
+    raw_attacks = group_log_attacks(fields, owner_filter='enemy')
 
     # Strip the internal metadata keys before passing to assemble_hook_attacks.
     hook_attack_dicts = [
@@ -111,28 +140,37 @@ def assemble_encounter_from_fields(fields: dict, extra: dict) -> dict:
     # Convert string-valued hook fields to native Python types.
     typed_attacks = assemble_hook_attacks(hook_attack_dicts)
 
-    # Derive enemy_counters from mRateCounter in each typed attack dict.
+    # -----------------------------------------------------------------------
+    # Finding 2 (mRateCounter): Require mRateCounter per attack; do not default to 0.
     # assemble_hook_attacks calls convert_hook_attack_types (not normalise_attack),
-    # so the key is still 'mRateCounter' (as int after type conversion), not 'rate_counter'.
-    # Default to 0 when mRateCounter was absent in the log (see docstring).
-    enemy_counters = [int(atk.get('mRateCounter', 0)) for atk in typed_attacks]
+    # so the key is still 'mRateCounter' (as int after type conversion).
+    # -----------------------------------------------------------------------
+    counter_missing = any('mRateCounter' not in atk for atk in typed_attacks)
+    if counter_missing:
+        assembly_unsupported.append('attack_counter_missing')
+        enemy_counters = None  # omit from pre_submit; validate_fixture will reject
+    else:
+        enemy_counters = [int(atk['mRateCounter']) for atk in typed_attacks]
 
     # --- Build pre_submit dict ---
     pre_submit: dict = {}
 
-    # Extract creature fields from CREATURE tuple keys.
-    # Key format: ('CREATURE', owner, field_name) -> value_string
-    # We look for well-known scalar field names that map directly.
+    # -----------------------------------------------------------------------
+    # Finding 1: Extract creature fields using actual Lua hook field names.
+    # DumpSimulationState.lua emits: mHealth, mMaxHealth, mName,
+    #   mDamageBuffer, mOffenseBonusPct, mState.
+    # Key format: ('CREATURE', owner, lua_field_name) -> value_string
+    # -----------------------------------------------------------------------
+    # Map: (owner, lua_field_name) -> pre_submit key
     _creature_field_map = {
-        # (owner_prefix, lua_field_name) -> pre_submit key
-        ('player', 'player_hp'):             'player_hp',
-        ('player', 'player_max_hp'):         'player_max_hp',
-        ('player', 'player_offense'):        'player_offense',
-        ('player', 'player_damage_buffer'):  'player_damage_buffer',
-        ('enemy',  'enemy_hp'):              'enemy_hp',
-        ('enemy',  'enemy_max_hp'):          'enemy_max_hp',
-        ('enemy',  'enemy_offense'):         'enemy_offense',
-        ('enemy',  'enemy_damage_buffer'):   'enemy_damage_buffer',
+        ('player', 'mHealth'):          'player_hp',
+        ('player', 'mMaxHealth'):       'player_max_hp',
+        ('player', 'mOffenseBonusPct'): 'player_offense',
+        ('player', 'mDamageBuffer'):    'player_damage_buffer',
+        ('enemy',  'mHealth'):          'enemy_hp',
+        ('enemy',  'mMaxHealth'):       'enemy_max_hp',
+        ('enemy',  'mOffenseBonusPct'): 'enemy_offense',
+        ('enemy',  'mDamageBuffer'):    'enemy_damage_buffer',
     }
 
     # Gather all CREATURE fields into a flat lookup: (owner, field_name) -> value_str
@@ -151,10 +189,19 @@ def assemble_encounter_from_fields(fields: dict, extra: dict) -> dict:
             else:
                 pre_submit[dest_key] = raw_val
 
-    # Engine RNG: stored under a tuple key ('ENGINE_RNG', ...) or CREATURE rows.
-    # Look for engine_rng sub-fields: ('ENGINE_RNG', 'words', idx) and ('ENGINE_RNG', 'cursor').
+    # Enemy name: ('CREATURE', 'enemy', 'mName') -> str
+    enemy_name_raw = creature_raw.get(('enemy', 'mName'))
+    if enemy_name_raw is not None:
+        pre_submit['enemy_name'] = enemy_name_raw
+
+    # -----------------------------------------------------------------------
+    # Engine RNG: stored under tuple keys.
     # Format: ('ENGINE_RNG', 'words', str_index) -> uint32_str
     #         ('ENGINE_RNG', 'cursor') -> int_str
+    #         ('ENGINE_RNG', 'draw_index') -> int_str
+    # Finding 2 (RNG): Require all 624 indexed word entries.
+    # If any are missing, add 'rng_incomplete' and omit engine_rng from pre_submit.
+    # -----------------------------------------------------------------------
     rng_words_raw: dict[int, int] = {}
     rng_cursor: int | None = None
     rng_draw_index: int | None = None
@@ -179,22 +226,39 @@ def assemble_encounter_from_fields(fields: dict, extra: dict) -> dict:
                 except (ValueError, TypeError):
                     pass
 
-    if rng_words_raw and rng_cursor is not None:
-        # Reconstruct ordered words list (indices 0..623)
-        words = [rng_words_raw.get(i, 0) for i in range(624)]
-        pre_submit['engine_rng'] = {'words': words, 'cursor': rng_cursor}
+    if rng_cursor is not None:
+        # Check all 624 words are present (indices 0..623).
+        missing_words = [i for i in range(624) if i not in rng_words_raw]
+        if missing_words:
+            assembly_unsupported.append('rng_incomplete')
+            # Do NOT add engine_rng to pre_submit; leave it absent so validate_fixture rejects.
+        else:
+            words = [rng_words_raw[i] for i in range(624)]
+            pre_submit['engine_rng'] = {'words': words, 'cursor': rng_cursor}
+    elif rng_words_raw:
+        # Words present but cursor absent → incomplete.
+        assembly_unsupported.append('rng_incomplete')
 
     if rng_draw_index is not None:
         pre_submit['engine_rng_draw_index'] = rng_draw_index
 
-    # Board: stored as ('BOARD',) or under a known CREATURE key.
+    # -----------------------------------------------------------------------
+    # Board: stored as ('BOARD',) tuple key.
+    # The parser does NOT emit a dimensionless BOARD key; this is a placeholder
+    # for a board format that uses a single flat value (if the Lua hook is updated
+    # to emit it).  Currently the hook does not emit BOARD rows, so this will
+    # normally be absent.
+    # -----------------------------------------------------------------------
     for k, v in fields.items():
         if isinstance(k, tuple) and k[0] == 'BOARD' and len(k) == 1:
             pre_submit['board'] = v
 
+    # -----------------------------------------------------------------------
     # Gems and tile_powers: stored as per-tile tuples.
     # ('GEMS', str_index) -> gem_type_str
     # ('TILE_POWERS', str_index) -> float_str
+    # Finding 2 (tile data): If present but incomplete, add 'tile_data_incomplete'.
+    # -----------------------------------------------------------------------
     gems_raw: dict[int, str] = {}
     tile_powers_raw: dict[int, float] = {}
     for k, v in fields.items():
@@ -211,25 +275,39 @@ def assemble_encounter_from_fields(fields: dict, extra: dict) -> dict:
             except (ValueError, TypeError):
                 pass
 
-    if len(gems_raw) == 16:
-        pre_submit['gems'] = [gems_raw.get(i, 'none') for i in range(16)]
-    if len(tile_powers_raw) == 16:
-        pre_submit['tile_powers'] = [tile_powers_raw.get(i, 0.0) for i in range(16)]
+    if gems_raw:
+        if len(gems_raw) == 16:
+            pre_submit['gems'] = [gems_raw[i] for i in range(16)]
+        else:
+            assembly_unsupported.append('tile_data_incomplete')
 
-    # Enemy name: ('CREATURE', 'enemy', 'enemy_name') -> str
-    enemy_name_raw = creature_raw.get(('enemy', 'enemy_name'))
-    if enemy_name_raw is not None:
-        pre_submit['enemy_name'] = enemy_name_raw
+    if tile_powers_raw:
+        if len(tile_powers_raw) == 16:
+            pre_submit['tile_powers'] = [tile_powers_raw[i] for i in range(16)]
+        else:
+            if 'tile_data_incomplete' not in assembly_unsupported:
+                assembly_unsupported.append('tile_data_incomplete')
 
-    # Effects: default to empty lists (no native capture of effect queues yet;
-    # non-empty effects would be an UNSUPPORTED marker in the log, which quarantines
-    # the block before we ever reach assemble_encounter_from_fields).
-    pre_submit.setdefault('player_effects', [])
-    pre_submit.setdefault('enemy_effects', [])
+    # -----------------------------------------------------------------------
+    # Finding 2 (EFFECT rows): If any EFFECT tuple keys are present, mark unsupported.
+    # The hook only emits an UNSUPPORTED marker for effect queues — it is not a
+    # reliable signal that effects are actually empty.  We default both to [] but
+    # mark them unsupported so the fixture is not promoted to eligible.
+    # -----------------------------------------------------------------------
+    effect_keys_present = any(
+        isinstance(k, tuple) and k[0] == 'EFFECT'
+        for k in fields
+    )
+    if effect_keys_present:
+        assembly_unsupported.append('effects_unsupported')
+
+    pre_submit['player_effects'] = []
+    pre_submit['enemy_effects'] = []
 
     # Attach attacks and counters.
     pre_submit['enemy_attacks'] = typed_attacks
-    pre_submit['enemy_counters'] = enemy_counters
+    if enemy_counters is not None:
+        pre_submit['enemy_counters'] = enemy_counters
 
     # selected_action comes from extra (cannot be derived from the log).
     if 'selected_action' in extra:
@@ -238,19 +316,39 @@ def assemble_encounter_from_fields(fields: dict, extra: dict) -> dict:
     # --- Build the top-level fixture dict ---
     fixture: dict = {}
 
-    # Provenance from extra.
+    # -----------------------------------------------------------------------
+    # Finding 4: Provenance from extra — preserve teacher_forced and unsupported_state.
+    # -----------------------------------------------------------------------
     for key in ('schema_version', 'build', 'session_id', 'encounter_instance',
-                'attack_id', 'rng_interval', 'observed'):
+                'rng_interval', 'observed'):
         if key in extra:
             fixture[key] = extra[key]
 
-    # teacher_forced default: False (live captures are not teacher-forced).
-    fixture.setdefault('teacher_forced', False)
+    # Finding 4: attack_id — use extra['attack_id'] if present; also check for
+    # '_rec_attack_id' from the parser record and raise on conflict.
+    rec_attack_id = extra.get('_rec_attack_id')
+    extra_attack_id = extra.get('attack_id')
+    if rec_attack_id is not None and extra_attack_id is not None:
+        if rec_attack_id != extra_attack_id:
+            raise ValueError(
+                f'attack_id conflict: extra has {extra_attack_id!r} but '
+                f'parsed record has {rec_attack_id!r}')
+    if extra_attack_id is not None:
+        fixture['attack_id'] = extra_attack_id
+    elif rec_attack_id is not None:
+        fixture['attack_id'] = rec_attack_id
 
-    # unsupported_state: start empty; build_encounter_state will populate
-    # unsupported_fields (including attack_state_mapping_unconfirmed when
-    # native_state_raw is present) once pre_submit is validated.
-    fixture.setdefault('unsupported_state', [])
+    # Finding 4: Preserve teacher_forced from extra (do NOT default unconditionally).
+    fixture['teacher_forced'] = extra.get('teacher_forced', False)
+
+    # Finding 4: Merge unsupported_state from extra with assembly-discovered reasons.
+    # Do NOT replace one with the other; merge both sets.
+    caller_unsupported = list(extra.get('unsupported_state', []))
+    merged_unsupported = list(caller_unsupported)
+    for reason in assembly_unsupported:
+        if reason not in merged_unsupported:
+            merged_unsupported.append(reason)
+    fixture['unsupported_state'] = merged_unsupported
 
     fixture['pre_submit'] = pre_submit
 
@@ -265,6 +363,7 @@ def assemble_captures_from_log(log_path: str, extra: dict) -> dict:
         extra:     Provenance dict passed through to assemble_encounter_from_fields.
                    Keys: schema_version, build, session_id, encounter_instance,
                    attack_id, rng_interval, selected_action, observed.
+                   Optional keys: teacher_forced (bool), unsupported_state (list).
 
     Returns:
         {
@@ -279,6 +378,13 @@ def assemble_captures_from_log(log_path: str, extra: dict) -> dict:
                 {'reason': <str>, 'raw': <str repr of ParsedRecord>},
             ],
         }
+
+    Note on per-record extra values (selected_action, rng_interval, observed,
+    attack_id): These values apply to a specific attack boundary.  When multiple
+    records are parsed from the same log file, each may need different values.
+    This function passes the same extra dict to all records; callers with
+    per-record variation should call assemble_encounter_from_fields directly
+    with a per-record extra dict (one per record).
 
     For each valid parsed record, calls assemble_encounter_from_fields then
     validate_fixture.  unsupported_fields are passed through without modification.
@@ -305,7 +411,10 @@ def assemble_captures_from_log(log_path: str, extra: dict) -> dict:
 
     for rec in good_records:
         try:
-            fixture = assemble_encounter_from_fields(rec.fields, extra)
+            # Pass the parser's record attack_id so assemble_encounter_from_fields
+            # can detect conflicts with extra['attack_id'].
+            rec_extra = dict(extra, _rec_attack_id=rec.attack_id)
+            fixture = assemble_encounter_from_fields(rec.fields, rec_extra)
             eligibility_obj = validate_fixture(fixture)
             # Recover unsupported_fields from the encounter state built during validation.
             # validate_fixture calls build_encounter_state internally; we need to re-derive
