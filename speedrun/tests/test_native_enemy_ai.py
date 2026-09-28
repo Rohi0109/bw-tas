@@ -4,8 +4,9 @@ from native_enemy_ai import (
     UrgencyLevel,
     choose_attack,
     get_urgency,
-    urgency_weight,
+    normalise_attack,
     tick_counters,
+    urgency_weight,
 )
 
 
@@ -207,6 +208,57 @@ class TickCountersTests(unittest.TestCase):
 
     def test_empty_list(self):
         self.assertEqual(tick_counters([], None), [])
+
+
+class NormaliseAttackTests(unittest.TestCase):
+    """Parser-to-state-to-AI integration: hook field names → canonical → choose_attack."""
+
+    def test_lua_hook_translates_to_canonical(self):
+        hook = {'mMin': 1, 'mMax': 5, 'mAlreadyPerformed': False, 'mDamage': 2.0, 'mState': 0}
+        canonical = normalise_attack(hook)
+        self.assertEqual(canonical['min'], 1)
+        self.assertEqual(canonical['max'], 5)
+        self.assertFalse(canonical['already_performed'])
+        self.assertEqual(canonical['damage'], 2.0)
+        self.assertEqual(canonical['native_state_raw'], 0)
+        self.assertNotIn('state', canonical)
+
+    def test_already_performed_true_makes_attack_ineligible(self):
+        # mAlreadyPerformed=True must reach already_performed so AI skips the attack.
+        hook = {'mMin': 1, 'mMax': 5, 'mAlreadyPerformed': True, 'mDamage': 2.0, 'mState': 0}
+        canonical = normalise_attack(hook)
+        result = choose_attack([canonical], [2], None)
+        self.assertIsNone(result)
+
+    def test_already_performed_false_attack_eligible(self):
+        hook = {'mMin': 1, 'mMax': 5, 'mAlreadyPerformed': False, 'mDamage': 2.0, 'mState': 0}
+        canonical = normalise_attack(hook)
+        result = choose_attack([canonical], [2], draw_returning(0))
+        self.assertEqual(result, 0)
+
+    def test_mstate_preserved_not_mapped_to_state(self):
+        hook = {'mMin': 2, 'mMax': 5, 'mState': 1}
+        canonical = normalise_attack(hook)
+        self.assertIn('native_state_raw', canonical)
+        self.assertEqual(canonical['native_state_raw'], 1)
+        self.assertNotIn('state', canonical)
+
+    def test_mixed_format_rejected(self):
+        with self.assertRaises(ValueError):
+            normalise_attack({'min': 1, 'max': 5, 'mAlreadyPerformed': False})
+
+    def test_unknown_m_key_rejected(self):
+        with self.assertRaises(ValueError):
+            normalise_attack({'mMin': 1, 'mMax': 5, 'mUnknownField': 'x'})
+
+    def test_canonical_format_passes_through(self):
+        canonical = {'min': 2, 'max': 5, 'already_performed': False}
+        result = normalise_attack(canonical)
+        self.assertEqual(result, canonical)
+
+    def test_unknown_canonical_key_rejected(self):
+        with self.assertRaises(ValueError):
+            normalise_attack({'min': 2, 'max': 5, 'unknown_field': True})
 
 
 if __name__ == '__main__':

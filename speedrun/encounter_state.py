@@ -11,6 +11,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Optional
 
+from native_enemy_ai import normalise_attack
+
 ENCOUNTER_STATE_VERSION = 1
 
 _BOARD_RE = re.compile(r'[A-Z]{4}(?:/[A-Z]{4}){3}')
@@ -191,15 +193,22 @@ def build_encounter_state(data: dict) -> 'EncounterState':
         raise ValueError(
             f"enemy_attacks (len {len(data['enemy_attacks'])}) and "
             f"enemy_counters (len {len(counters)}) must have equal length")
+    normalised_attacks = []
     for i, attack in enumerate(data['enemy_attacks']):
         if not isinstance(attack, dict):
             raise ValueError(f'enemy_attacks[{i}] must be a dict')
+        try:
+            normalised = normalise_attack(attack)
+        except ValueError as exc:
+            raise ValueError(f'enemy_attacks[{i}]: {exc}')
         for req_key in ('min', 'max'):
-            if req_key not in attack:
-                raise ValueError(f'enemy_attacks[{i}] missing required key {req_key!r}')
-            v = attack[req_key]
+            if req_key not in normalised:
+                raise ValueError(
+                    f'enemy_attacks[{i}] missing required key {req_key!r} after normalisation')
+            v = normalised[req_key]
             if not isinstance(v, int) or isinstance(v, bool):
                 raise ValueError(f'enemy_attacks[{i}][{req_key!r}] must be an integer')
+        normalised_attacks.append(normalised)
 
     # RNG
     _validate_engine_rng(data['engine_rng'])
@@ -240,7 +249,7 @@ def build_encounter_state(data: dict) -> 'EncounterState':
         enemy_offense=float(data['enemy_offense']),
         enemy_damage_buffer=float(data['enemy_damage_buffer']),
         enemy_effects=list(data['enemy_effects']),
-        enemy_attacks=list(data['enemy_attacks']),
+        enemy_attacks=normalised_attacks,
         enemy_counters=counters,
         engine_rng={'words': list(data['engine_rng']['words']),
                     'cursor': data['engine_rng']['cursor']},

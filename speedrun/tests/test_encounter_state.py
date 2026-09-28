@@ -36,8 +36,7 @@ def _plain_data(**overrides):
         'enemy_offense': 0.0,
         'enemy_damage_buffer': 0.0,
         'enemy_effects': [],
-        'enemy_attacks': [{'min': 1, 'max': 2, 'mRateCounter': 3,
-                           'mDamage': 1.0, 'mState': 0, 'mAlreadyPerformed': False}],
+        'enemy_attacks': [{'mMin': 2, 'mMax': 5, 'mAlreadyPerformed': False, 'mDamage': 1.0, 'mState': 0}],
         'enemy_counters': [0],
         'engine_rng': _RNG,
         'engine_rng_draw_index': 0,
@@ -209,6 +208,33 @@ class ValidationTests(unittest.TestCase):
         data['enemy_counters'] = [0]
         with self.assertRaises(ValueError):
             build_encounter_state(data)
+
+
+class AttackNormalisationTests(unittest.TestCase):
+    def test_m_prefixed_attacks_normalised_to_canonical(self):
+        data = _plain_data()
+        state = build_encounter_state(data)
+        attack = state.enemy_attacks[0]
+        self.assertIn('min', attack)
+        self.assertIn('max', attack)
+        self.assertIn('already_performed', attack)
+        self.assertIn('native_state_raw', attack)
+        self.assertNotIn('mMin', attack)
+        self.assertNotIn('mAlreadyPerformed', attack)
+
+    def test_mixed_attack_format_rejected(self):
+        data = _plain_data()
+        data['enemy_attacks'] = [{'min': 1, 'max': 5, 'mAlreadyPerformed': False}]
+        data['enemy_counters'] = [0]
+        with self.assertRaises(ValueError):
+            build_encounter_state(data)
+
+    def test_canonical_attack_format_accepted(self):
+        data = _plain_data()
+        data['enemy_attacks'] = [{'min': 1, 'max': 5, 'already_performed': False, 'damage': 1.0}]
+        data['enemy_counters'] = [0]
+        state = build_encounter_state(data)
+        self.assertEqual(state.enemy_attacks[0]['min'], 1)
 
 
 if __name__ == '__main__':

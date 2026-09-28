@@ -19,6 +19,55 @@ import math
 from enum import IntEnum
 from typing import Callable, Optional
 
+# Lua hook field names → canonical AI field names.
+_LUA_FIELD_MAP: dict[str, str] = {
+    'mMin': 'min',
+    'mMax': 'max',
+    'mDamage': 'damage',
+    'mAlreadyPerformed': 'already_performed',
+    # mState intentionally absent: numeric→string mapping unconfirmed.
+    # Preserved as 'native_state_raw' until native capture confirms the mapping.
+}
+
+_CANONICAL_KEYS = frozenset({
+    'min', 'max', 'damage', 'already_performed', 'state',
+    'name', 'rate_counter', 'native_state_raw',
+})
+
+
+def normalise_attack(raw: dict) -> dict:
+    """Translate a Lua hook attack dict to the canonical AI field names.
+
+    Accepts either m-prefixed (hook) format or canonical format, but not
+    mixed. mState is preserved as native_state_raw; its integer→string
+    mapping is unconfirmed and kept for future native capture evidence.
+
+    Raises ValueError for unknown keys or mixed representations.
+    """
+    if not isinstance(raw, dict):
+        raise ValueError(f'attack entry must be a dict, got {type(raw).__name__!r}')
+    # Lua hook keys are camelCase: mMin, mMax, mState, etc. (lowercase 'm' + uppercase next char).
+    m_keys = {k for k in raw if k.startswith('m') and len(k) > 1 and k[1].isupper()}
+    canonical_in_input = set(raw) - m_keys
+    if m_keys and (canonical_in_input & (_CANONICAL_KEYS - {'native_state_raw'})):
+        raise ValueError(
+            f'attack mixes m-prefixed and canonical keys: '
+            f'm-prefixed={m_keys!r}, canonical={canonical_in_input!r}')
+    if not m_keys:
+        unknown = set(raw) - _CANONICAL_KEYS
+        if unknown:
+            raise ValueError(f'attack has unknown canonical keys: {unknown!r}')
+        return dict(raw)
+    result: dict = {}
+    for k, v in raw.items():
+        if k == 'mState':
+            result['native_state_raw'] = v
+        elif k in _LUA_FIELD_MAP:
+            result[_LUA_FIELD_MAP[k]] = v
+        else:
+            raise ValueError(f'unknown m-prefixed attack field: {k!r}')
+    return result
+
 
 class UrgencyLevel(IntEnum):
     """Three-level classification derived from the 0-100 urgency_weight scale.
