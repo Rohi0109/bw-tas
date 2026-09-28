@@ -23,18 +23,44 @@ def _minimal_fixture(**overrides) -> dict:
         'attack_id': 1,
         'rng_interval': {'first': 10, 'last': 15},
         'pre_submit': {
-            'player_hp': 10.0,
-            'enemy_hp': 5.0,
             'board': 'ABCD/EFGH/IJKL/MNOP',
-            'selected_action': 'TEST',
-            'rng_snapshot': {'words': [0] * 624, 'cursor': 0},
+            'gems': ['none'] * 16,
+            'tile_powers': [0.0] * 16,
+            'player_hp': 10.0,
+            'player_max_hp': 100.0,
+            'player_offense': 1.0,
+            'player_damage_buffer': 0.0,
+            'player_effects': [],
+            'enemy_name': 'TestEnemy',
+            'enemy_hp': 5.0,
+            'enemy_max_hp': 50.0,
+            'enemy_offense': 1.0,
+            'enemy_damage_buffer': 0.0,
+            'enemy_effects': [],
+            'enemy_attacks': [],
+            'enemy_counters': [],
+            'engine_rng': {'words': [0] * 624, 'cursor': 0},
+            'engine_rng_draw_index': 10,
+            'selected_action': 'ABCD',  # A B C D all on board
         },
-        'observed': {'player_hp': 9, 'enemy_hp': 0},
+        'observed': {
+            'player_hp': 9.0,
+            'enemy_hp': 0.0,
+            'board': 'EFGH/IJKL/MNOP/ABCD',  # post-turn board (same letters, rotated)
+            'rng_snapshot': {'words': [0] * 624, 'cursor': 4},
+        },
         'unsupported_state': [],
         'teacher_forced': False,
     }
     base.update(overrides)
     return base
+
+
+def _min_pre_submit(**overrides) -> dict:
+    """Return a valid pre_submit dict with specific field overrides."""
+    ps = dict(_minimal_fixture()['pre_submit'])
+    ps.update(overrides)
+    return ps
 
 
 class ValidateFixtureTests(unittest.TestCase):
@@ -159,92 +185,120 @@ class ValidateFixtureTests(unittest.TestCase):
             validate_fixture(f)
 
     def test_observed_missing_field_raises(self):
+        # HP-only observed is insufficient for full-turn parity.
         f = _minimal_fixture(observed={'player_hp': 9})
         with self.assertRaises(ValueError):
             validate_fixture(f)
 
     def test_pre_submit_nan_hp_raises(self):
-        ps = dict(_minimal_fixture()['pre_submit'])
-        ps['player_hp'] = float('nan')
-        f = _minimal_fixture(pre_submit=ps)
+        f = _minimal_fixture(pre_submit=_min_pre_submit(player_hp=float('nan')))
         with self.assertRaises(ValueError):
             validate_fixture(f)
 
     def test_pre_submit_negative_hp_raises(self):
-        ps = dict(_minimal_fixture()['pre_submit'])
-        ps['enemy_hp'] = -1
-        f = _minimal_fixture(pre_submit=ps)
+        f = _minimal_fixture(pre_submit=_min_pre_submit(enemy_hp=-1))
         with self.assertRaises(ValueError):
             validate_fixture(f)
 
     def test_pre_submit_missing_board_raises(self):
-        ps = dict(_minimal_fixture()['pre_submit'])
+        ps = _min_pre_submit()
         del ps['board']
         f = _minimal_fixture(pre_submit=ps)
         with self.assertRaises(ValueError):
             validate_fixture(f)
 
     def test_pre_submit_missing_rng_snapshot_raises(self):
-        ps = dict(_minimal_fixture()['pre_submit'])
-        del ps['rng_snapshot']
+        ps = _min_pre_submit()
+        del ps['engine_rng']
         f = _minimal_fixture(pre_submit=ps)
         with self.assertRaises(ValueError):
             validate_fixture(f)
 
     def test_observed_non_numeric_hp_raises(self):
-        f = _minimal_fixture(observed={'player_hp': 'nine', 'enemy_hp': 0})
+        f = _minimal_fixture(observed={'player_hp': 'nine', 'enemy_hp': 0,
+                                        'board': 'EFGH/IJKL/MNOP/ABCD',
+                                        'rng_snapshot': {'words': [0]*624, 'cursor': 4}})
         with self.assertRaises(ValueError):
             validate_fixture(f)
 
     def test_observed_none_hp_raises(self):
-        f = _minimal_fixture(observed={'player_hp': None, 'enemy_hp': 0})
+        f = _minimal_fixture(observed={'player_hp': None, 'enemy_hp': 0,
+                                        'board': 'EFGH/IJKL/MNOP/ABCD',
+                                        'rng_snapshot': {'words': [0]*624, 'cursor': 4}})
         with self.assertRaises(ValueError):
             validate_fixture(f)
 
     def test_observed_negative_hp_raises(self):
-        f = _minimal_fixture(observed={'player_hp': -1, 'enemy_hp': 0})
+        f = _minimal_fixture(observed={'player_hp': -1, 'enemy_hp': 0,
+                                        'board': 'EFGH/IJKL/MNOP/ABCD',
+                                        'rng_snapshot': {'words': [0]*624, 'cursor': 4}})
         with self.assertRaises(ValueError):
             validate_fixture(f)
 
     def test_pre_submit_board_not_string_raises(self):
-        ps = dict(_minimal_fixture()['pre_submit'])
-        ps['board'] = [None]  # list instead of string
-        f = _minimal_fixture(pre_submit=ps)
+        f = _minimal_fixture(pre_submit=_min_pre_submit(board=[None]))
         with self.assertRaises(ValueError):
             validate_fixture(f)
 
     def test_pre_submit_board_wrong_format_raises(self):
-        ps = dict(_minimal_fixture()['pre_submit'])
-        ps['board'] = 'not_a_board'
-        f = _minimal_fixture(pre_submit=ps)
+        f = _minimal_fixture(pre_submit=_min_pre_submit(board='not_a_board'))
         with self.assertRaises(ValueError):
             validate_fixture(f)
 
     def test_pre_submit_action_with_underscore_raises(self):
-        ps = dict(_minimal_fixture()['pre_submit'])
-        ps['selected_action'] = 'NOT_A_WORD'  # underscore not allowed
-        f = _minimal_fixture(pre_submit=ps)
+        f = _minimal_fixture(pre_submit=_min_pre_submit(selected_action='NOT_A_WORD'))
         with self.assertRaises(ValueError):
             validate_fixture(f)
 
     def test_pre_submit_rng_empty_words_raises(self):
-        ps = dict(_minimal_fixture()['pre_submit'])
-        ps['rng_snapshot'] = {'words': [], 'cursor': 0}
-        f = _minimal_fixture(pre_submit=ps)
+        f = _minimal_fixture(pre_submit=_min_pre_submit(engine_rng={'words': [], 'cursor': 0}))
         with self.assertRaises(ValueError):
             validate_fixture(f)
 
     def test_pre_submit_rng_negative_cursor_raises(self):
-        ps = dict(_minimal_fixture()['pre_submit'])
-        ps['rng_snapshot'] = {'words': [0] * 624, 'cursor': -999}
-        f = _minimal_fixture(pre_submit=ps)
+        f = _minimal_fixture(pre_submit=_min_pre_submit(engine_rng={'words': [0]*624, 'cursor': -999}))
         with self.assertRaises(ValueError):
             validate_fixture(f)
 
     def test_pre_submit_rng_out_of_range_word_raises(self):
-        ps = dict(_minimal_fixture()['pre_submit'])
-        ps['rng_snapshot'] = {'words': [-1] + [0] * 623, 'cursor': 0}
-        f = _minimal_fixture(pre_submit=ps)
+        f = _minimal_fixture(pre_submit=_min_pre_submit(engine_rng={'words': [-1]+[0]*623, 'cursor': 0}))
+        with self.assertRaises(ValueError):
+            validate_fixture(f)
+
+    def test_action_not_on_board_raises(self):
+        # T and S are not on ABCD/EFGH/IJKL/MNOP.
+        f = _minimal_fixture(pre_submit=_min_pre_submit(selected_action='TEST'))
+        with self.assertRaises(ValueError):
+            validate_fixture(f)
+
+    def test_action_too_long_raises(self):
+        # 17 letters exceeds the 16-tile board.
+        f = _minimal_fixture(pre_submit=_min_pre_submit(selected_action='A' * 17))
+        with self.assertRaises(ValueError):
+            validate_fixture(f)
+
+    def test_observed_missing_board_raises(self):
+        obs = {'player_hp': 9.0, 'enemy_hp': 0.0, 'rng_snapshot': {'words': [0]*624, 'cursor': 4}}
+        f = _minimal_fixture(observed=obs)
+        with self.assertRaises(ValueError):
+            validate_fixture(f)
+
+    def test_observed_missing_rng_raises(self):
+        obs = {'player_hp': 9.0, 'enemy_hp': 0.0, 'board': 'EFGH/IJKL/MNOP/ABCD'}
+        f = _minimal_fixture(observed=obs)
+        with self.assertRaises(ValueError):
+            validate_fixture(f)
+
+    def test_unsupported_derived_from_encounter_gems(self):
+        # Non-plain gems in pre_submit must trigger UNSUPPORTED_STATE
+        # even when unsupported_state=[] (derived from encounter, not caller-trusted).
+        ps = _min_pre_submit(gems=['diamond'] + ['none'] * 15)
+        f = _minimal_fixture(pre_submit=ps, unsupported_state=[])
+        self.assertEqual(validate_fixture(f), FixtureEligibility.UNSUPPORTED_STATE)
+
+    def test_hp_only_observed_raises(self):
+        # HP-only observed is not sufficient for full-turn parity.
+        f = _minimal_fixture(observed={'player_hp': 9.0, 'enemy_hp': 0.0})
         with self.assertRaises(ValueError):
             validate_fixture(f)
 

@@ -18,7 +18,7 @@ Rules:
 import math
 import re
 from enum import Enum
-from encounter_state import _BOARD_RE, _validate_engine_rng
+from encounter_state import build_encounter_state, _BOARD_RE, _validate_engine_rng
 
 SCHEMA_VERSION = 1
 
@@ -68,7 +68,7 @@ def validate_fixture(fixture: dict) -> FixtureEligibility:
     _validate_int_field(fixture, 'encounter_instance', minimum=0)
     _validate_int_field(fixture, 'attack_id', minimum=0)
     _validate_rng_interval(fixture['rng_interval'])
-    _validate_pre_submit(fixture['pre_submit'])
+    encounter = _validate_pre_submit(fixture['pre_submit'], fixture)
     _validate_observed(fixture['observed'])
 
     if not isinstance(fixture['unsupported_state'], list):
@@ -84,7 +84,8 @@ def validate_fixture(fixture: dict) -> FixtureEligibility:
 
     if fixture['teacher_forced']:
         return FixtureEligibility.TEACHER_FORCED
-    if fixture['unsupported_state']:
+    # Derive unsupported from both the encounter snapshot and any caller annotation.
+    if encounter.unsupported_fields or fixture['unsupported_state']:
         return FixtureEligibility.UNSUPPORTED_STATE
     return FixtureEligibility.ELIGIBLE
 
@@ -152,39 +153,59 @@ def _validate_rng_interval(interval):
         )
 
 
-_PRE_SUBMIT_REQUIRED = {'player_hp', 'enemy_hp', 'board', 'selected_action', 'rng_snapshot'}
-_OBSERVED_REQUIRED = {'player_hp', 'enemy_hp'}
+_OBSERVED_REQUIRED = {'player_hp', 'enemy_hp', 'board', 'rng_snapshot'}
 
 
 _ACTION_RE = re.compile(r'[A-Z]{2,}')
 
 
-def _validate_pre_submit(pre_submit):
+def _validate_action_against_board(board: str, action: str) -> None:
+    """Reject actions whose letters cannot be formed from available board tiles."""
+    from collections import Counter
+    tiles = board.replace('/', '')
+    if len(action) > len(tiles):
+        raise ValueError(
+            f"selected_action length {len(action)} exceeds board tile count {len(tiles)}")
+    tile_counts = Counter(tiles)
+    action_counts = Counter(action)
+    for letter, needed in action_counts.items():
+        available = tile_counts.get(letter, 0)
+        if needed > available:
+            raise ValueError(
+                f"selected_action needs {needed}x '{letter}' but board has {available}")
+
+
+def _validate_pre_submit(pre_submit: dict, fixture: dict):
+    """Validate pre_submit as a supported encounter snapshot; return the EncounterState.
+
+    Reuses the encounter_state contract (build_encounter_state) so validation
+    rules are defined once. Augments pre_submit with fixture-level provenance
+    (build, session_id, encounter_instance) before calling build_encounter_state.
+    selected_action is additionally validated against the captured board.
+    """
     if not isinstance(pre_submit, dict):
         raise ValueError('pre_submit must be a dict')
-    missing = _PRE_SUBMIT_REQUIRED - set(pre_submit)
-    if missing:
-        raise ValueError(f'pre_submit missing required fields: {missing}')
-    for key in ('player_hp', 'enemy_hp'):
-        v = pre_submit[key]
-        if not isinstance(v, (int, float)) or isinstance(v, bool):
-            raise ValueError(f'pre_submit[{key!r}] must be a number')
-        if not math.isfinite(v):
-            raise ValueError(f'pre_submit[{key!r}] must be finite, got {v!r}')
-        if v < 0:
-            raise ValueError(f'pre_submit[{key!r}] must be non-negative, got {v!r}')
-    board = pre_submit['board']
-    if not isinstance(board, str) or not _BOARD_RE.fullmatch(board):
-        raise ValueError("pre_submit['board'] must match [A-Z]{4}(/[A-Z]{4}){3}, "
-                         f"e.g. 'ABCD/EFGH/IJKL/MNOP'; got {board!r}")
-    action = pre_submit['selected_action']
+    # Augment with fixture provenance so build_encounter_state can validate build identity.
+    augmented = dict(pre_submit)
+    augmented.setdefault('build', fixture.get('build', {}))
+    augmented.setdefault('session_id', fixture.get('session_id', ''))
+    augmented.setdefault('encounter_instance', fixture.get('encounter_instance', 0))
+    try:
+        encounter = build_encounter_state(augmented)
+    except ValueError as exc:
+        raise ValueError(f'pre_submit failed encounter-state validation: {exc}')
+    # Validate selected_action: 2+ uppercase letters, must be formable from the board.
+    action = pre_submit.get('selected_action')
     if not isinstance(action, str) or not _ACTION_RE.fullmatch(action):
-        raise ValueError("pre_submit['selected_action'] must be 2+ uppercase letters "
-                         f"(A-Z only); got {action!r}")
-    _validate_engine_rng(pre_submit['rng_snapshot'], 'pre_submit.rng_snapshot')
+        raise ValueError(
+            "pre_submit['selected_action'] must be 2+ uppercase letters (A-Z only); "
+            f"got {action!r}")
+    _validate_action_against_board(pre_submit['board'], action)
+    return encounter
 
 
-def _validate_observed(observed):
+def _validate_observed(observed: dict) -> None:
+    """Validate observed after-state; requires board and RNG for full-turn replay."""
     if not isinstance(observed, dict):
         raise ValueError('observed must be a dict')
     missing = _OBSERVED_REQUIRED - set(observed)
@@ -198,3 +219,7 @@ def _validate_observed(observed):
             raise ValueError(f'observed[{key!r}] must be finite, got {v!r}')
         if v < 0:
             raise ValueError(f'observed[{key!r}] must be non-negative, got {v!r}')
+    board = observed['board']
+    if not isinstance(board, str) or not _BOARD_RE.fullmatch(board):
+        raise ValueError("observed['board'] must match [A-Z]{4}(/[A-Z]{4}){3}")
+    _validate_engine_rng(observed['rng_snapshot'], 'observed.rng_snapshot')
