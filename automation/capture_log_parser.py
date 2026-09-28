@@ -202,7 +202,9 @@ def parse_sim_log(lines: Iterable[str]) -> list[ParsedRecord]:
             # ATTACK:   parts = [id, owner, atk_key, field, value] → key=(ATTACK, owner, atk_key, field)
             # EFFECT:   parts = [id, owner, eff_key, field, value] → key=(EFFECT, owner, eff_key, field)
             # Others:   all dimension parts form the key, last part is the value.
-            if len(parts) < 3:
+            expected = {'CREATURE': 4, 'ATTACK': 5, 'EFFECT': 5,
+                        'COLLECTION': 4, 'BOARD': 2}.get(kind)
+            if (expected is not None and len(parts) != expected) or (expected is None and len(parts) < 3):
                 pending_errors.append(f'parse error: too few parts in {kind} row: {line!r}')
                 continue
 

@@ -3,6 +3,10 @@
 The first capture infrastructure is implemented. A native game-turn comparison
 has **not** been recorded yet, and this is not a whole-game checkpoint system.
 
+For the current staged install, preflight, assembly CLI and next bounded run,
+use [Live validation readiness](LIVE_VALIDATION.md). Older v1 paths below are
+historical; the fresh v2 staging manifest includes the required provenance.
+
 ## Validated capture machinery
 
 `automation/capture_native_rng_gdb.py` uses entry/return breakpoints around the
@@ -101,7 +105,8 @@ The harness:
 - Verifies EXE/PAK hashes before starting GDB.
 - Starts `gdb --nx --quiet --batch -ex 'source launch_capture_gdb.py' --args wine ...`
 - `launch_capture_gdb.py` watches `gdb.events.new_objfile` for the game binary,
-  sets a one-shot hardware gate at `0x5ab4b0`, then activates Entry/Returned
+  also arms a one-shot hardware gate at `0x5ab4b0` after `starti` when Wine emits
+  no PE object-file event, then activates Entry/Returned
   capture (same logic as `capture_native_rng_gdb.py`).
 - Enforces `--timeout` wall-clock limit; SIGTERMs the GDB tree on expiry.
 - Writes `run-manifest.json` and a combined GDB+game `gdb-combined.log`.

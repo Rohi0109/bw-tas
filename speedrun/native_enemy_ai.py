@@ -86,7 +86,7 @@ def _to_bool(v, field: str) -> bool:
         low = v.strip().lower()
         if low in ('true', '1'):
             return True
-        if low in ('false', '0', ''):
+        if low in ('false', '0'):
             return False
     raise ValueError(f'{field!r}: cannot convert {v!r} to bool')
 
@@ -94,6 +94,8 @@ def _to_bool(v, field: str) -> bool:
 def _to_int(v, field: str) -> int:
     if isinstance(v, int) and not isinstance(v, bool):
         return v
+    if not isinstance(v, str):
+        raise ValueError(f'{field!r}: expected integer or integer string')
     try:
         return int(v)
     except (TypeError, ValueError):
@@ -101,6 +103,8 @@ def _to_int(v, field: str) -> int:
 
 
 def _to_float(v, field: str) -> float:
+    if isinstance(v, bool):
+        raise ValueError(f'{field!r}: bool is not a numeric value')
     if isinstance(v, (int, float)) and not isinstance(v, bool):
         result = float(v)
     else:

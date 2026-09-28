@@ -63,6 +63,14 @@ _EXTRA = {
 }
 
 
+def _log_extra():
+    # Independent synthetic pre-state, explicitly joined to attack 1.
+    return dict(_EXTRA, captured_state={
+        'board': _BOARD, 'gems': ['none'] * 16, 'tile_powers': [0.0] * 16,
+        'engine_rng': _RNG_STATE, 'engine_rng_draw_index': 0,
+    })
+
+
 def _make_fields(attacks: list[dict],
                  owner: str = 'enemy',
                  board: str = _BOARD,
@@ -414,12 +422,12 @@ class CounterConflictTests(unittest.TestCase):
                 f.write('\n'.join(log_lines))
                 tmp_path = f.name
             try:
-                result = assemble_captures_from_log(tmp_path, _EXTRA)
+                result = assemble_captures_from_log(tmp_path, _log_extra())
             finally:
                 os.unlink(tmp_path)
 
-        self.assertEqual(len(result['valid']), 1)
-        entry = result['valid'][0]
+        self.assertEqual(len(result['errors']), 1)
+        entry = result['errors'][0]
         self.assertEqual(entry['eligibility'], 'error')
         self.assertIn('injected counter conflict', entry['unsupported_fields'][0])
 
@@ -467,7 +475,7 @@ class NativeStateRawUnsupportedTests(unittest.TestCase):
             f.write('\n'.join(log_lines))
             tmp_path = f.name
         try:
-            result = assemble_captures_from_log(tmp_path, _EXTRA)
+            result = assemble_captures_from_log(tmp_path, _log_extra())
         finally:
             os.unlink(tmp_path)
         self.assertEqual(len(result['valid']), 1)
@@ -544,7 +552,7 @@ class AssembleCapturesFromLogTests(unittest.TestCase):
         lines = _make_quarantine_log_lines(1)
         path = self._write_log(lines)
         try:
-            result = assemble_captures_from_log(path, _EXTRA)
+            result = assemble_captures_from_log(path, _log_extra())
         finally:
             os.unlink(path)
         self.assertEqual(len(result['quarantined']), 1)
@@ -562,7 +570,7 @@ class AssembleCapturesFromLogTests(unittest.TestCase):
         ]
         path = self._write_log(lines)
         try:
-            result = assemble_captures_from_log(path, _EXTRA)
+            result = assemble_captures_from_log(path, _log_extra())
         finally:
             os.unlink(path)
         self.assertEqual(len(result['quarantined']), 1)
@@ -576,7 +584,7 @@ class AssembleCapturesFromLogTests(unittest.TestCase):
         quarantine_lines = _make_quarantine_log_lines(2)
         path = self._write_log(valid_lines + quarantine_lines)
         try:
-            result = assemble_captures_from_log(path, _EXTRA)
+            result = assemble_captures_from_log(path, _log_extra())
         finally:
             os.unlink(path)
         self.assertEqual(len(result['quarantined']), 1)
@@ -587,12 +595,14 @@ class AssembleCapturesFromLogTests(unittest.TestCase):
         lines = _make_complete_log_lines(1, mstate='0')
         path = self._write_log(lines)
         try:
-            result = assemble_captures_from_log(path, _EXTRA)
+            result = assemble_captures_from_log(path, _log_extra())
         finally:
             os.unlink(path)
         self.assertEqual(len(result['valid']), 1)
         entry = result['valid'][0]
-        self.assertNotEqual(entry['eligibility'], 'eligible')
+        self.assertEqual(entry['eligibility'], 'unsupported_state')
+        self.assertIsNotNone(entry['fixture'])
+        self.assertIn('attack_state_mapping_unconfirmed', entry['unsupported_fields'])
 
     def test_multiple_quarantined_blocks_all_preserved(self):
         """Multiple quarantined blocks all appear in result['quarantined']."""
@@ -600,7 +610,7 @@ class AssembleCapturesFromLogTests(unittest.TestCase):
         q2 = _make_quarantine_log_lines(2)
         path = self._write_log(q1 + q2)
         try:
-            result = assemble_captures_from_log(path, _EXTRA)
+            result = assemble_captures_from_log(path, _log_extra())
         finally:
             os.unlink(path)
         self.assertEqual(len(result['quarantined']), 2)
@@ -610,7 +620,7 @@ class AssembleCapturesFromLogTests(unittest.TestCase):
         """An empty log file produces no valid or quarantined records."""
         path = self._write_log([])
         try:
-            result = assemble_captures_from_log(path, _EXTRA)
+            result = assemble_captures_from_log(path, _log_extra())
         finally:
             os.unlink(path)
         self.assertEqual(result['valid'], [])
@@ -764,13 +774,13 @@ class FindingNegativeTests(unittest.TestCase):
         fixture = assemble_encounter_from_fields(fields, _EXTRA)
         self.assertIn('effects_unsupported', fixture['unsupported_state'])
 
-    def test_effect_row_still_produces_empty_effect_lists(self):
-        """Even with EFFECT rows, player_effects and enemy_effects are empty lists."""
+    def test_effect_rows_are_preserved(self):
+        """Captured effects remain visible and unsupported."""
         atk = _minimal_attack()
         fields = _make_fields([atk])
         fields[('EFFECT', 'player', '1', 'mDuration')] = '5'
         fixture = assemble_encounter_from_fields(fields, _EXTRA)
-        self.assertEqual(fixture['pre_submit']['player_effects'], [])
+        self.assertEqual(fixture['pre_submit']['player_effects'], [{'native_key': '1', 'mDuration': '5'}])
         self.assertEqual(fixture['pre_submit']['enemy_effects'], [])
 
     # --- Finding 3: Player attack in fields → excluded from enemy_attacks ---

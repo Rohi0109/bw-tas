@@ -145,6 +145,7 @@ def _on_new_objfile(event):
 
 # ---------- GDB configuration ----------
 gdb.execute('set pagination off')
+gdb.execute('set confirm off')
 gdb.execute('set follow-fork-mode child')
 gdb.execute('set detach-on-fork off')
 # Wine uses SIGSYS for its internal signal router and generates SIGSEGV during
@@ -154,8 +155,16 @@ gdb.execute('handle SIGSEGV nostop noprint pass')
 
 gdb.events.new_objfile.connect(_on_new_objfile)
 
-# Start Wine → wine-preloader → game
-gdb.execute('run')
+# Wine's PE image need not produce a GDB new_objfile event. Arm a hardware
+# breakpoint after the initial loader stop as well: it can wait at an unmapped
+# address without patching Wine memory. The gate verifies the pinned instruction
+# hash before enabling software entry/return capture.
+gdb.execute('starti')
+if not _gate_set:
+    _Gate(f'*{START:#x}', type=gdb.BP_HARDWARE_BREAKPOINT, internal=True)
+    _gate_set = True
+    print('LAUNCH_CAPTURE: armed hardware gate after loader start')
+gdb.execute('continue')
 
 # ---------- Cleanup ----------
 # GDB stopped: draw limit reached, error, or inferior exited.

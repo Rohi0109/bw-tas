@@ -16,11 +16,14 @@ The normal installation (runtime/deluxe-modded) is never touched.
 --game-dir must contain sim-capture-manifest.json (produced by prepare_sim_capture.py).
 """
 import argparse
+import fcntl
 import hashlib
 import json
 import os
 import signal
+import shutil
 import subprocess
+import sys
 import time
 from pathlib import Path
 
@@ -33,6 +36,32 @@ _REPO_ROOT = Path(__file__).parent.parent
 NORMAL_GAME_DIR = (_REPO_ROOT / 'runtime' / 'deluxe-modded').resolve()
 NORMAL_WINE_PREFIX = (_REPO_ROOT / 'runtime' / 'wineprefix').resolve()
 CLEANUP_GRACE_S = 2
+sys.path.insert(0, str(_REPO_ROOT / 'speedrun'))
+from verify_rng_capture import verify
+
+
+def _prefix_pids(prefix):
+    """Find processes using this isolated prefix, including detached Wine children."""
+    found = []
+    for entry in PROC_ROOT.iterdir():
+        if not entry.name.isdigit():
+            continue
+        try:
+            env = (entry / 'environ').read_bytes().split(b'\0')
+            if ('WINEPREFIX=' + str(prefix)).encode() in env:
+                found.append(int(entry.name))
+        except OSError:
+            pass
+    return found
+
+
+def _cleanup_wine_prefix(prefix):
+    """Stop detached Wine processes only in the exclusively owned isolated prefix."""
+    env = dict(os.environ, WINEPREFIX=str(prefix))
+    subprocess.run(['wineserver', '-k'], env=env, timeout=10, check=True,
+                   stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+    subprocess.run(['wineserver', '-w'], env=env, timeout=10, check=True,
+                   stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
 
 
 def _pids_mapping_exe(exe_path: Path) -> list[int]:
@@ -89,7 +118,7 @@ def _cleanup_process_group(proc, pgid: int) -> None:
         if pgid is not None:
             _killpg_safe(pgid, signal.SIGKILL)
         proc.kill()
-        proc.wait()
+        proc.wait(timeout=5)
     elif pgid is not None:
         _killpg_safe(pgid, signal.SIGTERM)
         time.sleep(CLEANUP_GRACE_S)
@@ -112,7 +141,10 @@ def main():
                         help='Wall-clock seconds before forced kill (default 300)')
     parser.add_argument('--display', default=os.environ.get('DISPLAY', ':0'),
                         help='X11 display string (default: $DISPLAY or :0)')
+    parser.add_argument('--preflight-only', action='store_true',
+                        help='Verify staging, dependencies and display without launching the game')
     args = parser.parse_args()
+    args.output_dir = args.output_dir.resolve()
 
     if not 1 <= args.draws <= 10000:
         parser.error('--draws must be in 1..10000')
@@ -174,12 +206,45 @@ def main():
         parser.error(f'Unsupported EXE build (hash starts {exe_hash[:16]}); '
                      'expected the pinned Deluxe build')
     pak_hash = _sha256(pak)
+    for key, actual in (('executable_sha256', exe_hash), ('capture_pak_sha256', pak_hash)):
+        if staged_manifest.get(key) != actual:
+            parser.error(f'{STAGED_MARKER}: {key} does not match staged file')
+    if staged_manifest.get('hook_sha256') != _sha256(Path(__file__).with_name('lua_hook') / 'DumpSimulationState.lua'):
+        parser.error('Staged scalar hook is stale; prepare a fresh capture copy')
+    if not prefix.is_dir():
+        parser.error('Isolated Wine prefix must already exist')
+    if any(args.output_dir == p or p in args.output_dir.parents for p in
+           (game, prefix, NORMAL_GAME_DIR, NORMAL_WINE_PREFIX)):
+        parser.error('Output directory must be outside game installations and Wine prefixes')
 
-    # Refuse if a process already maps this EXE (duplicate controller guard).
-    existing = _pids_mapping_exe(exe)
+    # Match all copies: two isolated installs can still compete for X11 input.
+    existing = _pids_mapping_exe(Path('BookwormAdventures.exe'))
+    existing += _prefix_pids(prefix)
     if existing:
         parser.error(f'Process(es) {existing} already map this EXE; '
                      'cannot launch a duplicate controller')
+
+    if args.preflight_only:
+        missing = [name for name in ('gdb', 'wine', 'wineserver', 'xdpyinfo') if not shutil.which(name)]
+        if missing:
+            parser.error(f'Missing capture tools: {missing}')
+        try:
+            subprocess.run(['xdpyinfo', '-display', args.display], check=True, timeout=10,
+                           stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+        except (subprocess.SubprocessError, OSError) as exc:
+            parser.error(f'X11 display unavailable: {exc}')
+        print(json.dumps({'status': 'ready_for_bounded_capture_attempt',
+                          'game_dir': str(game), 'wine_prefix': str(prefix),
+                          'build': {'BookwormAdventures.exe': exe_hash, 'main.pak': pak_hash},
+                          'live_capture_verified': False, 'full_game_parity': False}, indent=2))
+        return 0
+
+    # Hold until main returns. Refuse racing launches against this prefix.
+    prefix_lock = (prefix / '.bwa-capture.lock').open('a')
+    try:
+        fcntl.flock(prefix_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        parser.error('Another capture launcher owns this prefix')
 
     args.output_dir.mkdir(parents=True)
     capture_file = args.output_dir / 'rng-capture.jsonl'
@@ -193,7 +258,7 @@ def main():
         'wine_prefix': str(prefix),
     }
 
-    gdb_script = Path(__file__).with_name('launch_capture_gdb.py')
+    gdb_script = Path(__file__).resolve().with_name('launch_capture_gdb.py')
 
     env = dict(os.environ,
                WINEPREFIX=str(prefix),
@@ -232,7 +297,7 @@ def main():
             # start_new_session=True creates a new session and process group so
             # we can kill GDB and all Wine descendants together via killpg.
             proc = subprocess.Popen(cmd, env=env, stdout=log_fh, stderr=log_fh,
-                                    start_new_session=True)
+                                    start_new_session=True, cwd=game)
             pgid = proc.pid  # group leader PID == proc PID after setsid
             manifest['pid'] = proc.pid
             manifest['pgid'] = pgid
@@ -247,13 +312,24 @@ def main():
                     proc.wait(timeout=5)
                 except subprocess.TimeoutExpired:
                     _killpg_safe(pgid, signal.SIGKILL)
-                    proc.wait()
+                    proc.wait(timeout=5)
                 exit_code = -signal.SIGTERM
     except Exception as exc:
         manifest['launch_error'] = str(exc)
         exit_code = 1
     finally:
-        _cleanup_process_group(proc, pgid)
+        try:
+            _cleanup_process_group(proc, pgid)
+        except (subprocess.SubprocessError, OSError) as exc:
+            manifest['cleanup_error'] = str(exc)
+        if proc is not None:
+            try:
+                _cleanup_wine_prefix(prefix)
+                remaining = _prefix_pids(prefix)
+                if remaining:
+                    manifest['cleanup_error'] = f'Prefix processes remain: {remaining}'
+            except (subprocess.SubprocessError, OSError) as exc:
+                manifest['cleanup_error'] = str(exc)
 
     elapsed = time.monotonic() - start_mono
     manifest['elapsed_s'] = round(elapsed, 2)
@@ -273,7 +349,13 @@ def main():
             draws_captured = footer.get('draws', 0)
             capture_complete = bool(footer.get('complete'))
             capture_error = footer.get('error')
+            report = verify(lines)
+            manifest['rng_verification'] = report
+            capture_complete = (report.get('status') == 'match'
+                                and report.get('draws_checked') == args.draws
+                                and lines[0].get('build') == build_id)
         except Exception as exc:
+            capture_complete = False
             manifest['capture_parse_error'] = str(exc)
 
     manifest['draws_captured'] = draws_captured
@@ -284,7 +366,7 @@ def main():
     manifest_file.write_text(json.dumps(manifest, indent=2) + '\n')
     print(json.dumps(manifest, indent=2))
 
-    return 0 if capture_complete else 1
+    return 0 if capture_complete and not timed_out and exit_code == 0 and not manifest.get('cleanup_error') else 1
 
 
 if __name__ == '__main__':

@@ -34,7 +34,10 @@ def _write_fake_game(game_dir: Path, with_marker: bool = True):
     (game_dir / 'main.pak').write_bytes(FAKE_PAK_BYTES)
     if with_marker:
         (game_dir / 'sim-capture-manifest.json').write_text(
-            '{"staged_by":"prepare_sim_capture","note":"test-fixture"}\n')
+            json.dumps({'staged_by': 'prepare_sim_capture',
+                        'executable_sha256': FAKE_EXE_HASH,
+                        'capture_pak_sha256': FAKE_PAK_HASH,
+                        'hook_sha256': launch_capture._sha256(Path(launch_capture.__file__).with_name('lua_hook') / 'DumpSimulationState.lua')}))
 
 
 class ProcessGuardTests(unittest.TestCase):
@@ -184,6 +187,9 @@ class NormalProfileProtectionTests(unittest.TestCase):
 
 class ManifestTests(unittest.TestCase):
     def _fake_game(self):
+        cleanup = patch.object(launch_capture, '_cleanup_wine_prefix')
+        cleanup.start()
+        self.addCleanup(cleanup.stop)
         self._tmp = tempfile.TemporaryDirectory()
         game = Path(self._tmp.name) / 'game'
         game.mkdir()
@@ -355,6 +361,103 @@ class ProcessGroupCleanupTests(unittest.TestCase):
                 os.unlink(ready_path)
             except OSError:
                 pass
+
+
+class CaptureReadinessTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        self.game = self.root / 'game'
+        self.game.mkdir()
+        _write_fake_game(self.game)
+        self.prefix = self.root / 'prefix'
+        self.prefix.mkdir()
+        self.out = self.root / 'out'
+        self.argv = ['launch_capture.py', '--game-dir', str(self.game),
+                     '--wine-prefix', str(self.prefix), '--output-dir', str(self.out),
+                     '--draws', '1', '--timeout', '30']
+        for attribute, value in [('EXE_HASH', FAKE_EXE_HASH), ('CLEANUP_GRACE_S', 0)]:
+            p = patch.object(launch_capture, attribute, value)
+            p.start()
+            self.addCleanup(p.stop)
+        for attribute in ('_pids_mapping_exe', '_prefix_pids'):
+            p = patch.object(launch_capture, attribute, return_value=[])
+            p.start()
+            self.addCleanup(p.stop)
+
+    def test_preflight_does_not_launch_or_create_output(self):
+        with patch.object(sys, 'argv', self.argv + ['--preflight-only']), \
+             patch.object(launch_capture.shutil, 'which', return_value='/tool'), \
+             patch.object(launch_capture.subprocess, 'run') as check, \
+             patch.object(launch_capture.subprocess, 'Popen') as launch:
+            self.assertEqual(launch_capture.main(), 0)
+            launch.assert_not_called()
+            self.assertEqual(check.call_args.args[0][0], 'xdpyinfo')
+        self.assertFalse(self.out.exists())
+
+    def test_changed_pak_is_rejected_before_launch(self):
+        (self.game / 'main.pak').write_bytes(b'changed')
+        with patch.object(sys, 'argv', self.argv), self.assertRaises(SystemExit):
+            launch_capture.main()
+        self.assertFalse(self.out.exists())
+
+    def test_exclusive_prefix_lock_rejects_racing_launcher(self):
+        with (self.prefix / '.bwa-capture.lock').open('a') as lock:
+            launch_capture.fcntl.flock(lock, launch_capture.fcntl.LOCK_EX)
+            with patch.object(sys, 'argv', self.argv), self.assertRaises(SystemExit):
+                launch_capture.main()
+        self.assertFalse(self.out.exists())
+
+    def capture(self, corrupt=False, footer_only=False, cleanup_failure=False):
+        from native_rng import NativeRng
+        def popen(command, **kwargs):
+            self.assertEqual(kwargs['cwd'], self.game)
+            output = Path(kwargs['env']['BWA_CAPTURE_OUTPUT'])
+            self.assertTrue(output.is_absolute())
+            rng = NativeRng(123)
+            before = rng.snapshot()._asdict()
+            value = rng.next_rand()
+            after = rng.snapshot()._asdict()
+            rows = [dict(kind='header', schema_version=1,
+                         build=json.loads(kwargs['env']['BWA_CAPTURE_BUILD'])),
+                    dict(kind='draw', index=1, before=before, after=after,
+                         value=value + int(corrupt)),
+                    dict(kind='end', draws=1, complete=True, pending=False, error=None)]
+            if footer_only:
+                rows = rows[-1:]
+            output.write_text(''.join(json.dumps(row) + '\n' for row in rows))
+            proc = MagicMock(pid=99999999, returncode=0)
+            proc.poll.return_value = 0
+            return proc
+        failure = OSError('cleanup failed') if cleanup_failure else None
+        with patch.object(sys, 'argv', self.argv), \
+             patch.object(launch_capture.subprocess, 'Popen', side_effect=popen), \
+             patch.object(launch_capture, '_cleanup_process_group'), \
+             patch.object(launch_capture, '_cleanup_wine_prefix', side_effect=failure):
+            code = launch_capture.main()
+        return code, json.loads((self.out / 'run-manifest.json').read_text())
+
+    def test_success_requires_replay_match(self):
+        code, manifest = self.capture()
+        self.assertEqual(code, 0)
+        self.assertEqual(manifest['rng_verification']['status'], 'match')
+
+    def test_corrupt_draw_cannot_pass_complete_footer(self):
+        code, manifest = self.capture(corrupt=True)
+        self.assertEqual(code, 1)
+        self.assertFalse(manifest['capture_complete'])
+        self.assertEqual(manifest['rng_verification']['status'], 'diverged')
+
+    def test_footer_only_is_not_success(self):
+        code, manifest = self.capture(footer_only=True)
+        self.assertEqual(code, 1)
+        self.assertFalse(manifest['capture_complete'])
+
+    def test_cleanup_failure_prevents_success(self):
+        code, manifest = self.capture(cleanup_failure=True)
+        self.assertEqual(code, 1)
+        self.assertIn('cleanup_error', manifest)
 
 
 if __name__ == '__main__':

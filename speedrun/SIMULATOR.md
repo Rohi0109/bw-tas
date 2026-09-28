@@ -9,6 +9,10 @@ and historical successor racks cannot be reused as alternative-action outcomes.
 first-divergence verifier, independently executed 32-bit probe, and isolated
 pre-submit scalar telemetry staging. Full native game-turn capture is still pending.
 
+[Live validation readiness](LIVE_VALIDATION.md) records the repaired capture
+assembly path, executed native-instruction controls, isolated preflight, and the
+next bounded live capture. Unknown native semantics remain unsupported.
+
 The [declarative campaign engine](CAMPAIGN_SIMULATOR.md) now provides enemy
 urgency selection, six simplified effects, encounter/reward progression and an
 explicit shared RNG schedule. Its example runs through two encounters. Native
