@@ -187,9 +187,14 @@ def _validate_pre_submit(pre_submit: dict, fixture: dict):
         raise ValueError('pre_submit must be a dict')
     # Augment with fixture provenance so build_encounter_state can validate build identity.
     augmented = dict(pre_submit)
-    augmented.setdefault('build', fixture.get('build', {}))
-    augmented.setdefault('session_id', fixture.get('session_id', ''))
-    augmented.setdefault('encounter_instance', fixture.get('encounter_instance', 0))
+    # Use fixture-level provenance as the authority; reject conflicts silently relabelled.
+    for key in ('build', 'session_id', 'encounter_instance'):
+        fixture_val = fixture.get(key)
+        if key in pre_submit and pre_submit[key] != fixture_val:
+            raise ValueError(
+                f"pre_submit[{key!r}] conflicts with fixture-level {key!r}: "
+                f"{pre_submit[key]!r} != {fixture_val!r}")
+        augmented[key] = fixture_val
     try:
         encounter = build_encounter_state(augmented)
     except ValueError as exc:

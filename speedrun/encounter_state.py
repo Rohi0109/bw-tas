@@ -187,6 +187,19 @@ def build_encounter_state(data: dict) -> 'EncounterState':
     counters = list(data['enemy_counters'])
     for c in counters:
         _require_int_nonneg(c, 'enemy_counters entry')
+    if len(data['enemy_attacks']) != len(counters):
+        raise ValueError(
+            f"enemy_attacks (len {len(data['enemy_attacks'])}) and "
+            f"enemy_counters (len {len(counters)}) must have equal length")
+    for i, attack in enumerate(data['enemy_attacks']):
+        if not isinstance(attack, dict):
+            raise ValueError(f'enemy_attacks[{i}] must be a dict')
+        for req_key in ('min', 'max'):
+            if req_key not in attack:
+                raise ValueError(f'enemy_attacks[{i}] missing required key {req_key!r}')
+            v = attack[req_key]
+            if not isinstance(v, int) or isinstance(v, bool):
+                raise ValueError(f'enemy_attacks[{i}][{req_key!r}] must be an integer')
 
     # RNG
     _validate_engine_rng(data['engine_rng'])

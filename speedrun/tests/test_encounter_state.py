@@ -36,7 +36,7 @@ def _plain_data(**overrides):
         'enemy_offense': 0.0,
         'enemy_damage_buffer': 0.0,
         'enemy_effects': [],
-        'enemy_attacks': [{'mMin': 1, 'mMax': 2, 'mRateCounter': 3,
+        'enemy_attacks': [{'min': 1, 'max': 2, 'mRateCounter': 3,
                            'mDamage': 1.0, 'mState': 0, 'mAlreadyPerformed': False}],
         'enemy_counters': [0],
         'engine_rng': _RNG,
@@ -187,6 +187,28 @@ class ValidationTests(unittest.TestCase):
     def test_encounter_instance_negative_raises(self):
         with self.assertRaises(ValueError):
             build_encounter_state(_plain_data(encounter_instance=-1))
+
+    def test_attack_counter_length_mismatch_raises(self):
+        # enemy_attacks and enemy_counters must have equal length.
+        data = _plain_data()
+        data['enemy_attacks'] = []
+        data['enemy_counters'] = [1]
+        with self.assertRaises(ValueError):
+            build_encounter_state(data)
+
+    def test_attack_entry_missing_min_raises(self):
+        data = _plain_data()
+        data['enemy_attacks'] = [{'max': 5}]
+        data['enemy_counters'] = [0]
+        with self.assertRaises(ValueError):
+            build_encounter_state(data)
+
+    def test_attack_entry_not_dict_raises(self):
+        data = _plain_data()
+        data['enemy_attacks'] = ['not-a-dict']
+        data['enemy_counters'] = [0]
+        with self.assertRaises(ValueError):
+            build_encounter_state(data)
 
 
 if __name__ == '__main__':

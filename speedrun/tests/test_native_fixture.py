@@ -302,6 +302,41 @@ class ValidateFixtureTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             validate_fixture(f)
 
+    def test_pre_submit_conflicting_session_id_raises(self):
+        # pre_submit session_id that differs from fixture session_id must be rejected.
+        f = _minimal_fixture(pre_submit=_min_pre_submit(session_id='different-session'))
+        with self.assertRaises(ValueError):
+            validate_fixture(f)
+
+    def test_pre_submit_conflicting_build_raises(self):
+        f = _minimal_fixture(pre_submit=_min_pre_submit(
+            build={'BookwormAdventures.exe': 'c' * 64, 'main.pak': 'd' * 64}))
+        with self.assertRaises(ValueError):
+            validate_fixture(f)
+
+    def test_pre_submit_conflicting_encounter_instance_raises(self):
+        # Fixture has encounter_instance=0; pre_submit says 999.
+        f = _minimal_fixture(pre_submit=_min_pre_submit(encounter_instance=999))
+        with self.assertRaises(ValueError):
+            validate_fixture(f)
+
+    def test_pre_submit_attack_counter_length_mismatch_raises(self):
+        f = _minimal_fixture(pre_submit=_min_pre_submit(enemy_attacks=[], enemy_counters=[1]))
+        with self.assertRaises(ValueError):
+            validate_fixture(f)
+
+    def test_pre_submit_attack_missing_min_raises(self):
+        f = _minimal_fixture(pre_submit=_min_pre_submit(
+            enemy_attacks=[{'max': 5}], enemy_counters=[0]))
+        with self.assertRaises(ValueError):
+            validate_fixture(f)
+
+    def test_pre_submit_attack_non_integer_min_raises(self):
+        f = _minimal_fixture(pre_submit=_min_pre_submit(
+            enemy_attacks=[{'min': 'two', 'max': 5}], enemy_counters=[0]))
+        with self.assertRaises(ValueError):
+            validate_fixture(f)
+
 
 class ValidateBuildIdentityTests(unittest.TestCase):
 
