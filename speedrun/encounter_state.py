@@ -208,6 +208,11 @@ def build_encounter_state(data: dict) -> 'EncounterState':
             v = normalised[req_key]
             if not isinstance(v, int) or isinstance(v, bool):
                 raise ValueError(f'enemy_attacks[{i}][{req_key!r}] must be an integer')
+        if 'rate_counter' in normalised:
+            if normalised['rate_counter'] != counters[i]:
+                raise ValueError(
+                    f'enemy_attacks[{i}].rate_counter={normalised["rate_counter"]!r} '
+                    f'conflicts with enemy_counters[{i}]={counters[i]!r}')
         normalised_attacks.append(normalised)
 
     # RNG
@@ -229,6 +234,9 @@ def build_encounter_state(data: dict) -> 'EncounterState':
         unsupported.append('enemy_effects')
     if qrand_state is not None:
         unsupported.append('qrand_state')
+    # mState preserved as native_state_raw; mapping to 'state' string is unconfirmed.
+    if any('native_state_raw' in a for a in normalised_attacks):
+        unsupported.append('attack_state_mapping_unconfirmed')
 
     return EncounterState(
         schema_version=ENCOUNTER_STATE_VERSION,

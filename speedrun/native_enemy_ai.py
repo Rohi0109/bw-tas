@@ -25,6 +25,7 @@ _LUA_FIELD_MAP: dict[str, str] = {
     'mMax': 'max',
     'mDamage': 'damage',
     'mAlreadyPerformed': 'already_performed',
+    'mRateCounter': 'rate_counter',
     # mState intentionally absent: numeric→string mapping unconfirmed.
     # Preserved as 'native_state_raw' until native capture confirms the mapping.
 }
@@ -66,6 +67,64 @@ def normalise_attack(raw: dict) -> dict:
             result[_LUA_FIELD_MAP[k]] = v
         else:
             raise ValueError(f'unknown m-prefixed attack field: {k!r}')
+    return result
+
+
+_HOOK_BOOL_FIELDS = frozenset({'mAlreadyPerformed'})
+_HOOK_INT_FIELDS = frozenset({'mMin', 'mMax', 'mRateCounter', 'mState'})
+_HOOK_FLOAT_FIELDS = frozenset({'mDamage'})
+# Canonical equivalents (for already-typed canonical dicts)
+_CANONICAL_BOOL_FIELDS = frozenset({'already_performed'})
+_CANONICAL_INT_FIELDS = frozenset({'min', 'max', 'rate_counter', 'native_state_raw'})
+_CANONICAL_FLOAT_FIELDS = frozenset({'damage'})
+
+
+def _to_bool(v, field: str) -> bool:
+    if isinstance(v, bool):
+        return v
+    if isinstance(v, str):
+        low = v.strip().lower()
+        if low in ('true', '1'):
+            return True
+        if low in ('false', '0', ''):
+            return False
+    raise ValueError(f'{field!r}: cannot convert {v!r} to bool')
+
+
+def _to_int(v, field: str) -> int:
+    if isinstance(v, int) and not isinstance(v, bool):
+        return v
+    try:
+        return int(v)
+    except (TypeError, ValueError):
+        raise ValueError(f'{field!r}: cannot convert {v!r} to int')
+
+
+def _to_float(v, field: str) -> float:
+    if isinstance(v, (int, float)) and not isinstance(v, bool):
+        return float(v)
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        raise ValueError(f'{field!r}: cannot convert {v!r} to float')
+
+
+def convert_hook_attack_types(raw: dict) -> dict:
+    """Convert string-valued hook fields (as emitted by the log parser)
+    to Python-native types before calling normalise_attack.
+
+    Raises ValueError for nil/invalid values — they are not silently dropped.
+    """
+    result = {}
+    for k, v in raw.items():
+        if k in _HOOK_BOOL_FIELDS or k in _CANONICAL_BOOL_FIELDS:
+            result[k] = _to_bool(v, k)
+        elif k in _HOOK_INT_FIELDS or k in _CANONICAL_INT_FIELDS:
+            result[k] = _to_int(v, k)
+        elif k in _HOOK_FLOAT_FIELDS or k in _CANONICAL_FLOAT_FIELDS:
+            result[k] = _to_float(v, k)
+        else:
+            result[k] = v  # pass through (name fields etc.)
     return result
 
 

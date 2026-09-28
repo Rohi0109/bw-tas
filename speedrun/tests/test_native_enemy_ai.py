@@ -3,6 +3,7 @@ import unittest
 from native_enemy_ai import (
     UrgencyLevel,
     choose_attack,
+    convert_hook_attack_types,
     get_urgency,
     normalise_attack,
     tick_counters,
@@ -259,6 +260,53 @@ class NormaliseAttackTests(unittest.TestCase):
     def test_unknown_canonical_key_rejected(self):
         with self.assertRaises(ValueError):
             normalise_attack({'min': 2, 'max': 5, 'unknown_field': True})
+
+    def test_complete_hook_format_with_rate_counter(self):
+        """Full hook attack dict (as Lua emits it) must pass normalise_attack."""
+        hook = {'mMin': 1, 'mMax': 5, 'mRateCounter': 2,
+                'mAlreadyPerformed': False, 'mDamage': 2.0, 'mState': 0}
+        canonical = normalise_attack(hook)
+        self.assertEqual(canonical['rate_counter'], 2)
+        self.assertIn('native_state_raw', canonical)
+
+
+class TypeConversionTests(unittest.TestCase):
+    def test_string_false_becomes_bool_false(self):
+        raw = {'mMin': '1', 'mMax': '5', 'mAlreadyPerformed': 'false',
+               'mDamage': '2.0', 'mState': '0', 'mRateCounter': '2'}
+        typed = convert_hook_attack_types(raw)
+        self.assertIs(typed['mAlreadyPerformed'], False)
+        self.assertIsInstance(typed['mMin'], int)
+        self.assertIsInstance(typed['mDamage'], float)
+
+    def test_string_true_becomes_bool_true(self):
+        raw = {'mMin': '1', 'mMax': '1', 'mAlreadyPerformed': 'true',
+               'mDamage': '1.0', 'mState': '0', 'mRateCounter': '1'}
+        typed = convert_hook_attack_types(raw)
+        self.assertIs(typed['mAlreadyPerformed'], True)
+
+    def test_nil_value_raises(self):
+        with self.assertRaises(ValueError):
+            convert_hook_attack_types({'mMin': 'nil', 'mMax': '5'})
+
+    def test_string_false_truthy_bug_fixed(self):
+        # 'false' as a raw string is truthy in Python — conversion must fix this.
+        raw = {'mMin': '1', 'mMax': '1', 'mAlreadyPerformed': 'false',
+               'mDamage': '1.0', 'mState': '0', 'mRateCounter': '1'}
+        typed = convert_hook_attack_types(raw)
+        canonical = normalise_attack(typed)
+        # already_performed=False → attack is eligible, not excluded
+        result = choose_attack([canonical], [1], draw_returning(0))
+        self.assertEqual(result, 0)
+
+    def test_complete_hook_pipeline_already_performed_true(self):
+        """String 'true' from parser must exclude the attack in AI."""
+        raw = {'mMin': '1', 'mMax': '1', 'mAlreadyPerformed': 'true',
+               'mDamage': '1.0', 'mState': '0', 'mRateCounter': '1'}
+        typed = convert_hook_attack_types(raw)
+        canonical = normalise_attack(typed)
+        result = choose_attack([canonical], [1], None)
+        self.assertIsNone(result)
 
 
 if __name__ == '__main__':

@@ -36,7 +36,7 @@ def _plain_data(**overrides):
         'enemy_offense': 0.0,
         'enemy_damage_buffer': 0.0,
         'enemy_effects': [],
-        'enemy_attacks': [{'mMin': 2, 'mMax': 5, 'mAlreadyPerformed': False, 'mDamage': 1.0, 'mState': 0}],
+        'enemy_attacks': [{'mMin': 2, 'mMax': 5, 'mRateCounter': 0, 'mAlreadyPerformed': False, 'mDamage': 1.0, 'mState': 0}],
         'enemy_counters': [0],
         'engine_rng': _RNG,
         'engine_rng_draw_index': 0,
@@ -46,10 +46,12 @@ def _plain_data(**overrides):
 
 
 class EligibilityTests(unittest.TestCase):
-    def test_plain_encounter_is_eligible(self):
+    def test_plain_encounter_with_mstate_is_unsupported(self):
+        # mState is always present in hook attacks; its integer→string mapping is
+        # unconfirmed, so attack_state_mapping_unconfirmed is added automatically.
         state = build_encounter_state(_plain_data())
-        self.assertEqual(encounter_eligibility(state), EncounterEligibility.ELIGIBLE)
-        self.assertEqual(state.unsupported_fields, [])
+        self.assertIn('attack_state_mapping_unconfirmed', state.unsupported_fields)
+        self.assertEqual(encounter_eligibility(state), EncounterEligibility.UNSUPPORTED)
 
     def test_non_none_gem_is_unsupported(self):
         gems = ['none'] * 16
@@ -92,6 +94,26 @@ class EligibilityTests(unittest.TestCase):
                                                   qrand_state='x'))
         for field in ('gems', 'player_effects', 'qrand_state'):
             self.assertIn(field, state.unsupported_fields)
+
+
+    def test_native_state_raw_marks_unsupported(self):
+        # mState is always present in hook attacks
+        state = build_encounter_state(_plain_data())
+        self.assertIn('attack_state_mapping_unconfirmed', state.unsupported_fields)
+
+    def test_extreme_mstate_not_eligible(self):
+        data = _plain_data()
+        data['enemy_attacks'][0]['mState'] = 999
+        state = build_encounter_state(data)
+        elig = encounter_eligibility(state)
+        # unsupported state → not ELIGIBLE
+        self.assertNotEqual(elig.value, 'eligible')
+
+    def test_rate_counter_conflict_rejected(self):
+        data = _plain_data()
+        data['enemy_attacks'][0]['mRateCounter'] = 99  # conflicts with enemy_counters[0]=0
+        with self.assertRaises(ValueError):
+            build_encounter_state(data)
 
 
 class SerialiseRoundtripTests(unittest.TestCase):
